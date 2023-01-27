@@ -2,6 +2,11 @@ import jax.numpy as jnp
 from jax import random
 import jax
 import h5py
+import numpy as np
+import os
+from pathlib import Path
+pkg_dir = Path(__file__).parent.absolute()
+
 
 def uniform_points_disk(radius, n_src, key=None):
     """
@@ -140,3 +145,26 @@ def save_observations(file_path, observations):
             fp[f'track{i}/rfi_XYZ'] = obs.rfi_xyz
             fp[f'track{i}/rfi_orbit'] = obs.rfi_orbit
             fp[f'track{i}/rfi_A'] = obs.rfi_A_app
+
+def load_antennas(telescope='MeerKAT'):
+    """
+    Load the ENU coordinates for a telescope. Currently only MeerKAT is
+    included.
+
+    Parameters:
+    -----------
+    telescope: str
+        The name of the telescope.
+
+    Returns:
+    --------
+    enu: array_like (n_ant, 3)
+        The East, North, Up coordinates of each antenna relative to a reference
+        position.
+    """
+    if telescope == 'MeerKAT':
+        enu = np.loadtxt(os.path.join(pkg_dir, '../data/MeerKAT.enu.txt'))
+    else:
+        print('Only MeerKAT antennas are currentyl available.')
+        enu = None
+    return enu

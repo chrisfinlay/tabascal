@@ -1,5 +1,3 @@
-.ipynb_checkpoints
-*.ipynb
 *__pycache__
 tabascal.egg-info
 examples
