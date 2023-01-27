@@ -15,7 +15,7 @@ To use tabascal, first install it using pip:
 Creating an observation
 ----------------
 
-To create an observation use instantiate the
+To create an observation instantiate the
 ``tabascal.observation.Observation()`` class:
 
 .. autofunction:: tabascal.observation.Observation
