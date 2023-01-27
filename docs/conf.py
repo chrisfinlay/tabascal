@@ -26,7 +26,6 @@ author = "Chris Finlay"
 # -- General configuration
 
 extensions = [
-    "sphinx_copybutton",
     "sphinx.ext.duration",
     "sphinx.ext.doctest",
     "sphinx.ext.autodoc",
