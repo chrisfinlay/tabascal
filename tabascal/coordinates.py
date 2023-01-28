@@ -14,8 +14,8 @@ def radec_to_lmn(ra, dec, phase_centre):
     Convert right-ascension and declination positions of a set of sources to
     direction cosines.
 
-    Parameters
-    ----------
+    Parameters:
+    -----------
     ra : array_like (n_src,)
         Right-ascension in degrees.
     dec : array_like (n_src,)
@@ -23,8 +23,8 @@ def radec_to_lmn(ra, dec, phase_centre):
     phase_centre : array_like (2,)
         The ra and dec coordinates of the phase centre in degrees.
 
-    Returns
-    -------
+    Returns:
+    --------
     lmn : array_like (n_src, 3)
         The direction cosines, (l,m,n), coordinates of each source.
     """
@@ -47,7 +47,7 @@ def ENU_to_GEO(geo_ref, enu):
     (latitude, longitude, elevation).
 
     Parameters:
-    ----------
+    -----------
     geo_ref: array_like (3,)
         The latitude, longitude and elevation, (lat,lon,el), of the reference
         position i.e. ENU = (0,0,0).
@@ -78,7 +78,7 @@ def GEO_to_XYZ(geo, t):
     East at t = 0. ECEF and ECI are aligned when t % T_s = 0.
 
     Parameters:
-    ----------
+    -----------
     geo: array_like (n_time, 3)
         The geographic coordinates, (lat,lon,el), at each point in time.
     t: array_like (n_times,)
@@ -108,7 +108,7 @@ def radec_to_XYZ(ra, dec):
     Convert Right ascension and Declination to unit vector in ECI coordinates.
 
     Parameters:
-    ----------
+    -----------
     ra : array_like (n_src,)
         Right-ascension in degrees.
     dec : array_like (n_src,)
@@ -222,8 +222,8 @@ def ENU_to_UVW(enu, latitude, longitude, ra, dec, times):
     times: array_like (n_time,)
         Times, in seconds, at which to calculate the UVW coordinates.
 
-    Return:
-    -------
+    Returns:
+    --------
     uvw: array_like (n_time, n_ant, 3)
         UVW coordinates, in metres, of the individual antennas at each time.
     """

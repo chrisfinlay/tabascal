@@ -1,6 +1,6 @@
 from tabascal.telescope import Telescope
 from tabascal.coordinates import radec_to_lmn, radec_to_XYZ, ENU_to_UVW, GEO_to_XYZ, orbit
-from tabascal.interferometry import rfi_vis, im_to_vis, ants_to_bl
+from tabascal.interferometry import rfi_vis, astro_vis, ants_to_bl
 from scipy.special import jv
 import jax.numpy as jnp
 from jax import vmap, random
@@ -11,44 +11,44 @@ from jax.config import config
 config.update("jax_enable_x64", True)
 
 class Observation(Telescope):
+    """
+    Construct an Observation object defining a radio interferometry
+    observation.
+
+    Parameters:
+    -----------
+    latitude: float
+        Latitude of the telescope.
+    longitude: float
+        Longitude of the telescope.
+    elevation: float
+        Elevation of the telescope.
+    ra: float
+        Right Ascension of the phase centre.
+    dec: float
+        Declination of the phase centre.
+    times: array_like (n_time,)
+        Time centroids of each data point.
+    freqs: array_like (n_freq,)
+        Frequency centroids for each observation channel.
+    ENU_path: str
+        Path to a txt file containing the ENU coordinates of each antenna.
+    ENU_array: array_like (n_ant, 3)
+        ENU coordinates of each antenna.
+    dish_d: float
+        Diameter of each antenna dish.
+    random_seed: int
+        Random seed to use for random number generator.
+    auto_corrs: bool
+        Flag to include autocorrelations in simulation.
+    n_int_samples: int
+        Number of samples per time step which are then averaged. Must be
+        large enough to capture time-smearing of RFI sources on longest
+        baseline.
+    """
     def __init__(self, latitude, longitude, elevation, ra, dec, times, freqs,
                  ENU_path=None, ENU_array=None, dish_d=13.965, random_seed=0,
                  auto_corrs=False, n_int_samples=4):
-        """
-        Construct an Observation object defining a radio interferometry
-        observation.
-
-        Parameters:
-        -----------
-        latitude: float
-            Latitude of the telescope.
-        longitude: float
-            Longitude of the telescope.
-        elevation: float
-            Elevation of the telescope.
-        ra: float
-            Right Ascension of the phase centre.
-        dec: float
-            Declination of the phase centre.
-        times: array_like (n_time,)
-            Time centroids of each data point.
-        freqs: array_like (n_freq,)
-            Frequency centroids for each observation channel.
-        ENU_path: str
-            Path to a txt file containing the ENU coordinates of each antenna.
-        ENU_array: array_like (n_ant, 3)
-            ENU coordinates of each antenna.
-        dish_d: float
-            Diameter of each antenna dish.
-        random_seed: int
-            Random seed to use for random number generator.
-        auto_corrs: bool
-            Flag to include autocorrelations in simulation.
-        n_int_samples: int
-            Number of samples per time step which are then averaged. Must be
-            large enough to capture time-smearing of RFI sources on longest
-            baseline.
-        """
         self.ra = ra
         self.dec = dec
         self.times = times
@@ -91,7 +91,7 @@ class Observation(Telescope):
         Parameters:
         -----------
         I: array_like (n_src, n_freq)
-            Intenisty of the sources in Jy.
+            Intensity of the sources in Jy.
         ra: array (n_src,)
             Right ascension of the sources in degrees.
         dec: array (n_src,)
@@ -100,7 +100,7 @@ class Observation(Telescope):
         lmn = radec_to_lmn(ra, dec, jnp.array([self.ra, self.dec]))
         theta = jnp.arcsin(jnp.linalg.norm(lmn[:,:-1], axis=-1))
         I_app = I[:,None,None,:]*self.beam(theta[:,None,None,None])**2
-        vis_ast = im_to_vis(I_app[:,0,0,:].T, self.bl_uvw, lmn, self.freqs)
+        vis_ast = astro_vis(I_app[:,0,0,:].T, self.bl_uvw, lmn, self.freqs)
         if self.n_ast==0:
             self.ast_I = I
             self.ast_lmn = lmn

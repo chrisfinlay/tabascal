@@ -41,7 +41,7 @@ def rfi_vis(app_amplitude, c_distances, freqs):
     return vis
 
 @jit
-def im_to_vis(sources, uvw, lmn, freqs):
+def astro_vis(sources, uvw, lmn, freqs):
     """
     Calculate visibilities from a set of point sources using DFT.
 
