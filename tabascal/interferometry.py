@@ -8,8 +8,8 @@ def rfi_vis(app_amplitude, c_distances, freqs):
     """
     Calculate visibilities from distances to rfi sources.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     app_amplitude: array_like (n_time, n_ant, n_freq, n_src)
         Apparent amplitude at the antennas.
     c_distances: array_like (n_time, n_ant, n_src)
@@ -17,8 +17,8 @@ def rfi_vis(app_amplitude, c_distances, freqs):
     freqs: array_like (n_freq,)
         Frequencies.
 
-    Returns:
-    --------
+    Returns
+    -------
     vis: array_like (n_time, n_bl, n_freq)
         The visibilities.
     """
@@ -45,8 +45,8 @@ def astro_vis(sources, uvw, lmn, freqs):
     """
     Calculate visibilities from a set of point sources using DFT.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     sources: array_like (n_freq, n_src)
         Array of point source intensities in Jy.
     uvw: array_like (ntime, n_bl, 3)
@@ -56,8 +56,8 @@ def astro_vis(sources, uvw, lmn, freqs):
     freqs: array_like (n_freq,)
         Frequencies in Hz.
 
-    Returns:
-    --------
+    Returns
+    -------
     vis: array_like (n_time, n_bl, n_freq)
         Visibilities of the given set of sources and baselines.
     """
@@ -85,13 +85,13 @@ def ants_to_bl(G):
     """
     Calculate the complex gains for each baseline given the per antenna gains.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     G: array_like (n_time, n_ant)
         Complex gains at each antenna over time.
 
-    Returns:
-    --------
+    Returns
+    -------
     G_bl: array_like (n_time, n_bl)
         Complex gains on each baseline over time.
     """

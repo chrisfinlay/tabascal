@@ -14,8 +14,8 @@ def radec_to_lmn(ra, dec, phase_centre):
     Convert right-ascension and declination positions of a set of sources to
     direction cosines.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     ra : array_like (n_src,)
         Right-ascension in degrees.
     dec : array_like (n_src,)
@@ -23,8 +23,8 @@ def radec_to_lmn(ra, dec, phase_centre):
     phase_centre : array_like (2,)
         The ra and dec coordinates of the phase centre in degrees.
 
-    Returns:
-    --------
+    Returns
+    -------
     lmn : array_like (n_src, 3)
         The direction cosines, (l,m,n), coordinates of each source.
     """
@@ -46,20 +46,21 @@ def ENU_to_GEO(geo_ref, enu):
     Convert a set of points in ENU co-ordinates to geographic coordinates i.e.
     (latitude, longitude, elevation).
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     geo_ref: array_like (3,)
         The latitude, longitude and elevation, (lat,lon,el), of the reference
         position i.e. ENU = (0,0,0).
     enu: array_like (n_ants, 3)
         The ENU coordinates of each antenna. (East, North, Up).
 
-    Returns:
-    --------
+    Returns
+    -------
     geo_ants: array_like (n_ant, 3)
         The geographic coordinates, (lat,lon,el), of each antenna.
     """
-    d_lon = jnp.rad2deg(jnp.arcsin(enu[:,1]/(R_e*jnp.cos(jnp.deg2rad(geo_ref[0])))))
+    d_lon = jnp.rad2deg(jnp.arcsin(enu[:,1] / \
+                        (R_e*jnp.cos(jnp.deg2rad(geo_ref[0])))))
     d_lat = jnp.rad2deg(jnp.arcsin(enu[:,0]/R_e))
     geo_ants = jnp.array(geo_ref)[None,:] + \
                 jnp.array([d_lat, d_lon, enu[:,-1]]).T
@@ -77,15 +78,15 @@ def GEO_to_XYZ(geo, t):
     and +y is also in the plane of the Equator and passes through 90 degrees
     East at t = 0. ECEF and ECI are aligned when t % T_s = 0.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     geo: array_like (n_time, 3)
         The geographic coordinates, (lat,lon,el), at each point in time.
     t: array_like (n_times,)
         The time of each position in seconds.
 
-    Returns:
-    --------
+    Returns
+    -------
     xyz: array_like (n_time, 3)
         The ECI coordinates at each time, (lat,lon,el), of each antenna.
     """
@@ -107,15 +108,15 @@ def radec_to_XYZ(ra, dec):
     """
     Convert Right ascension and Declination to unit vector in ECI coordinates.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     ra : array_like (n_src,)
         Right-ascension in degrees.
     dec : array_like (n_src,)
         Declination in degrees.
 
-    Returns:
-    --------
+    Returns
+    -------
     xyz: array_like (n_src, 3) or (3,)
         The ECI coordinate unit vector of each source.
     """
@@ -131,8 +132,8 @@ def ENU_to_ITRF(enu, lat, lon):
     Calculate ITRF coordinates from ENU coordinates of antennas given the
     latitude and longitude of the antenna array centre.
 
-    Paramters:
-    ----------
+    Paramters
+    ---------
     enu: array_like (n_ant, 3)
         The East, North, Up coordinates of each antenna.
     lat: float
@@ -140,8 +141,8 @@ def ENU_to_ITRF(enu, lat, lon):
     lon: float
         The longitude of the observer/telescope.
 
-    Returns:
-    --------
+    Returns
+    -------
     itrf: jnp.array (n_ant, 3)
         The ITRF coordinates of the antennas.
     """
@@ -163,8 +164,8 @@ def ITRF_to_UVW(ITRF, ra, dec, lon, time):
     Calculate uvw coordinates from ITRF/ECEF coordinates,
     longitude a Greenwich Mean Sidereal Time.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     ITRF: jnp.array (n_ant, 3)
         Antenna positions in the ITRF frame in units of metres.
     ra: float
@@ -176,8 +177,8 @@ def ITRF_to_UVW(ITRF, ra, dec, lon, time):
     time: float
         Time of day in seconds past 12am.
 
-    Returns:
-    --------
+    Returns
+    -------
     uvw: jnp.array (n_ant, 3)
         The uvw coordinates of the antennas for a given observer
         location, time and target (ra,dec).
@@ -206,8 +207,8 @@ def ENU_to_UVW(enu, latitude, longitude, ra, dec, times):
     points at the phase centre defined by (ra,dec), at specific times for a
     telescope at a specifc latitude and longitude.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     enu: array_like (n_ant, 3)
         The East, North, Up coordindates of each antenna relative to the
         position defined by the latitude and longitude.
@@ -222,8 +223,8 @@ def ENU_to_UVW(enu, latitude, longitude, ra, dec, times):
     times: array_like (n_time,)
         Times, in seconds, at which to calculate the UVW coordinates.
 
-    Returns:
-    --------
+    Returns
+    -------
     uvw: array_like (n_time, n_ant, 3)
         UVW coordinates, in metres, of the individual antennas at each time.
     """
@@ -239,13 +240,13 @@ def Rotx(theta):
     """
     Define a rotation matrix about the 'x-axis' by an angle theta, in degrees.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     theta: float
         Rotation angle in degrees.
 
-    Returns:
-    --------
+    Returns
+    -------
     R: array_like (3, 3)
         Rotation matrix.
     """
@@ -262,13 +263,13 @@ def Rotz(theta):
     """
     Define a rotation matrix about the 'z-axis' by an angle theta, in degrees.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     theta: float
         Rotation angle in degrees.
 
-    Returns:
-    --------
+    Returns
+    -------
     R: array_like (3, 3)
         Rotation matrix.
     """
@@ -285,8 +286,8 @@ def orbit(t, elevation, inclination, lon_asc_node, periapsis):
     """
     Calculate orbital path of a satellite in perfect circular orbit.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     t: array_like (n_time,)
         Times at which to evaluate the rotation matrices.
     el: float
@@ -300,8 +301,8 @@ def orbit(t, elevation, inclination, lon_asc_node, periapsis):
         Perisapsis of the orbit. This is the angular starting point of the orbit
         at t = 0.
 
-    Returns:
-    --------
+    Returns
+    -------
     velocity: array_like (n_time, 3)
          The velocity vector of the orbiting object at each specified time.
     """
@@ -322,8 +323,8 @@ def orbit_velocity(times, el, inclination, lon_asc_node, periapsis):
     """
     Calculate the velocity of a circular orbit at specific times.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     times: array_like (n_time,)
         Times at which to evaluate the rotation matrices.
     el: float
@@ -337,8 +338,8 @@ def orbit_velocity(times, el, inclination, lon_asc_node, periapsis):
         Perisapsis of the orbit. This is the angular starting point of the orbit
         at t = 0.
 
-    Returns:
-    --------
+    Returns
+    -------
     velocity: array_like (n_time, 3)
         The velocity vector at the specified times.
     """
@@ -356,8 +357,8 @@ def R_uvw(times, el, inclination, lon_asc_node, periapsis):
     centric reference frame (ECI) to a satellite centric frame given the
     parameters of its (circular) orbit.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     times: array_like (n_time,)
         Times at which to evaluate the rotation matrices.
     el: float
@@ -371,8 +372,8 @@ def R_uvw(times, el, inclination, lon_asc_node, periapsis):
         Perisapsis of the orbit. This is the angular starting point of the orbit
         at t = 0.
 
-    Returns:
-    --------
+    Returns
+    -------
     R: array_like (3, 3)
         The rotation matrix to orient to a satellite centric (RIC) frame defined
         by the Radial, In-track, Cross-track components.
@@ -393,8 +394,8 @@ def RIC_dev(times, true_orbit_params, estimated_orbit_params):
     Calculate the Radial (R), In-track (I) and Cross-track (C) deviations
     between two circular orbits given their orbit parameters at many time steps.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     times: array (n_time,)
         Times at which to evaluate the RIC deviations.
     true_orb_params: array_like (4,)
@@ -404,8 +405,8 @@ def RIC_dev(times, true_orbit_params, estimated_orbit_params):
     est_orb_params: array (elevation, inclination, lon_asc_node, periapsis)
         Estimated orbit parameters.
 
-    Returns:
-    --------
+    Returns
+    -------
     RIC: array_like (n_time, 3)
         Radial, In-track and Cross-track coordinates, in metres, of the orbiting
         body relative to the orbit defined by 'true_orbit_params'.
@@ -425,8 +426,8 @@ def orbit_fisher(times, orbit_params, RIC_std):
     induced by errors in the RIC frame of an orbiting object. This is
     essentially linear uncertainty propagation assuming Gaussian errors.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     times: array_like (n_time,)
         Times at which the RIC covariance/standard deviations is defined.
     orbit_params: array_like (4,)
@@ -436,8 +437,8 @@ def orbit_fisher(times, orbit_params, RIC_std):
         The standard deviation in the Radial, In-track and Cross-track
         directions.
 
-    Returns:
-    --------
+    Returns
+    -------
     fisher: array_like (4, 4)
         The inverse covariance (Fisher) matrix for the orbit parameters induced
         by the orbit uncertainties in the RIC frame.

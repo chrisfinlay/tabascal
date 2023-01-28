@@ -15,8 +15,8 @@ class Observation(Telescope):
     Construct an Observation object defining a radio interferometry
     observation.
 
-    Parameters:
-    -----------
+    Parameters
+    ----------
     latitude: float
         Latitude of the telescope.
     longitude: float
@@ -88,8 +88,8 @@ class Observation(Telescope):
         """
         Add a set of astronomical sources to the observation.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         I: array_like (n_src, n_freq)
             Intensity of the sources in Jy.
         ra: array (n_src,)
@@ -117,8 +117,8 @@ class Observation(Telescope):
         """
         Add a satellite to the observation.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         Pv: array_like (n_src, n_freq)
             Specific Emission Power in W/Hz
         elevation: array_like (n_src,)
@@ -176,8 +176,8 @@ class Observation(Telescope):
         The rate of change of both ampltudes and phases are sampled from a zero
         mean Gaussian with standard deviation as provided.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         G0_mean: complex
             Mean of Gaussian at t = 0.
         G0_std: float
@@ -213,8 +213,8 @@ class Observation(Telescope):
         Add complex gaussian noise to the integrated visibilities. The real and
         imaginary components will each get this level of noise.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         noise: float
             Standard deviation of the complex noise.
         key: jax.random.PRNGKey
@@ -225,7 +225,10 @@ class Observation(Telescope):
             self_key = True
         else:
             self_key = False
-        self.noise_data = noise*random.normal(key, shape=(self.n_time,self.n_bl,self.n_freq),
+        self.noise_data = noise*random.normal(key,
+                                              shape=(self.n_time,
+                                                     self.n_bl,
+                                                     self.n_freq),
                                               dtype=jnp.complex128)
         if self_key:
             self.key = random.split(key)[0]
@@ -237,7 +240,8 @@ class Observation(Telescope):
         Calculate the angular separation between the pointing direction of each
         antenna and the satellite source.
 
-        Returns:
+        Returns
+        -------
         angles: array_like (n_src, n_time, n_ant)
         """
         src_xyz = radec_to_XYZ(self.ra, self.dec)
@@ -253,14 +257,14 @@ class Observation(Telescope):
         pointing direction. The beam intensity model is the Airy disk as defined
         by the dish diameter. This is the same a the CASA default.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         theta: (n_src, n_time, n_ant, n_freq)
             The angular separation between the pointing directiona and the
             source.
 
-        Returns:
-        --------
+        Returns
+        -------
         E: array_like (n_src, n_time, n_ant, n_freq)
         """
         c = 299792458.0
@@ -282,8 +286,8 @@ class Observation(Telescope):
                = \frac{P G_a \lambda^2 4\pi}{(4\pi d)^2 \Delta\nu \lambda^2}
                = \frac{P G_a}{4\pi d^2 \Delta \nu}
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         Pv: array_like (n_freq,)
             Specific emission power in W/Hz.
         d: array_like (n_time, n_ant)
@@ -291,8 +295,8 @@ class Observation(Telescope):
         G:
             Emission antenna gain
 
-        Returns:
-        --------
+        Returns
+        -------
         Sv: array_like (n_time, n_ant, n_freq)
             Spectral flux density at the receiving antennas in Jy
         """
@@ -302,8 +306,8 @@ class Observation(Telescope):
         """
         Convert deciBels to linear units.
 
-        Parameters:
-        -----------
+        Parameters
+        ----------
         dB: float, array_like
             deciBel value to convert.
         """
