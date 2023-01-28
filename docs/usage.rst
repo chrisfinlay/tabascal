@@ -18,7 +18,7 @@ Creating an observation
 To create an observation instantiate the
 ``tabascal.observation.Observation()`` class:
 
-.. autofunction:: tabascal.observation.Observation
+.. autoclass:: tabascal.observation.Observation
 
 For example:
 
