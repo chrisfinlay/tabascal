@@ -7,3 +7,7 @@ of radio interferometry data. A source to visibility model for RFI sources
 including certain near-field effects. Visibility data is jointly calibrated and
 cleaned from specific RFI contamination by modelling the RFI signal in the
 visibilities.
+
+# Documentation
+
+[https://tabascal.readthedocs.io/en/latest/](https://tabascal.readthedocs.io/en/latest/)
