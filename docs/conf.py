@@ -4,7 +4,8 @@
 # https://www.sphinx-doc.org/en/master/usage/configuration.html
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../tabascal/'))
+sys.path.insert(0, os.path.abspath('..'))
+import tabascal
 
 from datetime import date
 
@@ -15,6 +16,11 @@ project = 'tabascal'
 copyright = f'{date.today().year}, Chris Finlay'
 author = 'Chris Finlay'
 release = '0.0.1'
+
+# # The short X.Y version.
+# version = tabascal.__version__
+# # The full version, including alpha/beta/rc tags.
+# release = tabascal.__version__
 
 # -- General configuration ---------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#general-configuration
