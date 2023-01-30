@@ -15,7 +15,7 @@ from datetime import date
 project = 'tabascal'
 copyright = f'{date.today().year}, Chris Finlay'
 author = 'Chris Finlay'
-release = '0.0.1'
+release = tabascal.__version__
 
 # # The short X.Y version.
 # version = tabascal.__version__
