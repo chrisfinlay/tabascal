@@ -119,7 +119,7 @@ class Observation(Telescope):
                         inclination: jnp.ndarray, lon_asc_node: jnp.ndarray, 
                         periapsis: jnp.ndarray, Ga=0.0):
         """
-        Add a satellite to the observation.
+        Add a satellite-based source of RFI to the observation.
 
         Parameters
         ----------
@@ -176,7 +176,7 @@ class Observation(Telescope):
                          longitude: jnp.ndarray, elevation: jnp.ndarray, 
                          Ga=0.0):
         """
-        Add a satellite to the observation.
+        Add a stationary source of RFI to the observation.
 
         Parameters
         ----------
