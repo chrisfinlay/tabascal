@@ -1,9 +1,17 @@
 from tabascal.coordinates import ENU_to_GEO
 import numpy as np
 
+
 class Telescope(object):
-    def __init__(self, latitude: float, longitude: float, elevation: float, 
-                 ENU_array=None, ENU_path=None, name=None):
+    def __init__(
+        self,
+        latitude: float,
+        longitude: float,
+        elevation: float,
+        ENU_array=None,
+        ENU_path=None,
+        name=None,
+    ):
         self.name = name
         self.latitude = latitude
         self.longitude = longitude
@@ -27,8 +35,8 @@ class Telescope(object):
             self.ENU = np.loadtxt(ENU_path)
         else:
             self.ENU = None
-            msg = '''Error : East-North-Up coordinates are needed either in an 
-                     array or as a csv like file.'''
+            msg = """Error : East-North-Up coordinates are needed either in an 
+                     array or as a csv like file."""
             print(msg)
             return
 
