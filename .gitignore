@@ -3,3 +3,4 @@ tabascal.egg-info
 examples
 docs/build
 build
+*.DS_Store
