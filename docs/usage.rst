@@ -88,9 +88,9 @@ For example:
 
     rfi_P = 6e-4 * jnp.exp( -0.5 * ((obs.freqs-1.5e9)/2e7) ** 2 )
 
-    obs.addSatelliteRFI(Pv=rfi_P, latitude=jnp.array([-20.]), 
-                        longitude=jnp.array([30.]), 
-                        elevation=jnp.array([tar.elevation]))
+    obs.addStationaryRFI(Pv=rfi_P, latitude=jnp.array([-20.]), 
+                         longitude=jnp.array([30.]), 
+                         elevation=jnp.array([tar.elevation]))
 
 Adding some time and frequency dependent antenna gains
 ------------------------------------------------------
