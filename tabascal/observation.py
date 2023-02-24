@@ -1,12 +1,10 @@
 from tabascal.telescope import Telescope
 from tabascal.coordinates import radec_to_lmn, radec_to_XYZ, ENU_to_UVW, GEO_to_XYZ, orbit
-from tabascal.interferometry import rfi_vis, astro_vis, ants_to_bl
+from tabascal.interferometry import rfi_vis, astro_vis
 from scipy.special import jv
 import jax.numpy as jnp
 from jax import vmap, random
-import jax
 import sys
-import jax.ops
 from jax.config import config
 config.update("jax_enable_x64", True)
 
@@ -27,13 +25,13 @@ class Observation(Telescope):
         Right Ascension of the phase centre.
     dec: float
         Declination of the phase centre.
-    times: array_like (n_time,)
+    times: ndarray (n_time,)
         Time centroids of each data point.
-    freqs: array_like (n_freq,)
+    freqs: ndarray (n_freq,)
         Frequency centroids for each observation channel.
     ENU_path: str
         Path to a txt file containing the ENU coordinates of each antenna.
-    ENU_array: array_like (n_ant, 3)
+    ENU_array: ndarray (n_ant, 3)
         ENU coordinates of each antenna.
     dish_d: float
         Diameter of each antenna dish.
@@ -46,7 +44,8 @@ class Observation(Telescope):
         large enough to capture time-smearing of RFI sources on longest
         baseline.
     """
-    def __init__(self, latitude, longitude, elevation, ra, dec, times, freqs,
+    def __init__(self, latitude: float, longitude: float, elevation: float, 
+                 ra: float, dec: float, times: jnp.ndarray, freqs: jnp.ndarray,
                  ENU_path=None, ENU_array=None, dish_d=13.965, random_seed=0,
                  auto_corrs=False, n_int_samples=4):
         self.ra = ra
@@ -76,21 +75,24 @@ class Observation(Telescope):
         self.a1, self.a2 = jnp.triu_indices(self.n_ants, 0 if auto_corrs else 1)
         self.bl_uvw = self.ants_uvw[:,self.a1] - self.ants_uvw[:,self.a2]
         self.n_bl = len(self.a1)
-        self.ants_xyz = vmap(GEO_to_XYZ, in_axes=(None, 0))(self.GEO_ants, self.times_fine)
+        print(self.GEO_ants.shape)
+        self.ants_xyz = vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)(self.GEO_ants[None,...], self.times_fine)
+        print(self.ants_xyz.shape)
         self.n_ast = 0
-        self.n_rfi = 0
+        self.n_sat_rfi = 0
+        self.n_ter_rfi = 0
         self.vis_ast = jnp.zeros((self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128)
         self.vis_rfi = jnp.zeros((self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128)
         self.gains_bl = jnp.ones((self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128)
         self.key = random.PRNGKey(random_seed)
 
-    def addAstro(self, I, ra, dec):
+    def addAstro(self, I: jnp.ndarray, ra: jnp.ndarray, dec: jnp.ndarray):
         """
         Add a set of astronomical sources to the observation.
 
         Parameters
         ----------
-        I: array_like (n_src, n_freq)
+        I: ndarray (n_src, n_freq)
             Intensity of the sources in Jy.
         ra: array (n_src,)
             Right ascension of the sources in degrees.
@@ -113,51 +115,53 @@ class Observation(Telescope):
         self.n_ast += len(I)
         self.vis_ast += vis_ast
 
-    def addSat(self, Pv, elevation, inclination, lon_asc_node, periapsis, Ga=0.0):
+    def addSatelliteRFI(self, Pv: jnp.ndarray, elevation: jnp.ndarray, 
+                        inclination: jnp.ndarray, lon_asc_node: jnp.ndarray, 
+                        periapsis: jnp.ndarray, Ga=0.0):
         """
         Add a satellite to the observation.
 
         Parameters
         ----------
-        Pv: array_like (n_src, n_freq)
+        Pv: ndarray (n_src, n_freq)
             Specific Emission Power in W/Hz
-        elevation: array_like (n_src,)
+        elevation: ndarray (n_src,)
             Elevation/Altitude of the orbit in metres.
-        inclination: array_like (n_src,)
+        inclination: ndarray (n_src,)
             Inclination angle of the orbit relative to the equatorial plane.
-        lon_asc_node: array_like (n_src,)
+        lon_asc_node: ndarray (n_src,)
             Longitude of the ascending node of the orbit. This is the longitude of
             when the orbit crosses the equator from the south to the north.
-        periapsis: array_like (n_src,)
+        periapsis: ndarray (n_src,)
             Perisapsis of the orbit. This is the angular starting point of the orbit
             at t = 0.
         Ga:
             Emission antenna gain relative to an isotropic radiator in dBi.
         """
         orbit_vmap = vmap(orbit, in_axes=(None,0,0,0,0))
-        rfi_xyz = orbit_vmap(self.times_fine, elevation, inclination,
+        rfi_sat_xyz = orbit_vmap(self.times_fine, elevation, inclination,
                              lon_asc_node, periapsis)
         # rfi_xyz is shape (n_src,n_time_fine,3)
         # self.ants_xyz is shape (n_time_fine,n_ant,3)
         distances = jnp.linalg.norm(self.ants_xyz[None,:,:,:] - \
-                                    rfi_xyz[:,:,None,:], axis=-1)
+                                    rfi_sat_xyz[:,:,None,:], axis=-1)
         # distances is shape (n_src,n_time_fine,n_ant)
         I = vmap(self.Pv_to_Sv, in_axes=(0,0,None))(Pv, distances,
                                                     self.db_to_lin(Ga))
         # I is shape (n_src,n_time,n_ant,n_freq)
-        rfi_orbit = jnp.array([elevation, inclination,
+        rfi_sat_orbit = jnp.array([elevation, inclination,
                                lon_asc_node, periapsis]).T
-        if self.n_rfi==0:
-            self.rfi_I = I
-            self.rfi_xyz = rfi_xyz
-            self.rfi_orbit = rfi_orbit
+        if self.n_sat_rfi==0:
+            self.rfi_sat_I = I
+            self.rfi_sat_xyz = rfi_sat_xyz
+            self.rfi_sat_orbit = rfi_sat_orbit
         else:
-            self.rfi_I = jnp.concatenate([self.rfi_I, I], axis=0)
-            self.rfi_xyz = jnp.concatenate([self.rfi_xyz, rfi_xyz], axis=0)
-            self.rfi_orbit = jnp.concatenate([self.rfi_orbit, rfi_orbit],
+            self.rfi_sat_I = jnp.concatenate([self.rfi_sat_I, I], axis=0)
+            self.rfi_sat_xyz = jnp.concatenate([self.rfi_sat_xyz, rfi_sat_xyz], axis=0)
+            self.rfi_sat_orbit = jnp.concatenate([self.rfi_sat_orbit, rfi_sat_orbit],
                                              axis=0)
 
-        self.angular_seps = self.angular_separation()
+        self.angular_seps = self.angular_separation(self.rfi_sat_xyz)
         self.rfi_A_app = (jnp.sqrt(I)*self.beam(self.angular_seps[:,:,:,None]))
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
@@ -165,10 +169,63 @@ class Observation(Telescope):
                           (jnp.transpose(distances, (1,2,0)) - \
                            self.ants_uvw[:,:,None,-1]),
                           self.freqs)
-        self.n_rfi += len(I)
+        self.n_sat_rfi += len(I)
         self.vis_rfi += vis_rfi
 
-    def addGains(self, G0_mean, G0_std, Gt_std_amp, Gt_std_phase, key=None):
+    def addStationaryRFI(self, Pv: jnp.ndarray, latitude: jnp.ndarray, 
+                         longitude: jnp.ndarray, elevation: jnp.ndarray, 
+                         Ga=0.0):
+        """
+        Add a satellite to the observation.
+
+        Parameters
+        ----------
+        Pv: ndarray (n_src, n_freq)
+            Specific Emission Power in W/Hz
+        latitude: ndarray (n_src,)
+            Geopgraphic latitude of the source in degrees.
+        longitude: ndarray (n_src,)
+            Geographic longitude of the source in degrees.
+        elevation: ndarray (n_src,)
+            Elevation/Altitude of the source above sea level in metres.
+        
+        Ga:
+            Emission antenna gain relative to an isotropic radiator in dBi.
+        """
+        rfi_ter_geo = jnp.array([latitude, longitude, elevation]).T[:,None,:]
+        # rfi_ter_geo is shape (n_src,n_time,3)
+        rfi_ter_xyz = vmap(GEO_to_XYZ, in_axes=(0, None))(rfi_ter_geo, self.times_fine)
+        # rfi_ter_xyz is shape (n_src,n_time_fine,3)
+        # self.ants_xyz is shape (n_time_fine,n_ant,3)
+        distances = jnp.linalg.norm(self.ants_xyz[None,:,:,:] - \
+                                    rfi_ter_xyz[:,:,None,:], axis=-1)
+        # distances is shape (n_src,n_time_fine,n_ant)
+        I = vmap(self.Pv_to_Sv, in_axes=(0,0,None))(Pv, distances,
+                                                    self.db_to_lin(Ga))
+        # I is shape (n_src,n_time,n_ant,n_freq)
+        if self.n_ter_rfi==0:
+            self.rfi_ter_I = I
+            self.rfi_ter_xyz = rfi_ter_xyz
+            self.rfi_ter_geo = rfi_ter_geo
+        else:
+            self.rfi_ter_I = jnp.concatenate([self.rfi_ter_I, I], axis=0)
+            self.rfi_ter_xyz = jnp.concatenate([self.rfi_ter_xyz, rfi_ter_xyz], axis=0)
+            self.rfi_ter_geo = jnp.concatenate([self.rfi_ter_geo, rfi_ter_geo],
+                                               axis=0)
+
+        self.angular_seps = self.angular_separation(rfi_ter_xyz)
+        self.rfi_A_app = (jnp.sqrt(I)*self.beam(self.angular_seps[:,:,:,None]))
+        # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
+        # self.ants_uvw is shape (n_time_fine,n_ant,3)
+        vis_rfi = rfi_vis(jnp.transpose(self.rfi_A_app, (1,2,3,0)),
+                          (jnp.transpose(distances, (1,2,0)) - \
+                           self.ants_uvw[:,:,None,-1]),
+                          self.freqs)
+        self.n_ter_rfi += len(I)
+        self.vis_rfi += vis_rfi
+
+    def addGains(self, G0_mean: complex, G0_std: float, Gt_std_amp: float, 
+                 Gt_std_phase: float, key=None):
         """
         Add complex antenna gains to the simulation. Gain amplitudes and phases
         are modelled as linear time-variates. Gains for all antennas at t = 0
@@ -192,23 +249,28 @@ class Observation(Telescope):
             Random number generator key.
         """
         if not isinstance(key, jax.interpreters.xla._DeviceArray): key = self.key
-        G0 = G0_mean*jnp.exp(1.j*(jnp.pi*random.uniform(key, (1,self.n_ants,self.n_freq))-jnp.pi/2))
+        G0 = G0_mean * \
+             jnp.exp(1.j*jnp.pi * \
+                     (random.uniform(key, (1,self.n_ants,self.n_freq)) - 0.5)
+                     )
         key, subkey = random.split(key)
         gains_noise = G0_std*random.normal(key, (2,self.n_ants,self.n_freq))
         key, subkey = random.split(key)
         G0 = G0 + gains_noise[0] + 1.j*gains_noise[1]
 
-        gains_amp = Gt_std_amp*random.normal(key, (1,self.n_ants,self.n_freq)) * \
+        gains_amp = Gt_std_amp * \
+                    random.normal(key, (1,self.n_ants,self.n_freq)) * \
                     (self.times_fine)[:,None,None]
         key, subkey = random.split(key)
-        gains_phase = Gt_std_phase*random.normal(key, (1,self.n_ants,self.n_freq)) * \
+        gains_phase = Gt_std_phase * \
+                      random.normal(key, (1,self.n_ants,self.n_freq)) * \
                       (self.times_fine)[:,None,None]
         self.key, subkey = random.split(key)
         self.gains_ants = G0 + gains_amp*jnp.exp(1.j*gains_phase)
         self.gains_ants = self.gains_ants.at[:,-1,:].set(jnp.abs(self.gains_ants[:,-1,:]))
         self.gains_bl = self.gains_ants[:,self.a1,:]*self.gains_ants[:,self.a2,:].conjugate()
 
-    def addNoise(self, noise, key=None):
+    def addNoise(self, noise: float, key=None):
         """
         Add complex gaussian noise to the integrated visibilities. The real and
         imaginary components will each get this level of noise.
@@ -235,27 +297,33 @@ class Observation(Telescope):
         self.noise = noise
         self.vis_obs += self.noise_data
 
-    def angular_separation(self):
+    def angular_separation(self, rfi_xyz: jnp.ndarray):
         """
         Calculate the angular separation between the pointing direction of each
         antenna and the satellite source.
 
+        Parameters
+        ----------
+        rfi_xyz: ndarray (n_src, n_time, 3)
+            Position of the RFI sources in ECEF reference frame over time. This
+            is the same frame as self.ants_xyz.
+
         Returns
         -------
-        angles: array_like (n_src, n_time, n_ant)
+        angles: ndarray (n_src, n_time, n_ant)
         """
         src_xyz = radec_to_XYZ(self.ra, self.dec)
-        ant_to_sat_xyz = self.rfi_xyz[:,:,None,:] - self.ants_xyz[None,:,:,:]
+        ant_to_sat_xyz = rfi_xyz[:,:,None,:] - self.ants_xyz[None,:,:,:]
         costheta = jnp.einsum('i,ljki->ljk', src_xyz, ant_to_sat_xyz) / \
                    jnp.linalg.norm(ant_to_sat_xyz, axis=-1)
         angles = jnp.rad2deg(jnp.arccos(costheta))
         return angles
 
-    def beam(self, theta):
+    def beam(self, theta: jnp.ndarray):
         """
         Calculate the primary beam voltage at a given angular distance from the
-        pointing direction. The beam intensity model is the Airy disk as defined
-        by the dish diameter. This is the same a the CASA default.
+        pointing direction. The beam intensity model is the Airy disk as 
+        defined by the dish diameter. This is the same a the CASA default.
 
         Parameters
         ----------
@@ -265,7 +333,7 @@ class Observation(Telescope):
 
         Returns
         -------
-        E: array_like (n_src, n_time, n_ant, n_freq)
+        E: ndarray (n_src, n_time, n_ant, n_freq)
         """
         c = 299792458.0
         mask = jnp.where(theta>90., 0, 1)
@@ -276,7 +344,7 @@ class Observation(Telescope):
         return (2*jv(1, x)/x)*mask
 
 
-    def Pv_to_Sv(self, Pv, d, Ga):
+    def Pv_to_Sv(self, Pv: jnp.ndarray, d: jnp.ndarray, Ga: float):
         """
         Convert emission power to received intensity in Jy. Assumes constant
         power across the bandwidth. Calculated from
@@ -288,27 +356,27 @@ class Observation(Telescope):
 
         Parameters
         ----------
-        Pv: array_like (n_freq,)
+        Pv: ndarray (n_freq,)
             Specific emission power in W/Hz.
-        d: array_like (n_time, n_ant)
+        d: ndarray (n_time, n_ant)
             Distances from source to receiving antennas in m.
-        G:
+        G: float
             Emission antenna gain
 
         Returns
         -------
-        Sv: array_like (n_time, n_ant, n_freq)
+        Sv: ndarray (n_time, n_ant, n_freq)
             Spectral flux density at the receiving antennas in Jy
         """
         return Pv[None,None,:]*Ga / (4*jnp.pi*d[:,:,None]**2) * 1e26
 
-    def db_to_lin(self, dB):
+    def db_to_lin(self, dB: float):
         """
         Convert deciBels to linear units.
 
         Parameters
         ----------
-        dB: float, array_like
+        dB: float, ndarray
             deciBel value to convert.
         """
         return 10.**(dB/10.)
