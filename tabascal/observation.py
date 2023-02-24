@@ -51,6 +51,8 @@ class Observation(Telescope):
         Number of samples per time step which are then averaged. Must be
         large enough to capture time-smearing of RFI sources on longest
         baseline.
+    name: str
+        Name of the telescope.
     """
 
     def __init__(
@@ -68,6 +70,7 @@ class Observation(Telescope):
         random_seed=0,
         auto_corrs=False,
         n_int_samples=4,
+        name="MeerKAT",
     ):
         self.ra = ra
         self.dec = dec
@@ -89,7 +92,12 @@ class Observation(Telescope):
         self.dish_d = dish_d
         self.auto_corrs = auto_corrs
         super().__init__(
-            latitude, longitude, elevation, ENU_array=ENU_array, ENU_path=ENU_path
+            latitude,
+            longitude,
+            elevation,
+            ENU_array=ENU_array,
+            ENU_path=ENU_path,
+            name=name,
         )
         self.n_ant = len(self.ENU)
         self.ants_uvw = ENU_to_UVW(

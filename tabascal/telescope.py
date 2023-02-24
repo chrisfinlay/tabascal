@@ -3,6 +3,26 @@ import numpy as np
 
 
 class Telescope(object):
+    """
+    Construct an Observation object defining a radio interferometry
+    observation.
+
+    Parameters
+    ----------
+    latitude: float
+        Latitude of the telescope.
+    longitude: float
+        Longitude of the telescope.
+    elevation: float
+        Elevation of the telescope.
+    ENU_path: str
+        Path to a txt file containing the ENU coordinates of each antenna.
+    ENU_array: ndarray (n_ant, 3)
+        ENU coordinates of each antenna.
+    name: str
+        Name of the telescope.
+    """
+
     def __init__(
         self,
         latitude: float,
