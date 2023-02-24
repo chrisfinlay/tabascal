@@ -8,7 +8,9 @@ Observation Class
 
 .. automethod:: tabascal.observation.Observation.addAstro
 
-.. automethod:: tabascal.observation.Observation.addSat
+.. automethod:: tabascal.observation.Observation.addSatelliteRFI
+
+.. automethod:: tabascal.observation.Observation.addStationaryRFI
 
 .. automethod:: tabascal.observation.Observation.addGains
 

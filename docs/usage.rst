@@ -61,7 +61,25 @@ Adding a satellite RFI source
 -----------------------------
 
 Adding a satellite based RFI source is done through the
-:py:meth:`tabascal.observation.Observation.addSat` method of the
+:py:meth:`tabascal.observation.Observation.addSatelliteRFI` method of the
+:py:class:`tabascal.observation.Observation` class.
+
+For example:
+
+.. code-block:: python
+
+    rfi_P = 6e-4 * jnp.exp( -0.5 * ((obs.freqs-1.2e9)/2e7) ** 2 )
+
+    obs.addSatelliteRFI(Pv=rfi_P, elevation=jnp.array([202e5]), 
+                        inclination=jnp.array([55.0]),
+                        lon_asc_node=jnp.array([21.0]), 
+                        periapsis=jnp.array([5.0]))
+
+Adding a stationary RFI source
+------------------------------
+
+Adding a stationary RFI source is done through the
+:py:meth:`tabascal.observation.Observation.addStationaryRFI` method of the
 :py:class:`tabascal.observation.Observation` class.
 
 For example:
@@ -70,8 +88,9 @@ For example:
 
     rfi_P = 6e-4 * jnp.exp( -0.5 * ((obs.freqs-1.5e9)/2e7) ** 2 )
 
-    obs.addSat(Pv=rfi_P, elevation=202e5, inclination=55.0,
-               lon_asc_node=21.0, periapsis=5.0)
+    obs.addSatelliteRFI(Pv=rfi_P, latitude=jnp.array([-20.]), 
+                        longitude=jnp.array([30.]), 
+                        elevation=jnp.array([tar.elevation]))
 
 Adding some time and frequency dependent antenna gains
 ------------------------------------------------------
