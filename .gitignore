@@ -4,3 +4,5 @@ examples
 docs/build
 build
 *.DS_Store
+*.h5
+*.ipynb

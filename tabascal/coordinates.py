@@ -45,6 +45,30 @@ def radec_to_lmn(ra: jnp.ndarray, dec: jnp.ndarray, phase_centre: jnp.ndarray):
     return jnp.array([l, m, n]).T
 
 
+def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray):
+    """
+    Convert Right ascension and Declination to unit vector in ECI coordinates.
+
+    Parameters
+    ----------
+    ra : ndarray (n_src,)
+        Right-ascension in degrees.
+    dec : ndarray (n_src,)
+        Declination in degrees.
+
+    Returns
+    -------
+    xyz: ndarray (n_src, 3) or (3,)
+        The ECI coordinate unit vector of each source.
+    """
+    ra, dec = jnp.deg2rad(jnp.array([ra, dec]))
+    x = jnp.cos(ra) * jnp.cos(dec)
+    y = jnp.sin(ra) * jnp.cos(dec)
+    z = jnp.sin(dec)
+
+    return jnp.array([x, y, z]).T
+
+
 def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray):
     """
     Convert a set of points in ENU co-ordinates to geographic coordinates i.e.
@@ -105,30 +129,6 @@ def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray):
     x = r * jnp.cos(lon + (omega * times)) * jnp.cos(lat)
     y = r * jnp.sin(lon + (omega * times)) * jnp.cos(lat)
     z = r * jnp.sin(lat)
-
-    return jnp.array([x, y, z]).T
-
-
-def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray):
-    """
-    Convert Right ascension and Declination to unit vector in ECI coordinates.
-
-    Parameters
-    ----------
-    ra : ndarray (n_src,)
-        Right-ascension in degrees.
-    dec : ndarray (n_src,)
-        Declination in degrees.
-
-    Returns
-    -------
-    xyz: ndarray (n_src, 3) or (3,)
-        The ECI coordinate unit vector of each source.
-    """
-    ra, dec = jnp.deg2rad(jnp.array([ra, dec]))
-    x = jnp.cos(ra) * jnp.cos(dec)
-    y = jnp.sin(ra) * jnp.cos(dec)
-    z = jnp.sin(dec)
 
     return jnp.array([x, y, z]).T
 
