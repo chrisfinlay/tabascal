@@ -145,12 +145,15 @@ def save_observations(file_path, observations):
 
             fp[f"track{i}/gains"] = obs.gains_ants
 
-            fp[f"track{i}/ast_I"] = obs.ast_I
-            fp[f"track{i}/ast_radec"] = obs.ast_radec
+            fp[f"track{i}/ast_I"] = jnp.array([x for x in obs.ast_I.values()])
+            fp[f"track{i}/ast_radec"] = jnp.array([x for x in obs.ast_radec.values()])
 
-            fp[f"track{i}/rfi_XYZ"] = obs.rfi_xyz
-            fp[f"track{i}/rfi_orbit"] = obs.rfi_orbit
-            fp[f"track{i}/rfi_A"] = obs.rfi_A_app
+            fp[f"track{i}/rfi_XYZ"] = jnp.array([x for x in obs.rfi_xyz.values()])
+            fp[f"track{i}/rfi_A"] = jnp.array([x for x in obs.rfi_A_app.values()])
+            fp[f"track{i}/rfi_orbit"] = jnp.array([x for x in obs.rfi_orbit.values()])
+            fp[f"track{i}/rfi_geo"] = jnp.array([x for x in obs.rfi_geo.values()])
+            fp[f"track{i}/rfi_sat_idx"] = jnp.array([x for x in obs.rfi_orbit.keys()])
+            fp[f"track{i}/rfi_stat_idx"] = jnp.array([x for x in obs.rfi_geo.keys()])
 
 
 def load_antennas(telescope="MeerKAT"):

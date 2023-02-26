@@ -116,7 +116,7 @@ class Observation(Telescope):
             self.GEO_ants[None, ...], self.times_fine
         )
         self.n_ast = 0
-        self.n_sat_rfi = 0
+        self.n_rfi = 0
         self.n_ter_rfi = 0
         self.vis_ast = jnp.zeros(
             (self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128
@@ -128,6 +128,19 @@ class Observation(Telescope):
             (self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128
         )
         self.key = random.PRNGKey(random_seed)
+        self.create_source_dicts()
+
+    def create_source_dicts(self):
+        self.ast_I = {}
+        self.ast_lmn = {}
+        self.ast_radec = {}
+
+        self.rfi_I = {}
+        self.rfi_xyz = {}
+        self.rfi_orbit = {}
+        self.rfi_geo = {}
+        self.rfi_ang_sep = {}
+        self.rfi_A_app = {}
 
     def addAstro(self, I: jnp.ndarray, ra: jnp.ndarray, dec: jnp.ndarray):
         """
@@ -146,15 +159,13 @@ class Observation(Telescope):
         theta = jnp.arcsin(jnp.linalg.norm(lmn[:, :-1], axis=-1))
         I_app = I[:, None, None, :] * self.beam(theta[:, None, None, None]) ** 2
         vis_ast = astro_vis(I_app[:, 0, 0, :].T, self.bl_uvw, lmn, self.freqs)
-        if self.n_ast == 0:
-            self.ast_I = I
-            self.ast_lmn = lmn
-            self.ast_radec = jnp.array([ra, dec])
-        else:
-            self.ast_I = jnp.concatenate([self.ast_I, I])
-            self.ast_lmn = jnp.concatenate([self.ast_lmn, lmn])
-            self.ast_radec = jnp.concatenate([self.ast_radec, jnp.array([ra, dec])])
-        self.n_ast += len(I)
+
+        n_src = I.shape[0]
+        for i in range(n_src):
+            self.ast_I.update({self.n_ast: I[i]})
+            self.ast_lmn.update({self.n_ast: lmn})
+            self.ast_radec.update({self.n_ast: jnp.array([ra, dec])})
+            self.n_ast += 1
         self.vis_ast += vis_ast
 
     def addSatelliteRFI(
@@ -187,39 +198,40 @@ class Observation(Telescope):
             Emission antenna gain relative to an isotropic radiator in dBi.
         """
         orbit_vmap = vmap(orbit, in_axes=(None, 0, 0, 0, 0))
-        rfi_sat_xyz = orbit_vmap(
+        rfi_xyz = orbit_vmap(
             self.times_fine, elevation, inclination, lon_asc_node, periapsis
         )
         # rfi_xyz is shape (n_src,n_time_fine,3)
         # self.ants_xyz is shape (n_time_fine,n_ant,3)
         distances = jnp.linalg.norm(
-            self.ants_xyz[None, :, :, :] - rfi_sat_xyz[:, :, None, :], axis=-1
+            self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
         )
         # distances is shape (n_src,n_time_fine,n_ant)
         I = vmap(self.Pv_to_Sv, in_axes=(0, 0, None))(Pv, distances, self.db_to_lin(Ga))
-        # I is shape (n_src,n_time,n_ant,n_freq)
-        rfi_sat_orbit = jnp.array([elevation, inclination, lon_asc_node, periapsis]).T
-        if self.n_sat_rfi == 0:
-            self.rfi_sat_I = I
-            self.rfi_sat_xyz = rfi_sat_xyz
-            self.rfi_sat_orbit = rfi_sat_orbit
-        else:
-            self.rfi_sat_I = jnp.concatenate([self.rfi_sat_I, I], axis=0)
-            self.rfi_sat_xyz = jnp.concatenate([self.rfi_sat_xyz, rfi_sat_xyz], axis=0)
-            self.rfi_sat_orbit = jnp.concatenate(
-                [self.rfi_sat_orbit, rfi_sat_orbit], axis=0
-            )
+        # I is shape (n_src,n_time_fine,n_ant,n_freq)
+        rfi_orbit = jnp.array([elevation, inclination, lon_asc_node, periapsis]).T
 
-        self.angular_seps = self.angular_separation(self.rfi_sat_xyz)
-        self.rfi_A_app = jnp.sqrt(I) * self.beam(self.angular_seps[:, :, :, None])
+        angular_seps = self.angular_separation(rfi_xyz)
+        # angular_seps is shape (n_src,n_time_fine,n_ant)
+        rfi_A_app = jnp.sqrt(I) * self.beam(angular_seps[:, :, :, None])
+
+        n_src = Pv.shape[0]
+        for i in range(n_src):
+            self.rfi_I.update({self.n_rfi: I[i]})
+            self.rfi_xyz.update({self.n_rfi: rfi_xyz[i]})
+            self.rfi_orbit.update({self.n_rfi: rfi_orbit[i]})
+            self.rfi_ang_sep.update({self.n_rfi: angular_seps[i]})
+            self.rfi_A_app.update({self.n_rfi: rfi_A_app[i]})
+            self.n_rfi += 1
+
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
+        # distances is shape (n_src,n_time_fine,n_ant)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
-            jnp.transpose(self.rfi_A_app, (1, 2, 3, 0)),
+            jnp.transpose(rfi_A_app, (1, 2, 3, 0)),
             (jnp.transpose(distances, (1, 2, 0)) - self.ants_uvw[:, :, None, -1]),
             self.freqs,
         )
-        self.n_sat_rfi += len(I)
         self.vis_rfi += vis_rfi
 
     def addStationaryRFI(
@@ -243,40 +255,40 @@ class Observation(Telescope):
             Geographic longitude of the source in degrees.
         elevation: ndarray (n_src,)
             Elevation/Altitude of the source above sea level in metres.
-
         Ga:
             Emission antenna gain relative to an isotropic radiator in dBi.
         """
-        rfi_ter_geo = jnp.array([latitude, longitude, elevation]).T[:, None, :]
+        rfi_geo = jnp.array([latitude, longitude, elevation]).T[:, None, :]
         # rfi_ter_geo is shape (n_src,n_time,3)
-        rfi_ter_xyz = vmap(GEO_to_XYZ, in_axes=(0, None))(rfi_ter_geo, self.times_fine)
+        rfi_xyz = vmap(GEO_to_XYZ, in_axes=(0, None))(rfi_geo, self.times_fine)
         # rfi_ter_xyz is shape (n_src,n_time_fine,3)
         # self.ants_xyz is shape (n_time_fine,n_ant,3)
         distances = jnp.linalg.norm(
-            self.ants_xyz[None, :, :, :] - rfi_ter_xyz[:, :, None, :], axis=-1
+            self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
         )
         # distances is shape (n_src,n_time_fine,n_ant)
         I = vmap(self.Pv_to_Sv, in_axes=(0, 0, None))(Pv, distances, self.db_to_lin(Ga))
         # I is shape (n_src,n_time,n_ant,n_freq)
-        if self.n_ter_rfi == 0:
-            self.rfi_ter_I = I
-            self.rfi_ter_xyz = rfi_ter_xyz
-            self.rfi_ter_geo = rfi_ter_geo
-        else:
-            self.rfi_ter_I = jnp.concatenate([self.rfi_ter_I, I], axis=0)
-            self.rfi_ter_xyz = jnp.concatenate([self.rfi_ter_xyz, rfi_ter_xyz], axis=0)
-            self.rfi_ter_geo = jnp.concatenate([self.rfi_ter_geo, rfi_ter_geo], axis=0)
 
-        self.angular_seps = self.angular_separation(rfi_ter_xyz)
-        self.rfi_A_app = jnp.sqrt(I) * self.beam(self.angular_seps[:, :, :, None])
+        angular_seps = self.angular_separation(rfi_xyz)
+        rfi_A_app = jnp.sqrt(I) * self.beam(angular_seps[:, :, :, None])
+
+        n_src = Pv.shape[0]
+        for i in range(n_src):
+            self.rfi_I.update({self.n_rfi: I[i]})
+            self.rfi_xyz.update({self.n_rfi: rfi_xyz[i]})
+            self.rfi_geo.update({self.n_rfi: rfi_geo[i]})
+            self.rfi_ang_sep.update({self.n_rfi: angular_seps[i]})
+            self.rfi_A_app.update({self.n_rfi: rfi_A_app[i]})
+            self.n_rfi += 1
+
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
-            jnp.transpose(self.rfi_A_app, (1, 2, 3, 0)),
+            jnp.transpose(rfi_A_app, (1, 2, 3, 0)),
             (jnp.transpose(distances, (1, 2, 0)) - self.ants_uvw[:, :, None, -1]),
             self.freqs,
         )
-        self.n_ter_rfi += len(I)
         self.vis_rfi += vis_rfi
 
     def addGains(
