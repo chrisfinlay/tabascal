@@ -5,6 +5,7 @@ import h5py
 import numpy as np
 import os
 from pathlib import Path
+import argparse
 
 pkg_dir = Path(__file__).parent.absolute()
 
@@ -178,3 +179,31 @@ def load_antennas(telescope="MeerKAT"):
         print("Only MeerKAT antennas are currentyl available.")
         enu = None
     return enu
+
+
+def str2bool(v):
+    """
+    Convert string to boolean.
+
+    Parameters:
+    -----------
+    v: str
+        String to convert to boolean.
+
+    Raises:
+    -------
+        argparse.ArgumentTypeError: If the string is not a boolean.
+
+    Returns:
+    --------
+    bool: bool
+        The boolean value of the string.
+    """
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
