@@ -42,11 +42,13 @@ class Telescope(object):
         self.n_ants = len(self.ENU)
 
     def __str__(self):
-        return f"""Telescope Location
-                   ------------------
-                   Latitude : {self.latitude}
-                   Longitude : {self.longitude}
-                   Elevation : {self.elevation}"""
+        return f"""
+        Telescope Location
+        ------------------
+        Latitude : {self.latitude}
+        Longitude : {self.longitude}
+        Elevation : {self.elevation}
+        """
 
     def createArrayENU(self, ENU_array=None, ENU_path=None):
         if ENU_array is not None:

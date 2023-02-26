@@ -10,6 +10,7 @@ from tabascal.interferometry import rfi_vis, astro_vis
 from scipy.special import jv
 import jax.numpy as jnp
 from jax import vmap, random
+from jax.interpreters.xla import _DeviceArray
 import sys
 from jax.config import config
 
@@ -111,11 +112,9 @@ class Observation(Telescope):
         self.a1, self.a2 = jnp.triu_indices(self.n_ants, 0 if auto_corrs else 1)
         self.bl_uvw = self.ants_uvw[:, self.a1] - self.ants_uvw[:, self.a2]
         self.n_bl = len(self.a1)
-        print(self.GEO_ants.shape)
         self.ants_xyz = vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)(
             self.GEO_ants[None, ...], self.times_fine
         )
-        print(self.ants_xyz.shape)
         self.n_ast = 0
         self.n_sat_rfi = 0
         self.n_ter_rfi = 0
@@ -310,7 +309,7 @@ class Observation(Telescope):
         key: jax.random.PRNGKey
             Random number generator key.
         """
-        if not isinstance(key, jax.interpreters.xla._DeviceArray):
+        if not isinstance(key, _DeviceArray):
             key = self.key
         G0 = G0_mean * jnp.exp(
             1.0j * jnp.pi * (random.uniform(key, (1, self.n_ants, self.n_freq)) - 0.5)
@@ -352,7 +351,7 @@ class Observation(Telescope):
         key: jax.random.PRNGKey
             Random number generator key.
         """
-        if not isinstance(key, jax.interpreters.xla._DeviceArray):
+        if not isinstance(key, _DeviceArray):
             key = self.key
             self_key = True
         else:
