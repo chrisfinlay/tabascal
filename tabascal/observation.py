@@ -6,6 +6,7 @@ from tabascal.coordinates import (
     GEO_to_XYZ,
     orbit,
 )
+from tabascal.utils.tools import beam_size
 from tabascal.interferometry import rfi_vis, astro_vis
 from scipy.special import jv
 import jax.numpy as jnp
@@ -92,6 +93,7 @@ class Observation(Telescope):
         self.chan_width = jnp.diff(freqs)[0] if len(freqs) > 1 else 250e3
         self.n_freq = len(freqs)
         self.dish_d = dish_d
+        self.fov = beam_size(self.dish_d, self.freqs[-1])
         self.auto_corrs = auto_corrs
         super().__init__(
             latitude,
@@ -111,14 +113,15 @@ class Observation(Telescope):
             times=self.times_fine,
         )
         self.a1, self.a2 = jnp.triu_indices(self.n_ants, 0 if auto_corrs else 1)
-        self.bl_uvw = self.ants_uvw[:, self.a1] - self.ants_uvw[:, self.a2]
+        self.bl_uvw = self.ants_uvw[:, self.a1, :] - self.ants_uvw[:, self.a2, :]
+        self.mag_uvw = jnp.linalg.norm(self.bl_uvw[0], axis=-1)
         self.n_bl = len(self.a1)
         self.ants_xyz = vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)(
             self.GEO_ants[None, ...], self.times_fine
         )
+        self.syn_bw = beam_size(self.mag_uvw.max(), self.freqs[-1])
         self.n_ast = 0
         self.n_rfi = 0
-        self.n_ter_rfi = 0
         self.vis_ast = jnp.zeros(
             (self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128
         )
