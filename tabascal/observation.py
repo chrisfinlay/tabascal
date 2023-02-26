@@ -89,6 +89,7 @@ class Observation(Telescope):
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
         self.freqs = freqs
+        self.chan_width = jnp.diff(freqs)[0] if len(freqs) > 1 else 250e3
         self.n_freq = len(freqs)
         self.dish_d = dish_d
         self.auto_corrs = auto_corrs
@@ -129,6 +130,32 @@ class Observation(Telescope):
         )
         self.key = random.PRNGKey(random_seed)
         self.create_source_dicts()
+
+    def __str__(self):
+        msg = f"""
+Observation Details
+-------------------
+Phase Centre (ra, dec) :  ({self.ra:.1f}, {self.dec:.1f}) deg.
+Number of antennas :       {self.n_ants}
+Number of baselines :      {self.n_bl}
+Autocorrelations :         {self.auto_corrs}
+
+Frequency range :         ({self.freqs.min()/1e6:.0f} - {self.freqs.max()/1e6:.0f}) MHz
+Channel width :            {self.chan_width/1e3:.0f} kHz
+Number of channels :       {self.n_freq}
+
+Observation time :        ({self.times[0]:.0f} - {self.times[-1]:.0f}) s
+Integration time :         {self.int_time:.0f} s
+Sampling rate :            {self.n_int_samples/self.int_time:.1f} Hz
+Number of time steps :     {self.n_time}
+
+Source Details
+--------------
+Number of ast. sources:    {self.n_ast}
+Number of RFI sources:     {self.n_rfi}
+Number of satellite RFI :  {len(self.rfi_orbit.keys())}
+Number of stationary RFI : {len(self.rfi_geo.keys())}"""
+        return super().__str__() + msg
 
     def create_source_dicts(self):
         self.ast_I = {}
