@@ -1,24 +1,26 @@
 __version__ = "0.0.1"
 __author__ = "Chris Finlay"
 
-from tabascal.telescope import Telescope
+import sys
+
+import jax.numpy as jnp
+import numpy as np
+from jax import random, vmap
+from jax.config import config
+from jax.interpreters.xla import _DeviceArray
+from scipy.special import jv
+
 from tabascal.coordinates import (
-    radec_to_lmn,
-    radec_to_XYZ,
     ENU_to_GEO,
     ENU_to_UVW,
     GEO_to_XYZ,
     orbit,
+    radec_to_lmn,
+    radec_to_XYZ,
 )
+from tabascal.interferometry import astro_vis, rfi_vis
+from tabascal.telescope import Telescope
 from tabascal.utils.tools import beam_size
-from tabascal.interferometry import rfi_vis, astro_vis
-from scipy.special import jv
-import jax.numpy as jnp
-from jax import vmap, random
-from jax.interpreters.xla import _DeviceArray
-import sys
-from jax.config import config
-import numpy as np
 
 config.update("jax_enable_x64", True)
 

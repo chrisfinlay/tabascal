@@ -1,14 +1,16 @@
+import argparse
+import os
+
+import jax.numpy as jnp
+from jax import random
+
 from tabascal import Observation
 from tabascal.utils.tools import (
-    load_antennas,
     generate_random_sky,
+    load_antennas,
     save_observations,
     str2bool,
 )
-import jax.numpy as jnp
-from jax import random
-import os
-import argparse
 
 parser = argparse.ArgumentParser(description="Simulate RFI contaminated visibilities.")
 parser.add_argument(
@@ -68,23 +70,14 @@ I = I[:, None] * (obs.freqs / obs.freqs[0])[None, :] ** (
     -1.0 * spectral_indices[:, None]
 )
 
-I, d_ra, d_dec = jnp.ones((1, 1)), jnp.zeros(1), jnp.zeros(1)
-
-import h5py
-
-track = "track0"
-with h5py.File("Obs_64A.h5", "r") as fp:
-    I = fp[f"{track}/ast_I"][()]
-    d_ra, d_dec = fp[f"{track}/ast_radec"][()]
-
 obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
 
 # rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((obs.freqs - 1.2e9) / 2e7) ** 2)])
+rfi_P = RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, 1))
 
 if satRFI:
     obs.addSatelliteRFI(
-        # Pv=rfi_P,
-        Pv=RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, 1)),
+        Pv=rfi_P,
         elevation=jnp.array([202e5]),
         inclination=jnp.array([55.0]),
         lon_asc_node=jnp.array([21.0]),
@@ -92,11 +85,11 @@ if satRFI:
     )
 
 # rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((obs.freqs - 1.5e9) / 2e7) ** 2)])
+rfi_P = RFI_amp * 1e-6 * jnp.ones((1, 1))
 
 if grdRFI:
     obs.addStationaryRFI(
-        # Pv=rfi_P,
-        Pv=RFI_amp * 1e-6 * jnp.ones((1, 1)),
+        Pv=rfi_P,
         latitude=jnp.array([-20.0]),
         longitude=jnp.array([30.0]),
         elevation=jnp.array([obs.elevation]),
@@ -120,5 +113,10 @@ save_observations(
         obs,
     ],
 )
+
+print()
+print("Saved observations to:")
+print("----------------------")
+print(save_path + ".h5")
 
 print(obs)

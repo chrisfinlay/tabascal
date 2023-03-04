@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import jit, vmap, jacrev
+from jax import jacrev, jit, vmap
 from jax.config import config
 
 config.update("jax_enable_x64", True)
@@ -40,7 +40,7 @@ def radec_to_lmn(ra: jnp.ndarray, dec: jnp.ndarray, phase_centre: jnp.ndarray):
     m = jnp.sin(dec) * jnp.cos(dec_0) - jnp.cos(dec) * jnp.sin(dec_0) * jnp.cos(
         delta_ra
     )
-    n = jnp.sqrt(1 - l**2 - m**2) - 1
+    n = jnp.sqrt(1 - l**2 - m**2)
 
     return jnp.array([l, m, n]).T
 

@@ -1,16 +1,17 @@
-import jax.numpy as jnp
-from jax import random
-import jax
-import h5py
-import numpy as np
+import argparse
 import os
 from pathlib import Path
-import argparse
+
+import h5py
+import jax
+import jax.numpy as jnp
+import numpy as np
+from jax import random
 
 pkg_dir = Path(__file__).parent.absolute()
 
 
-def uniform_points_disk(radius, n_src, key=None):
+def uniform_points_disk(radius: float, n_src: int, key=None):
     """
     Generate uniformly distributed random points on a disk.
 
@@ -29,7 +30,7 @@ def uniform_points_disk(radius, n_src, key=None):
         The coordinate positions of the random points centred on (0,0).
     """
     if not isinstance(key, jax.interpreters.xla._DeviceArray):
-        key = random.PRNGKey(101)
+        key = random.PRNGKey(102)
     r = radius * jnp.sqrt(random.uniform(key, (n_src,)))
     key, subkey = random.split(key)
     theta = 2.0 * jnp.pi * random.uniform(key, (n_src,))
@@ -37,7 +38,7 @@ def uniform_points_disk(radius, n_src, key=None):
     return r * jnp.array([jnp.cos(theta), jnp.sin(theta)])
 
 
-def beam_size(diameter, frequency, fwhp=True):
+def beam_size(diameter: float, frequency: float, fwhp=True):
     """
     Calculate the beam size of an antenna or an array. For an array use
     fwhp = True. This assumes an Airy disk primary beam pattern.
@@ -64,7 +65,7 @@ def beam_size(diameter, frequency, fwhp=True):
     return jnp.rad2deg(fov)
 
 
-def generate_random_sky(n_src, mean_I, fov, beam_width=0.0, key=None):
+def generate_random_sky(n_src: int, mean_I, fov: float, beam_width=0.0, key=None):
     """
     Generate uniformly distributed point sources inside the field of view with
     an exponential intensity distribution. Setting the beam width will make
@@ -93,7 +94,7 @@ def generate_random_sky(n_src, mean_I, fov, beam_width=0.0, key=None):
         The sources declinations relative to (0,0).
     """
     if not isinstance(key, jax.interpreters.xla._DeviceArray):
-        key = random.PRNGKey(121)
+        key = random.PRNGKey(101)
     subkey, key = random.split(key)
     I = mean_I * random.exponential(key, (2 * n_src,))
     positions = uniform_points_disk(fov / 2.0, 2 * n_src, subkey)
@@ -108,7 +109,7 @@ def generate_random_sky(n_src, mean_I, fov, beam_width=0.0, key=None):
     return I[idx[:n_src]], positions[0, idx[:n_src]], positions[1, idx[:n_src]]
 
 
-def save_observations(file_path, observations):
+def save_observations(file_path: str, observations: list):
     """
     Save a list of observations to HDF5 file format.
 
@@ -134,6 +135,7 @@ def save_observations(file_path, observations):
             fp[f"track{i}/ants_ENU"] = obs.ENU
             fp[f"track{i}/ants_XYZ"] = obs.ants_xyz
             fp[f"track{i}/ants_UVW"] = obs.ants_uvw
+            fp[f"track{i}/bl_UVW"] = obs.bl_uvw
 
             fp[f"track{i}/latitude"] = obs.latitude
             fp[f"track{i}/longitude"] = obs.longitude
@@ -183,7 +185,7 @@ def load_antennas(telescope="MeerKAT"):
     return enu
 
 
-def str2bool(v):
+def str2bool(v: str):
     """
     Convert string to boolean.
 
@@ -220,7 +222,7 @@ from jax.experimental import host_callback
 from tqdm import tqdm
 
 
-def progress_bar_scan(num_samples, message=None):
+def progress_bar_scan(num_samples: int, message=None):
     "Progress bar for a JAX scan"
     if message is None:
         message = f"Running for {num_samples:,} iterations"

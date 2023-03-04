@@ -1,7 +1,9 @@
 from jax import jit
 import jax.numpy as jnp
 from jax.config import config
+
 config.update("jax_enable_x64", True)
+
 
 @jit
 def rfi_vis(app_amplitude, c_distances, freqs):
@@ -27,18 +29,19 @@ def rfi_vis(app_amplitude, c_distances, freqs):
 
     # Create array of shape (n_time, n_bl, n_freq, n_src), then sum over n_src
 
-    minus_two_pi_over_lamda = (-2.0*jnp.pi*freqs/c).reshape(1,1,n_freq,1)
+    minus_two_pi_over_lamda = (-2.0 * jnp.pi * freqs / c).reshape(1, 1, n_freq, 1)
 
-    c_distances = c_distances.reshape(n_time,n_ant,1,n_src)
+    c_distances = c_distances.reshape(n_time, n_ant, 1, n_src)
 
     a1, a2 = jnp.triu_indices(n_ant, 1)
 
-    phase = minus_two_pi_over_lamda*(c_distances[:,a1]-c_distances[:,a2])
-    intensities_app = app_amplitude[:,a1]*app_amplitude[:,a2]
+    phase = minus_two_pi_over_lamda * (c_distances[:, a1] - c_distances[:, a2])
+    intensities_app = app_amplitude[:, a1] * app_amplitude[:, a2]
 
-    vis = jnp.sum(intensities_app*jnp.exp(-1.j*phase), axis=-1)
+    vis = jnp.sum(intensities_app * jnp.exp(-1.0j * phase), axis=-1)
 
     return vis
+
 
 @jit
 def astro_vis(sources, uvw, lmn, freqs):
@@ -63,22 +66,23 @@ def astro_vis(sources, uvw, lmn, freqs):
     """
     c = 2.99792458e8
 
-#     Create array of shape (n_time, n_bl, n_freq, n_src), then sum over n_src
+    #     Create array of shape (n_time, n_bl, n_freq, n_src), then sum over n_src
 
-    sources = sources[None,None,:,:]
-    uvw = uvw[:,:,None,None,:]
-    lmn = lmn[None,None,None,:,:]
-    freqs = freqs[None,None,:,None]
+    sources = sources[None, None, :, :]
+    uvw = uvw[:, :, None, None, :]
+    lmn = lmn[None, None, None, :, :]
+    freqs = freqs[None, None, :, None]
 
-    minus_two_pi_over_lamda = -2.*jnp.pi * freqs/c
+    minus_two_pi_over_lamda = -2.0 * jnp.pi * freqs / c
 
-    lmn = lmn - jnp.array([0,0,1])[None,:]
+    lmn = lmn - jnp.array([0, 0, 1])[None, :]  # \hat{s} - \hat{s}_0
 
-    phase = minus_two_pi_over_lamda*jnp.sum(uvw*lmn, axis=-1)
+    phase = minus_two_pi_over_lamda * jnp.sum(uvw * lmn, axis=-1)
 
-    vis = jnp.sum(sources*jnp.exp(-1.j*phase), axis=-1)
+    vis = jnp.sum(sources * jnp.exp(-1.0j * phase), axis=-1)
 
     return vis
+
 
 @jit
 def ants_to_bl(G):
@@ -100,6 +104,6 @@ def ants_to_bl(G):
 
     a1, a2 = jnp.triu_indices(n_ant, 1)
 
-    G_bl = G[:,a1]*G[:,a2].conjugate()
+    G_bl = G[:, a1] * G[:, a2].conjugate()
 
     return G_bl
