@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import jacrev, jit, vmap
+from jax import jit, vmap, jacrev
 from jax.config import config
 
 config.update("jax_enable_x64", True)
@@ -30,6 +30,9 @@ def radec_to_lmn(ra: jnp.ndarray, dec: jnp.ndarray, phase_centre: jnp.ndarray):
     lmn : ndarray (n_src, 3)
         The direction cosines, (l,m,n), coordinates of each source.
     """
+    ra = jnp.asarray(ra)
+    dec = jnp.asarray(dec)
+    phase_centre = jnp.asarray(phase_centre)
     ra, dec = jnp.deg2rad(jnp.array([ra, dec]))
     phase_centre = jnp.deg2rad(phase_centre)
 
@@ -61,6 +64,8 @@ def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray):
     xyz: ndarray (n_src, 3) or (3,)
         The ECI coordinate unit vector of each source.
     """
+    ra = jnp.asarray(ra)
+    dec = jnp.asarray(dec)
     ra, dec = jnp.deg2rad(jnp.array([ra, dec]))
     x = jnp.cos(ra) * jnp.cos(dec)
     y = jnp.sin(ra) * jnp.cos(dec)
@@ -87,6 +92,8 @@ def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray):
     geo_ants: ndarray (n_ant, 3)
         The geographic coordinates, (lat,lon,elevation), of each antenna.
     """
+    geo_ref = jnp.asarray(geo_ref)
+    enu = jnp.asarray(enu)
     d_lon = jnp.rad2deg(
         jnp.arcsin(enu[:, 1] / (R_e * jnp.cos(jnp.deg2rad(geo_ref[0]))))
     )
@@ -110,7 +117,7 @@ def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray):
     ----------
     geo: ndarray (n_time, 3)
         The geographic coordinates, (lat,lon,elevation), at each point in time.
-    t: ndarray (n_time,)
+    times: ndarray (n_time,)
         The time of each position in seconds.
 
     Returns
@@ -118,7 +125,8 @@ def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray):
     xyz: ndarray (n_time, 3)
         The ECI coordinates at each time, (lat,lon,elevation), of each antenna.
     """
-    geo = geo * jnp.ones((len(times), 3))
+    times = jnp.asarray(times)
+    geo = jnp.asarray(geo) * jnp.ones((len(times), 3))
     lat, lon, elevation = geo.T
     # r = dist_centre(lat) + elevation
     r = R_e + elevation
@@ -131,6 +139,10 @@ def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray):
     z = r * jnp.sin(lat)
 
     return jnp.array([x, y, z]).T
+
+
+GEO_to_XYZ_vmap1 = vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)
+GEO_to_XYZ_vmap0 = vmap(GEO_to_XYZ, in_axes=(0, None), out_axes=0)
 
 
 def ENU_to_ITRF(enu: jnp.ndarray, lat: float, lon: float):
@@ -152,6 +164,9 @@ def ENU_to_ITRF(enu: jnp.ndarray, lat: float, lon: float):
     itrf: jnp.array (n_ant, 3)
         The ITRF coordinates of the antennas.
     """
+    enu = jnp.asarray(enu)
+    lat = jnp.asarray(lat)
+    lon = jnp.asarray(lon)
     E, L = jnp.deg2rad(jnp.array([lon, lat]))
     sL, cL = jnp.sin(L), jnp.cos(L)
     sE, cE = jnp.sin(E), jnp.cos(E)
@@ -187,6 +202,11 @@ def ITRF_to_UVW(ITRF: jnp.ndarray, ra: float, dec: float, lon: float, time: floa
         The uvw coordinates of the antennas for a given observer
         location, time and target (ra,dec).
     """
+    ITRF = jnp.asarray(ITRF)
+    ra = jnp.asarray(ra)
+    dec = jnp.asarray(dec)
+    lon = jnp.asarray(lon)
+    time = jnp.asarray(time)
     gmst = 360.0 * (time / T_s)
 
     H0 = gmst + lon - ra
@@ -240,12 +260,55 @@ def ENU_to_UVW(
     uvw: ndarray (n_time, n_ant, 3)
         UVW coordinates, in metres, of the individual antennas at each time.
     """
+    enu = jnp.asarray(enu)
+    latitude = jnp.asarray(latitude)
+    longitude = jnp.asarray(longitude)
+    ra = jnp.asarray(ra)
+    dec = jnp.asarray(dec)
+    times = jnp.asarray(times)
     times = jnp.array([times]) if times.ndim < 1 else times
     itrf = ENU_to_ITRF(enu, latitude, longitude)
     uvw = vmap(ITRF_to_UVW, in_axes=(None, None, None, None, 0))
     uvw = uvw(itrf, ra, dec, longitude, times)
 
     return uvw
+
+
+def angular_separation(
+    rfi_xyz: jnp.ndarray, ants_xyz: jnp.ndarray, ra: float, dec: float
+):
+    """
+    Calculate the angular separation between the pointing direction of each
+    antenna and the satellite source.
+
+    Parameters
+    ----------
+    rfi_xyz: ndarray (n_src, n_time, 3)
+        Position of the RFI sources in ECEF reference frame over time. This
+        is the same frame as `ants_xyz`.
+    ants_xyz: ndarray (n_time, n_ant, 3)
+        Position of the antennas in ECEF reference frame over time.
+    ra: float
+        Right ascension of the pointing in decimal degrees.
+    dec: float
+        Declination of the pointing in decimal degrees.
+
+    Returns
+    -------
+    angles: ndarray (n_src, n_time, n_ant)
+        Angular separation between the pointing direction and RFI source for each antenna.
+    """
+    rfi_xyz = jnp.asarray(rfi_xyz)
+    ants_xyz = jnp.asarray(ants_xyz)
+    ra = jnp.asarray(ra)
+    dec = jnp.asarray(dec)
+    src_xyz = radec_to_XYZ(ra, dec)
+    ant_to_sat_xyz = rfi_xyz[:, :, None, :] - ants_xyz[None, :, :, :]
+    costheta = jnp.einsum("i,ljki->ljk", src_xyz, ant_to_sat_xyz) / jnp.linalg.norm(
+        ant_to_sat_xyz, axis=-1
+    )
+    angles = jnp.rad2deg(jnp.arccos(costheta))
+    return angles
 
 
 @jit
@@ -263,6 +326,7 @@ def Rotx(theta: float):
     R: ndarray (3, 3)
         Rotation matrix.
     """
+    theta = jnp.asarray(theta)
     c = jnp.cos(jnp.deg2rad(theta))
     s = jnp.sin(jnp.deg2rad(theta))
     Rx = jnp.array([[1, 0, 0], [0, c, -s], [0, s, c]])
@@ -285,6 +349,7 @@ def Rotz(theta: float):
     R: ndarray (3, 3)
         Rotation matrix.
     """
+    theta = jnp.asarray(theta)
     c = jnp.cos(jnp.deg2rad(theta))
     s = jnp.sin(jnp.deg2rad(theta))
     Rz = jnp.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
@@ -323,6 +388,11 @@ def orbit(
     velocity: ndarray (n_time, 3)
          The velocity vector of the orbiting object at each specified time.
     """
+    times = jnp.asarray(times)
+    elevation = jnp.asarray(elevation)
+    inclination = jnp.asarray(inclination)
+    lon_asc_node = jnp.asarray(lon_asc_node)
+    periapsis = jnp.asarray(periapsis)
     R = R_e + elevation
     omega = jnp.sqrt(G * M_e / R**3)
     r = R * jnp.array(
@@ -334,6 +404,9 @@ def orbit(
     rt = (R3 @ R2 @ R1 @ r).T
 
     return rt
+
+
+orbit_vmap = vmap(orbit, in_axes=(None, 0, 0, 0, 0))
 
 
 @jit
@@ -367,6 +440,11 @@ def orbit_velocity(
     velocity: ndarray (n_time, 3)
         The velocity vector at the specified times.
     """
+    times = jnp.asarray(times)
+    elevation = jnp.asarray(elevation)
+    inclination = jnp.asarray(inclination)
+    lon_asc_node = jnp.asarray(lon_asc_node)
+    periapsis = jnp.asarray(periapsis)
     vel_vmap = vmap(jacrev(orbit, argnums=(0)), in_axes=(0, None, None, None, None))
     velocity = vel_vmap(
         times[:, None], elevation, inclination, lon_asc_node, periapsis
@@ -409,6 +487,11 @@ def R_uvw(
         The rotation matrix to orient to a satellite centric (RIC) frame defined
         by the Radial, In-track, Cross-track components.
     """
+    times = jnp.asarray(times)
+    elevation = jnp.asarray(elevation)
+    inclination = jnp.asarray(inclination)
+    lon_asc_node = jnp.asarray(lon_asc_node)
+    periapsis = jnp.asarray(periapsis)
     position = orbit(times, elevation, inclination, lon_asc_node, periapsis)
     velocity = orbit_velocity(times, elevation, inclination, lon_asc_node, periapsis)
     vel_hat = velocity / jnp.linalg.norm(velocity, axis=-1, keepdims=True)
@@ -447,6 +530,9 @@ def RIC_dev(
         Radial, In-track and Cross-track coordinates, in metres, of the orbiting
         body relative to the orbit defined by 'true_orbit_params'.
     """
+    times = jnp.asarray(times)
+    true_orbit_params = jnp.asarray(true_orbit_params)
+    estimated_orbit_params = jnp.asarray(estimated_orbit_params)
     true_xyz = orbit(times, *true_orbit_params)
     est_xyz = orbit(times, *estimated_orbit_params)
     R = R_uvw(times, *true_orbit_params)
@@ -480,6 +566,9 @@ def orbit_fisher(times: jnp.ndarray, orbit_params: jnp.ndarray, RIC_std: jnp.nda
         The inverse covariance (Fisher) matrix for the orbit parameters induced
         by the orbit uncertainties in the RIC frame.
     """
+    times = jnp.asarray(times)
+    orbit_params = jnp.asarray(orbit_params)
+    RIC_std = jnp.asarray(RIC_std)
     J = jacrev(RIC_dev, argnums=(2,))(times, orbit_params, orbit_params)[0]
     F = jnp.diag(1.0 / RIC_std**2)
 

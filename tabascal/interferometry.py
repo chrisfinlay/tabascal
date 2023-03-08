@@ -1,6 +1,9 @@
-from jax import jit
+from jax import jit, random
 import jax.numpy as jnp
 from jax.config import config
+
+from scipy.special import jv
+import sys
 
 config.update("jax_enable_x64", True)
 
@@ -174,3 +177,238 @@ def _ants_to_bl(G, a1, a2):
     G_bl = G[:, a1] * jnp.conjugate(G[:, a2])
 
     return G_bl
+
+
+def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
+    """
+    Calculate the primary beam voltage at a given angular distance from the
+    pointing direction. The beam intensity model is the Airy disk as
+    defined by the dish diameter. This is the same a the CASA default.
+
+    Parameters
+    ----------
+    theta: (n_src, n_time, n_ant, n_freq)
+        The angular separation between the pointing directiona and the
+        source.
+    freqs: (n_freq,)
+        The frequencies at which to calculate the beam in Hz.
+
+    Returns
+    -------
+    E: ndarray (n_src, n_time, n_ant, n_freq)
+        The beam voltage at each frequency.
+    """
+    c = 299792458.0
+    mask = jnp.where(theta > 90.0, 0, 1)
+    theta = jnp.deg2rad(theta)
+    x = jnp.where(
+        theta == 0.0,
+        sys.float_info.epsilon,
+        jnp.pi * freqs[None, None, None, :] * dish_d * jnp.sin(theta) / c,
+    )
+    return (2 * jv(1, x) / x) * mask
+
+
+def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray, Ga: float = 1.0):
+    """
+    Convert emission power to received intensity in Jy. Assumes constant
+    power across the bandwidth. Calculated from
+
+    .. math::
+        Jy = \frac{P G_a}{FSPL \Delta\nu A_e}
+            = \frac{P G_a \lambda^2 4\pi}{(4\pi d)^2 \Delta\nu \lambda^2}
+            = \frac{P G_a}{4\pi d^2 \Delta \nu}
+
+    Parameters
+    ----------
+    Pv: ndarray (n_src, n_freq)
+        Specific emission power in W/Hz.
+    d: ndarray (n_src, n_time, n_ant)
+        Distances from source to receiving antennas in m.
+    G: float
+        Emission antenna gain
+
+    Returns
+    -------
+    Sv: ndarray (n_src, n_time, n_ant, n_freq)
+        Spectral flux density at the receiving antennas in Jy.
+    """
+    Pv = jnp.asarray(Pv)
+    d = jnp.asarray(d)
+    Ga = jnp.asarray(Ga)
+    return Pv[:, None, None, :] * Ga / (4 * jnp.pi * d[:, :, :, None] ** 2) * 1e26
+
+
+def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):
+    """
+    Add complex gaussian noise to the integrated visibilities. The real and
+    imaginary components will each get this level of noise.
+
+    Parameters
+    ----------
+    vis: ndarray (n_time, n_bl, n_freq)
+        The visibilities to add noise to.
+    noise_std: (n_freq, )
+        Standard deviation of the complex noise.
+    key: jax.random.PRNGKey
+        Random number generator key.
+    """
+    vis = jnp.asarray(vis)
+    noise_std = jnp.asarray(noise_std)
+    key = jnp.asarray(key)
+    noise = (
+        random.normal(key, shape=vis.shape, dtype=jnp.complex128)
+        * noise_std[None, None, :]
+    )
+    return vis + noise, noise
+
+
+def SEFD_to_noise_std(
+    SEFD: jnp.ndarray, chan_width: jnp.ndarray, int_time: jnp.ndarray
+):
+    """Calculate the standard deviation of the complex noise in a visibility
+    given the system equivalent flux density, the channel width and integration time.
+
+    Parameters
+    ----------
+    SEFD: ndarray (n_freq, )
+        System equivalent flux density in Jy.
+    chan_width: ndarray (n_time, n_ant, n_freq)
+        Channel width in Hz.
+    int_time: float
+        Integration time in seconds.
+
+    Returns
+    -------
+    noise_std: ndarray (n_time, n_ant, n_freq)
+        Standard deviation of the complex noise in a visibility.
+    """
+    SEFD = jnp.asarray(SEFD)
+    chan_width = jnp.asarray(chan_width)
+    int_time = jnp.asarray(int_time)
+    return SEFD / jnp.sqrt(2 * chan_width * int_time)
+
+
+def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
+    """Calculate the times at which to sample the visibilities for
+
+    Parameters
+    ----------
+    times: ndarray (n_time, )
+        The time centroids at which to sample the visibilities.
+    n_int_samples: int
+        The number of samples to take per integration time.
+
+    Returns
+    -------
+    times_fine: ndarray (n_time * n_int_samples, )
+        The times at which to sample the visibilities.
+    """
+    times = jnp.asarray(times)
+    n_int_samples = jnp.asarray(n_int_samples)
+    int_time = times[1] - times[0]
+    times_fine = int_time / (2 * n_int_samples) + jnp.arange(
+        times[0] - int_time / 2,
+        times[-1] + int_time / 2,
+        int_time / n_int_samples,
+    )
+    return times_fine
+
+
+def generate_gains(
+    G0_mean: complex,
+    G0_std: float,
+    Gt_std_amp: float,
+    Gt_std_phase: float,
+    times: jnp.ndarray,
+    n_ant: int,
+    n_freq: int,
+    key: jnp.ndarray,
+):
+    """
+    Generate complex antenna gains. Gain amplitudes and phases
+    are modelled as linear time-variates. Gains for all antennas at t = 0
+    are randomly sampled from a Gaussian described by the G0 parameters.
+    The rate of change of both ampltudes and phases are sampled from a zero
+    mean Gaussian with standard deviation as provided.
+
+    Parameters
+    ----------
+    G0_mean: complex
+        Mean of Gaussian at t = 0.
+    G0_std: float
+        Standard deviation of Gaussian at t = 0.
+    Gt_std_amp: float
+        Standard deviation of Gaussian describing the rate of change in the
+        gain amplitudes in 1/seconds.
+    Gt_std_phase: float
+        Standard deviation of Gaussian describing the rate of change in the
+        gain phases in rad/seconds.
+    key: jax.random.PRNGKey
+        Random number generator key.
+    """
+    G0_mean = jnp.asarray(G0_mean)
+    G0_std = jnp.asarray(G0_std)
+    Gt_std_amp = jnp.asarray(Gt_std_amp)
+    Gt_std_phase = jnp.asarray(Gt_std_phase)
+    times = jnp.asarray(times)
+    n_ant = jnp.asarray(n_ant)
+    n_freq = jnp.asarray(n_freq)
+    key = jnp.asarray(key)
+    G0 = G0_mean * jnp.exp(
+        1.0j * jnp.pi * (random.uniform(key, (1, n_ant, n_freq)) - 0.5)
+    )
+    key, subkey = random.split(key)
+    gains_noise = G0_std * random.normal(key, (n_ant, n_freq), dtype=jnp.complex128)
+    key, subkey = random.split(key)
+
+    gains_amp = Gt_std_amp * random.normal(key, (1, n_ant, 1)) * (times)[:, None, None]
+    key, subkey = random.split(key)
+    gains_phase = (
+        Gt_std_phase * random.normal(key, (1, n_ant, 1)) * (times)[:, None, None]
+    )
+    key, subkey = random.split(key)
+    gains_ants = G0 + gains_noise + gains_amp * jnp.exp(1.0j * gains_phase)
+    gains_ants = gains_ants.at[:, -1, :].set(jnp.abs(gains_ants[:, -1, :]))
+    return gains_ants
+
+
+def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
+    """Average visibilities in time.
+
+    Parameters
+    ----------
+    vis: ndarray (n_time_fine, n_bl, n_freq)
+        The visibilities to average in time.
+    n_int_samples: int
+        The number of samples to take per integration time.
+
+    Returns
+    -------
+    vis_avg: ndarray (n_time, n_bl, n_freq)
+        The averaged visibilities.
+    """
+    vis = jnp.asarray(vis)
+    n_int_samples = jnp.asarray(n_int_samples)
+    vis_avg = jnp.mean(
+        jnp.reshape(vis, (-1, n_int_samples, vis.shape[1], vis.shape[2])),
+        axis=1,
+    )
+    return vis_avg
+
+
+def db_to_lin(dB: float):
+    """
+    Convert deciBels to linear units.
+
+    Parameters
+    ----------
+    dB: float, ndarray
+        deciBel value to convert.
+
+    Returns
+    -------
+    lin: float, ndarray
+    """
+    dB = jnp.asarray(dB)
+    return 10.0 ** (dB / 10.0)
