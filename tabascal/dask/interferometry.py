@@ -1,26 +1,27 @@
-from tabascal import interferometry as itf
+import dask.array as da
 import xarray as xr
 from dask import delayed
-import dask.array as da
+
+from tabascal import interferometry as itf
 
 
-def astro_vis(sources, uvw, lmn, freqs):
+def astro_vis(sources: da.Array, uvw: da.Array, lmn: da.Array, freqs: da.Array):
     """Calculate visibilities from sources, uvw, lmn, and freqs.
 
     Parameters:
     -----------
-    sources: array_like (n_freq, n_src)
+    sources: da.Array (n_freq, n_src)
         Array of point source intensities in Jy.
-    uvw: array_like (ntime, n_bl, 3)
+    uvw: da.Array (ntime, n_bl, 3)
         (u,v,w) coordinates of each baseline.
-    lmn: array_like (n_src, 3)
+    lmn: da.Array (n_src, 3)
         (l,m,n) coordinate of each source.
-    freqs: array_like (n_freq,)
+    freqs: da.Array (n_freq,)
         Frequencies in Hz.
 
     Returns:
     --------
-    vis: array_like (n_time, n_bl, n_freq)
+    vis: da.Array (n_time, n_bl, n_freq)
     """
     n_time, n_bl, _ = uvw.shape
     n_freq, _ = sources.shape
@@ -62,25 +63,31 @@ def astro_vis(sources, uvw, lmn, freqs):
     return ds.vis
 
 
-def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
+def rfi_vis(
+    app_amplitude: da.Array,
+    c_distances: da.Array,
+    freqs: da.Array,
+    a1: da.Array,
+    a2: da.Array,
+):
     """Calculate visibilities from sources, uvw, lmn, and freqs.
 
     Parameters:
     -----------
-    app_amplitude: array_like (n_time, n_ant, n_freq, n_src)
+    app_amplitude: da.Array (n_time, n_ant, n_freq, n_src)
         Apparent amplitude of the sources at each antenna.
-    c_distances: array_like (n_time, n_ant, n_src)
+    c_distances: da.Array (n_time, n_ant, n_src)
         The phase corrected distances between the rfi sources and the antennas in metres.
-    freqs: array_like (n_freq,)
+    freqs: da.Array (n_freq,)
         Frequencies in Hz.
-    a1: array_like (n_bl,)
+    a1: da.Array (n_bl,)
         Antenna 1 indexes, between 0 and n_ant-1.
-    a2: array_like (n_bl,)
+    a2: da.Array (n_bl,)
         Antenna 2 indexes, between 0 and n_ant-1.
 
     Returns:
     --------
-    vis: array_like (n_time, n_bl, n_freq)
+    vis: da.Array (n_time, n_bl, n_freq)
     """
     n_time, _, n_freq, _ = app_amplitude.shape
     n_bl = a1.shape[0]
