@@ -5,7 +5,9 @@ from dask import delayed
 from tabascal import interferometry as itf
 
 
-def astro_vis(sources: da.Array, uvw: da.Array, lmn: da.Array, freqs: da.Array):
+def astro_vis(
+    sources: da.Array, uvw: da.Array, lmn: da.Array, freqs: da.Array
+) -> xr.DataArray:
     """Calculate visibilities from sources, uvw, lmn, and freqs.
 
     Parameters:
@@ -69,7 +71,7 @@ def rfi_vis(
     freqs: da.Array,
     a1: da.Array,
     a2: da.Array,
-):
+) -> xr.DataArray:
     """Calculate visibilities from sources, uvw, lmn, and freqs.
 
     Parameters:
