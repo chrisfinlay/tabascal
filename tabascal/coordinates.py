@@ -11,7 +11,9 @@ R_e = 6.371e6  # Average radius of the Earth
 T_s = 86164.0905  # Sidereal day in seconds
 
 
-def radec_to_lmn(ra: jnp.ndarray, dec: jnp.ndarray, phase_centre: jnp.ndarray):
+def radec_to_lmn(
+    ra: jnp.ndarray, dec: jnp.ndarray, phase_centre: jnp.ndarray
+) -> jnp.ndarray:
     """
     Convert right-ascension and declination positions of a set of sources to
     direction cosines.
@@ -48,7 +50,7 @@ def radec_to_lmn(ra: jnp.ndarray, dec: jnp.ndarray, phase_centre: jnp.ndarray):
     return jnp.array([l, m, n]).T
 
 
-def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray):
+def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray) -> jnp.ndarray:
     """
     Convert Right ascension and Declination to unit vector in ECI coordinates.
 
@@ -74,7 +76,7 @@ def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray):
     return jnp.array([x, y, z]).T
 
 
-def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray):
+def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray) -> jnp.ndarray:
     """
     Convert a set of points in ENU co-ordinates to geographic coordinates i.e.
     (latitude, longitude, elevation).
@@ -103,7 +105,7 @@ def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray):
     return geo_ants
 
 
-def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray):
+def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
     """
     Convert geographic coordinates to an Earth Centred Inertial (ECI)
     coordinate frame. This is different to ECEF as ECI remains fixed with the
@@ -141,11 +143,57 @@ def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray):
     return jnp.array([x, y, z]).T
 
 
-GEO_to_XYZ_vmap1 = vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)
-GEO_to_XYZ_vmap0 = vmap(GEO_to_XYZ, in_axes=(0, None), out_axes=0)
+def GEO_to_XYZ_vmap0(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
+    """
+    Convert geographic coordinates to an Earth Centred Inertial (ECI)
+    coordinate frame. This is different to ECEF as ECI remains fixed with the
+    celestial sphere whereas ECEF coordinates rotate w.r.t. the celestial
+    sphere. (0,0,0) is the Earth's centre of mass, +z points to the North Pole
+    and +x is in the plane of the Equator passing through the Meridian at t = 0
+    and +y is also in the plane of the Equator and passes through 90 degrees
+    East at t = 0. ECEF and ECI are aligned when t % T_s = 0.
+
+    Parameters
+    ----------
+    geo: ndarray (n_src, n_time, 3)
+        The geographic coordinates, (lat,lon,elevation), at each point in time.
+    times: ndarray (n_time,)
+        The time of each position in seconds.
+
+    Returns
+    -------
+    xyz: ndarray (n_src, n_time, 3)
+        The ECI coordinates at each time, (lat,lon,elevation), of each antenna.
+    """
+    return vmap(GEO_to_XYZ, in_axes=(0, None), out_axes=0)(geo, times)
 
 
-def ENU_to_ITRF(enu: jnp.ndarray, lat: float, lon: float):
+def GEO_to_XYZ_vmap1(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
+    """
+    Convert geographic coordinates to an Earth Centred Inertial (ECI)
+    coordinate frame. This is different to ECEF as ECI remains fixed with the
+    celestial sphere whereas ECEF coordinates rotate w.r.t. the celestial
+    sphere. (0,0,0) is the Earth's centre of mass, +z points to the North Pole
+    and +x is in the plane of the Equator passing through the Meridian at t = 0
+    and +y is also in the plane of the Equator and passes through 90 degrees
+    East at t = 0. ECEF and ECI are aligned when t % T_s = 0.
+
+    Parameters
+    ----------
+    geo: ndarray (n_time, n_ant, 3)
+        The geographic coordinates, (lat,lon,elevation), at each point in time.
+    times: ndarray (n_time,)
+        The time of each position in seconds.
+
+    Returns
+    -------
+    xyz: ndarray (n_time, n_ant, 3)
+        The ECI coordinates at each time, (lat,lon,elevation), of each antenna.
+    """
+    return vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)(geo, times)
+
+
+def ENU_to_ITRF(enu: jnp.ndarray, lat: float, lon: float) -> jnp.ndarray:
     """
     Calculate ITRF coordinates from ENU coordinates of antennas given the
     latitude and longitude of the antenna array centre.
@@ -178,7 +226,9 @@ def ENU_to_ITRF(enu: jnp.ndarray, lat: float, lon: float):
     return itrf
 
 
-def ITRF_to_UVW(ITRF: jnp.ndarray, ra: float, dec: float, lon: float, time: float):
+def ITRF_to_UVW(
+    ITRF: jnp.ndarray, ra: float, dec: float, lon: float, time: float
+) -> jnp.ndarray:
     """
     Calculate uvw coordinates from ITRF/ECEF coordinates,
     longitude a Greenwich Mean Sidereal Time.
@@ -203,9 +253,9 @@ def ITRF_to_UVW(ITRF: jnp.ndarray, ra: float, dec: float, lon: float, time: floa
         location, time and target (ra,dec).
     """
     ITRF = jnp.asarray(ITRF)
-    ra = jnp.asarray(ra)
-    dec = jnp.asarray(dec)
-    lon = jnp.asarray(lon)
+    ra = jnp.asarray(ra).flatten()[0]
+    dec = jnp.asarray(dec).flatten()[0]
+    lon = jnp.asarray(lon).flatten()[0]
     time = jnp.asarray(time)
     gmst = 360.0 * (time / T_s)
 
@@ -225,7 +275,7 @@ def ITRF_to_UVW(ITRF: jnp.ndarray, ra: float, dec: float, lon: float, time: floa
     return uvw
 
 
-@jit
+# @jit
 def ENU_to_UVW(
     enu: jnp.ndarray,
     latitude: float,
@@ -233,7 +283,7 @@ def ENU_to_UVW(
     ra: float,
     dec: float,
     times: jnp.ndarray,
-):
+) -> jnp.ndarray:
     """
     Convert antenna coordinates in the ENU frame to the UVW coordinates, where
     w points at the phase centre defined by (ra,dec), at specific times for a
@@ -261,22 +311,22 @@ def ENU_to_UVW(
         UVW coordinates, in metres, of the individual antennas at each time.
     """
     enu = jnp.asarray(enu)
-    latitude = jnp.asarray(latitude)
-    longitude = jnp.asarray(longitude)
-    ra = jnp.asarray(ra)
-    dec = jnp.asarray(dec)
+    latitude = jnp.asarray(latitude).flatten()[0]
+    longitude = jnp.asarray(longitude).flatten()[0]
+    ra = jnp.asarray(ra).flatten()[0]
+    dec = jnp.asarray(dec).flatten()[0]
     times = jnp.asarray(times)
     times = jnp.array([times]) if times.ndim < 1 else times
     itrf = ENU_to_ITRF(enu, latitude, longitude)
-    uvw = vmap(ITRF_to_UVW, in_axes=(None, None, None, None, 0))
-    uvw = uvw(itrf, ra, dec, longitude, times)
+    UVW = vmap(ITRF_to_UVW, in_axes=(None, None, None, None, 0))
+    uvw = UVW(itrf, ra, dec, longitude, times)
 
     return uvw
 
 
 def angular_separation(
     rfi_xyz: jnp.ndarray, ants_xyz: jnp.ndarray, ra: float, dec: float
-):
+) -> jnp.ndarray:
     """
     Calculate the angular separation between the pointing direction of each
     antenna and the satellite source.
@@ -300,8 +350,8 @@ def angular_separation(
     """
     rfi_xyz = jnp.asarray(rfi_xyz)
     ants_xyz = jnp.asarray(ants_xyz)
-    ra = jnp.asarray(ra)
-    dec = jnp.asarray(dec)
+    ra = jnp.asarray(ra).flatten()[0]
+    dec = jnp.asarray(dec).flatten()[0]
     src_xyz = radec_to_XYZ(ra, dec)
     ant_to_sat_xyz = rfi_xyz[:, :, None, :] - ants_xyz[None, :, :, :]
     costheta = jnp.einsum("i,ljki->ljk", src_xyz, ant_to_sat_xyz) / jnp.linalg.norm(
@@ -311,8 +361,8 @@ def angular_separation(
     return angles
 
 
-@jit
-def Rotx(theta: float):
+# @jit
+def Rotx(theta: float) -> jnp.ndarray:
     """
     Define a rotation matrix about the 'x-axis' by an angle theta, in degrees.
 
@@ -326,7 +376,7 @@ def Rotx(theta: float):
     R: ndarray (3, 3)
         Rotation matrix.
     """
-    theta = jnp.asarray(theta)
+    theta = jnp.asarray(theta).flatten()[0]
     c = jnp.cos(jnp.deg2rad(theta))
     s = jnp.sin(jnp.deg2rad(theta))
     Rx = jnp.array([[1, 0, 0], [0, c, -s], [0, s, c]])
@@ -334,8 +384,8 @@ def Rotx(theta: float):
     return Rx
 
 
-@jit
-def Rotz(theta: float):
+# @jit
+def Rotz(theta: float) -> jnp.ndarray:
     """
     Define a rotation matrix about the 'z-axis' by an angle theta, in degrees.
 
@@ -349,7 +399,7 @@ def Rotz(theta: float):
     R: ndarray (3, 3)
         Rotation matrix.
     """
-    theta = jnp.asarray(theta)
+    theta = jnp.asarray(theta).flatten()[0]
     c = jnp.cos(jnp.deg2rad(theta))
     s = jnp.sin(jnp.deg2rad(theta))
     Rz = jnp.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
@@ -357,14 +407,14 @@ def Rotz(theta: float):
     return Rz
 
 
-@jit
+# @jit
 def orbit(
     times: jnp.ndarray,
     elevation: float,
     inclination: float,
     lon_asc_node: float,
     periapsis: float,
-):
+) -> jnp.ndarray:
     """
     Calculate orbital path of a satellite in perfect circular orbit.
 
@@ -389,10 +439,10 @@ def orbit(
          The velocity vector of the orbiting object at each specified time.
     """
     times = jnp.asarray(times)
-    elevation = jnp.asarray(elevation)
-    inclination = jnp.asarray(inclination)
-    lon_asc_node = jnp.asarray(lon_asc_node)
-    periapsis = jnp.asarray(periapsis)
+    elevation = jnp.asarray(elevation).flatten()[0]
+    inclination = jnp.asarray(inclination).flatten()[0]
+    lon_asc_node = jnp.asarray(lon_asc_node).flatten()[0]
+    periapsis = jnp.asarray(periapsis).flatten()[0]
     R = R_e + elevation
     omega = jnp.sqrt(G * M_e / R**3)
     r = R * jnp.array(
@@ -406,17 +456,48 @@ def orbit(
     return rt
 
 
-orbit_vmap = vmap(orbit, in_axes=(None, 0, 0, 0, 0))
+def orbit_vmap(
+    times: jnp.ndarray,
+    elevation: jnp.ndarray,
+    inclination: jnp.ndarray,
+    lon_asc_node: jnp.ndarray,
+    periapsis: jnp.ndarray,
+) -> jnp.ndarray:
+    """Calculate orbital path of a satellite in perfect circular orbit.
+
+    Parameters
+    ----------
+    times: ndarray (n_time,)
+        Times at which to evaluate the rotation matrices.
+    elevation: nd_array (n_orbits,)
+        Elevation/Altitude of the orbit in metres.
+    inclination: nd_array (n_orbits,)
+        Inclination angle of the orbit relative to the equatorial plane.
+    lon_asc_node: nd_array (n_orbits,)
+        Longitude of the ascending node of the orbit. This is the longitude of
+        when the orbit crosses the equator from the south to the north.
+    periapsis: nd_array (n_orbits,)
+        Perisapsis of the orbit. This is the angular starting point of the
+        orbit at t = 0.
+
+    Returns
+    -------
+    velocity: ndarray (n_orbits, n_time, 3)
+         The velocity vector of the orbiting object at each specified time.
+    """
+    return vmap(orbit, in_axes=(None, 0, 0, 0, 0))(
+        times, elevation, inclination, lon_asc_node, periapsis
+    )
 
 
-@jit
+# @jit
 def orbit_velocity(
     times: jnp.ndarray,
     elevation: float,
     inclination: float,
     lon_asc_node: float,
     periapsis: float,
-):
+) -> jnp.ndarray:
     """
     Calculate the velocity of a circular orbit at specific times.
 
@@ -453,14 +534,14 @@ def orbit_velocity(
     return velocity
 
 
-@jit
+# @jit
 def R_uvw(
     times: jnp.ndarray,
     elevation: float,
     inclination: float,
     lon_asc_node: float,
     periapsis: float,
-):
+) -> jnp.ndarray:
     """
     Calculate the rotation matrices at each time step to transform from an Earth
     centric reference frame (ECI) to a satellite centric frame given the
@@ -503,12 +584,12 @@ def R_uvw(
     return R
 
 
-@jit
+# @jit
 def RIC_dev(
     times: jnp.ndarray,
     true_orbit_params: jnp.ndarray,
     estimated_orbit_params: jnp.ndarray,
-):
+) -> jnp.ndarray:
     """
     Calculate the Radial (R), In-track (I) and Cross-track (C) deviations
     between two circular orbits given their orbit parameters at many time steps.
@@ -542,8 +623,10 @@ def RIC_dev(
     return est_uvw - true_uvw
 
 
-@jit
-def orbit_fisher(times: jnp.ndarray, orbit_params: jnp.ndarray, RIC_std: jnp.ndarray):
+# @jit
+def orbit_fisher(
+    times: jnp.ndarray, orbit_params: jnp.ndarray, RIC_std: jnp.ndarray
+) -> jnp.ndarray:
     """
     Calculate the inverse covariance (Fisher) matrix in orbital elements
     induced by errors in the RIC frame of an orbiting object. This is

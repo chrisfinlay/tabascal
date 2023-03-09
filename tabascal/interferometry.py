@@ -68,6 +68,10 @@ def ants_to_bl(G, a1, a2):
     ----------
     G: array_like (n_time, n_ant)
         Complex gains at each antenna over time.
+    a1: array_like (n_bl,)
+        Antenna 1 indexes, between 0 and n_ant-1.
+    a2: array_like (n_bl,)
+        Antenna 2 indexes, between 0 and n_ant-1.
 
     Returns
     -------
@@ -187,18 +191,22 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
 
     Parameters
     ----------
-    theta: (n_src, n_time, n_ant, n_freq)
-        The angular separation between the pointing directiona and the
+    theta: (n_src, n_time, n_ant)
+        The angular separation between the pointing direction and the
         source.
     freqs: (n_freq,)
         The frequencies at which to calculate the beam in Hz.
+    dish_d: float
+        The diameter of the dish in meters.
 
     Returns
     -------
     E: ndarray (n_src, n_time, n_ant, n_freq)
         The beam voltage at each frequency.
     """
-    c = 299792458.0
+    theta = jnp.asarray(theta[:, :, :, None])
+    freqs = jnp.asarray(freqs)
+    dish_d = jnp.asarray(dish_d).flatten()[0]
     mask = jnp.where(theta > 90.0, 0, 1)
     theta = jnp.deg2rad(theta)
     x = jnp.where(
@@ -206,10 +214,11 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
         sys.float_info.epsilon,
         jnp.pi * freqs[None, None, None, :] * dish_d * jnp.sin(theta) / c,
     )
+
     return (2 * jv(1, x) / x) * mask
 
 
-def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray, Ga: float = 1.0):
+def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
     """
     Convert emission power to received intensity in Jy. Assumes constant
     power across the bandwidth. Calculated from
@@ -225,8 +234,6 @@ def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray, Ga: float = 1.0):
         Specific emission power in W/Hz.
     d: ndarray (n_src, n_time, n_ant)
         Distances from source to receiving antennas in m.
-    G: float
-        Emission antenna gain
 
     Returns
     -------
@@ -235,8 +242,7 @@ def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray, Ga: float = 1.0):
     """
     Pv = jnp.asarray(Pv)
     d = jnp.asarray(d)
-    Ga = jnp.asarray(Ga)
-    return Pv[:, None, None, :] * Ga / (4 * jnp.pi * d[:, :, :, None] ** 2) * 1e26
+    return Pv[:, None, None, :] / (4 * jnp.pi * d[:, :, :, None] ** 2) * 1e26
 
 
 def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):

@@ -55,14 +55,17 @@ def beam_size(diameter: float, frequency: float, fwhp=True):
 
     Returns:
     --------
-    fov: float
-        Field of view in degrees.
+    beam_width: float
+        beam_width in degrees.
     """
+    diameter = jnp.asarray(diameter)
+    frequency = jnp.asarray(frequency)
+
     c = 299792458.0
     lamda = c / frequency
-    fov = 1.02 * lamda / diameter if fwhp else 1.22 * lamda / diameter
+    beam_width = 1.02 * lamda / diameter if fwhp else 1.22 * lamda / diameter
 
-    return jnp.rad2deg(fov)
+    return jnp.rad2deg(beam_width)
 
 
 def generate_random_sky(n_src: int, mean_I, fov: float, beam_width=0.0, key=None):

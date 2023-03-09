@@ -196,7 +196,7 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
         theta = jnp.arcsin(jnp.linalg.norm(lmn[:, :-1], axis=-1))
         I_app = (
             I[:, None, None, :]
-            * airy_beam(theta[:, None, None, None], self.freqs, self.dish_d) ** 2
+            * airy_beam(theta[:, None, None], self.freqs, self.dish_d) ** 2
         )
         vis_ast = astro_vis(I_app[:, 0, 0, :].T, self.bl_uvw, lmn, self.freqs)
 
@@ -250,7 +250,7 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
         angular_seps = angular_separation(rfi_xyz, self.ants_xyz, self.ra, self.dec)
         # angular_seps is shape (n_src,n_time_fine,n_ant)
         rfi_A_app = jnp.sqrt(I) * airy_beam(
-            angular_seps[:, :, :, None], self.freqs, self.dish_d
+            angular_seps[:, :, :], self.freqs, self.dish_d
         )
 
         n_src = Pv.shape[0]
@@ -309,7 +309,7 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
 
         angular_seps = angular_separation(rfi_xyz, self.ants_xyz, self.ra, self.dec)
         rfi_A_app = jnp.sqrt(I) * airy_beam(
-            angular_seps[:, :, :, None], self.freqs, self.dish_d
+            angular_seps[:, :, :], self.freqs, self.dish_d
         )
 
         n_src = Pv.shape[0]
