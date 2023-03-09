@@ -1,4 +1,5 @@
 import dask.array as da
+import numpy as np
 import xarray as xr
 from dask import delayed
 
@@ -7,7 +8,7 @@ from tabascal import interferometry as itf
 
 def astro_vis(
     sources: da.Array, uvw: da.Array, lmn: da.Array, freqs: da.Array
-) -> xr.DataArray:
+) -> da.Array:
     """Calculate visibilities from sources, uvw, lmn, and freqs.
 
     Parameters:
@@ -28,11 +29,10 @@ def astro_vis(
     n_time, n_bl, _ = uvw.shape
     n_freq, _ = sources.shape
 
-    time_chunk = uvw.chunks[0][0]
-    bl_chunk = uvw.chunks[1][0]
-    freq_chunk = freqs.chunks[0][0]
+    time_chunk, bl_chunk = uvw.chunksize[:2]
+    freq_chunk = freqs.chunksize[0]
 
-    sim_data = xr.Dataset(
+    input = xr.Dataset(
         {
             "I": (["freq", "src"], sources),
             "uvw": (["time", "bl", "space"], uvw),
@@ -40,7 +40,7 @@ def astro_vis(
             "freqs": (["freq"], freqs),
         }
     )
-    ds_out = xr.Dataset(
+    output = xr.Dataset(
         {
             "vis": (
                 ["time", "bl", "freq"],
@@ -53,16 +53,16 @@ def astro_vis(
         }
     )
 
-    def astro_vis_ds(ds):
+    def _astro_vis(ds):
         vis = delayed(itf.astro_vis)(
             ds.I.data, ds.uvw.data, ds.lmn.data, ds.freqs.data
         ).compute()
         ds_out = xr.Dataset({"vis": (["time", "bl", "freq"], vis)})
         return ds_out
 
-    ds = xr.map_blocks(astro_vis_ds, sim_data, template=ds_out)
+    ds = xr.map_blocks(_astro_vis, input, template=output)
 
-    return ds.vis
+    return ds.vis.data
 
 
 def rfi_vis(
@@ -71,7 +71,7 @@ def rfi_vis(
     freqs: da.Array,
     a1: da.Array,
     a2: da.Array,
-) -> xr.DataArray:
+) -> da.Array:
     """Calculate visibilities from sources, uvw, lmn, and freqs.
 
     Parameters:
@@ -91,14 +91,13 @@ def rfi_vis(
     --------
     vis: da.Array (n_time, n_bl, n_freq)
     """
-    n_time, _, n_freq, _ = app_amplitude.shape
+    n_time, _, n_freq = app_amplitude.shape[:3]
     n_bl = a1.shape[0]
 
-    time_chunk = app_amplitude.chunks[0][0]
-    freq_chunk = app_amplitude.chunks[2][0]
-    bl_chunk = a1.chunks[0][0]
+    time_chunk, _, freq_chunk = app_amplitude.chunksize[:3]
+    bl_chunk = a1.chunksize[0]
 
-    sim_data = xr.Dataset(
+    input = xr.Dataset(
         {
             "app_amplitude": (["time", "ant", "freq", "src"], app_amplitude),
             "c_distances": (["time", "ant", "src"], c_distances),
@@ -107,7 +106,7 @@ def rfi_vis(
             "a2": (["bl"], a2),
         }
     )
-    ds_out = xr.Dataset(
+    output = xr.Dataset(
         {
             "vis": (
                 ["time", "bl", "freq"],
@@ -120,7 +119,7 @@ def rfi_vis(
         }
     )
 
-    def rfi_vis_ds(ds):
+    def _rfi_vis(ds):
         vis = delayed(itf.rfi_vis)(
             ds.app_amplitude.data,
             ds.c_distances.data,
@@ -131,6 +130,142 @@ def rfi_vis(
         ds_out = xr.Dataset({"vis": (["time", "bl", "freq"], vis)})
         return ds_out
 
-    ds = xr.map_blocks(rfi_vis_ds, sim_data, template=ds_out)
+    ds = xr.map_blocks(_rfi_vis, input, template=output)
 
-    return ds.vis
+    return ds.vis.data
+
+
+def ants_to_bl(G: da.Array, a1: da.Array, a2: da.Array) -> da.Array:
+    n_time = G.shape[0]
+    n_bl = a1.shape[0]
+
+    time_chunk = G.chunksize[0]
+    bl_chunk = a1.chunksize[0]
+
+    input = xr.Dataset(
+        {"G": (["time", "ant"], G), "a1": (["bl"], a1), "a2": (["bl"], a2)}
+    )
+
+    output = xr.Dataset(
+        {
+            "G_bl": (
+                ["time", "bl"],
+                da.zeros((n_time, n_bl), chunks=(time_chunk, bl_chunk)),
+            )
+        }
+    )
+
+    def _ants_to_bl(ds):
+        G_bl = delayed(itf.ants_to_bl)(ds.G.data, ds.a1.data, ds.a2.data).compute()
+        ds_out = xr.Dataset({"G_bl": (["time", "bl"], G_bl)})
+        return ds_out
+
+    ds = xr.map_blocks(_ants_to_bl, input, template=output)
+
+    return ds.G_bl.data
+
+
+ants_to_bl.__doc__ = itf.ants_to_bl.__doc__
+
+
+def airy_beam(theta, freqs, dish_d):
+    n_src, n_time, n_ant = theta.shape
+    n_freq = freqs.shape[0]
+
+    src_chunk, time_chunk, ant_chunk = theta.chunksize
+    freq_chunk = freqs.chunksize[0]
+
+    input = xr.Dataset(
+        {
+            "theta": (["src", "time", "ant"], theta),
+            "freqs": (["freq"], freqs),
+            "dish_d": (["space_0"], da.from_array([dish_d])),
+        }
+    )
+
+    output = xr.Dataset(
+        {
+            "beam": (
+                ["src", "time", "ant", "freq"],
+                da.zeros(
+                    (n_src, n_time, n_ant, n_freq),
+                    chunks=(src_chunk, time_chunk, ant_chunk, freq_chunk),
+                ),
+            )
+        }
+    )
+
+    def _airy_beam(ds):
+        beam = delayed(itf.airy_beam)(
+            ds.theta.data, ds.freqs.data, ds.dish_d.data
+        ).compute()
+        ds_out = xr.Dataset({"beam": (["src", "time", "ant", "freq"], beam)})
+        return ds_out
+
+    ds = xr.map_blocks(_airy_beam, input, template=output)
+
+    return ds.beam.data
+
+
+airy_beam.__doc__ = itf.airy_beam.__doc__
+
+
+def Pv_to_Sv(Pv, d):
+    n_src, n_freq = Pv.shape
+    n_time, n_ant = d.shape[1:]
+
+    src_chunk, freq_chunk = Pv.chunksize
+    time_chunk, ant_chunk = d.chunksize[1:]
+
+    input = xr.Dataset({"Pv": (["src", "freq"], Pv), "d": (["src", "time", "ant"], d)})
+
+    output = xr.Dataset(
+        {
+            "Sv": (
+                ["src", "time", "ant", "freq"],
+                da.zeros(
+                    (n_src, n_time, n_ant, n_freq),
+                    chunks=(src_chunk, time_chunk, ant_chunk, freq_chunk),
+                ),
+            )
+        }
+    )
+
+    def _Pv_to_Sv(ds):
+        Sv = delayed(itf.Pv_to_Sv)(ds.Pv.data, ds.d.data).compute()
+        ds_out = xr.Dataset({"Sv": (["src", "time", "ant", "freq"], Sv)})
+        return ds_out
+
+    ds = xr.map_blocks(_Pv_to_Sv, input, template=output)
+
+    return ds.Sv.data
+
+
+Pv_to_Sv.__doc__ = itf.Pv_to_Sv.__doc__
+
+
+def add_noise(vis, noise_std, key: int):
+    rng = np.random.default_rng(key)
+    noise = rng.normal(0, noise_std, size=vis.shape)
+    return vis + noise, noise
+
+
+def SEFD_to_noise_std(SEFD, chan_width, t_int):
+    noise_std = SEFD / da.sqrt(chan_width * t_int)
+    return noise_std
+
+
+def int_sample_times(times, n_int_samples):
+    times_fine = da.from_array(
+        itf.int_sample_times(times, n_int_samples), chunks=times.chunksize
+    )
+    return times_fine
+
+
+# TODO: add generate_gains function
+
+
+def time_avg(vis, n_int_samples):
+    return da.mean(
+        da.reshape(vis, (-1, n_int_samples, vis.shape[1], vis.shape[2])), axis=1
+    )
