@@ -21,11 +21,10 @@ from tabascal.dask.interferometry import (
     Pv_to_Sv,
     SEFD_to_noise_std,
     int_sample_times,
-    # generate_gains,
-    # ants_to_bl,
+    generate_gains,
+    ants_to_bl,
     time_avg,
 )
-from tabascal.telescope import Telescope
 from tabascal.utils.tools import beam_size
 
 config.update("jax_enable_x64", True)
@@ -152,6 +151,9 @@ class Observation(Telescope):
         auto_corrs=False,
         n_int_samples=4,
         name="MeerKAT",
+        time_chunk=None,
+        freq_chunk=None,
+        bl_chunk=None,
     ):
         super().__init__(
             latitude,
@@ -162,10 +164,18 @@ class Observation(Telescope):
             name=name,
         )
 
-        self.time_chunk = len(times)
-        self.freq_chunk = len(freqs)
-        self.ant_chunk = len(ENU_array)
-        self.bl_chunk = int(self.ant_chunk * (self.ant_chunk + 1) / 2)
+        self.auto_corrs = auto_corrs
+
+        a1, a2 = jnp.triu_indices(self.n_ant, 0 if auto_corrs else 1)
+        self.n_bl = len(a1)
+
+        self.time_chunk = time_chunk if time_chunk else len(times)
+        self.freq_chunk = freq_chunk if freq_chunk else len(freqs)
+        self.ant_chunk = self.n_ant
+        self.bl_chunk = bl_chunk if bl_chunk else self.n_bl
+
+        self.a1 = da.from_array(a1, chunks=(self.bl_chunk,))
+        self.a2 = da.from_array(a2, chunks=(self.bl_chunk,))
 
         self.ra = da.from_array(ra)
         self.dec = da.from_array(dec)
@@ -186,14 +196,6 @@ class Observation(Telescope):
 
         self.dish_d = da.from_array(dish_d)
         self.fov = beam_size(dish_d, freqs.max())
-
-        self.auto_corrs = auto_corrs
-
-        self.n_ant = len(self.ENU)
-        self.a1, self.a2 = jnp.triu_indices(self.n_ant, 0 if auto_corrs else 1)
-        self.a1 = da.from_array(self.a1, chunks=(self.bl_chunk,))
-        self.a2 = da.from_array(self.a2, chunks=(self.bl_chunk,))
-        self.n_bl = len(self.a1)
 
         self.ants_uvw = ENU_to_UVW(
             self.ENU,
@@ -233,8 +235,7 @@ class Observation(Telescope):
             chunks=(self.time_chunk, self.bl_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
-        self.key = 0
-        # self.key = random.PRNGKey(random_seed)
+        self.random_seed = np.random.default_rng(random_seed)
         self.create_source_dicts()
 
     def __str__(self):
@@ -444,56 +445,56 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
         )
         self.vis_rfi += vis_rfi
 
-    # def addGains(
-    #     self,
-    #     G0_mean: complex,
-    #     G0_std: float,
-    #     Gt_std_amp: float,
-    #     Gt_std_phase: float,
-    #     key=None,
-    # ):
-    #     """Add complex antenna gains to the simulation. Gain amplitudes and phases
-    #     are modelled as linear time-variates. Gains for all antennas at t = 0
-    #     are randomly sampled from a Gaussian described by the G0 parameters.
-    #     The rate of change of both ampltudes and phases are sampled from a zero
-    #     mean Gaussian with standard deviation as provided.
+    def addGains(
+        self,
+        G0_mean: float,
+        G0_std: float,
+        Gt_std_amp: float,
+        Gt_std_phase: float,
+        random_seed=None,
+    ):
+        """Add complex antenna gains to the simulation. Gain amplitudes and phases
+        are modelled as linear time-variates. Gains for all antennas at t = 0
+        are randomly sampled from a Gaussian described by the G0 parameters.
+        The rate of change of both ampltudes and phases are sampled from a zero
+        mean Gaussian with standard deviation as provided.
 
-    #     Parameters
-    #     ----------
-    #     G0_mean: complex
-    #         Mean of Gaussian at t = 0.
-    #     G0_std: float
-    #         Standard deviation of Gaussian at t = 0.
-    #     Gt_std_amp: float
-    #         Standard deviation of Gaussian describing the rate of change in the
-    #         gain amplitudes in 1/seconds.
-    #     Gt_std_phase: float
-    #         Standard deviation of Gaussian describing the rate of change in the
-    #         gain phases in rad/seconds.
-    #     key: jax.random.PRNGKey
-    #         Random number generator key.
-    #     """
-    #     if not isinstance(key, _DeviceArray):
-    #         key = self.key
-    #     self.gains_ants = generate_gains(
-    #         G0_mean,
-    #         G0_std,
-    #         Gt_std_amp,
-    #         Gt_std_phase,
-    #         self.times_fine,
-    #         self.n_ant,
-    #         self.n_freq,
-    #         key,
-    #     )
-    #     self.gains_bl = ants_to_bl(self.gains_ants, self.a1, self.a2)
-
-    def calculate_vis(self):
+        Parameters
+        ----------
+        G0_mean: float
+            Mean of Gaussian at t = 0.
+        G0_std: float
+            Standard deviation of Gaussian at t = 0.
+        Gt_std_amp: float
+            Standard deviation of Gaussian describing the rate of change in the
+            gain amplitudes in 1/seconds.
+        Gt_std_phase: float
+            Standard deviation of Gaussian describing the rate of change in the
+            gain phases in rad/seconds.
+        random_seed: int, optional
+            Random number generator key.
         """
-        Calculate the total gain amplified visibilities and average down to the
-        originally defined sampling rate.
+        self.gains_ants = generate_gains(
+            G0_mean,
+            G0_std,
+            Gt_std_amp,
+            Gt_std_phase,
+            self.times_fine,
+            self.n_ant,
+            self.n_freq,
+            random_seed if random_seed else self.random_seed,
+        )
+        self.gains_bl = ants_to_bl(self.gains_ants, self.a1, self.a2)
+
+    def calculate_vis(self, random_seed=None):
+        """
+        Calculate the total gain amplified visibilities,  average down to the
+        originally defined sampling rate and add noise.
         """
         self.vis = self.gains_bl * (self.vis_ast + self.vis_rfi)
         self.vis_avg = time_avg(self.vis, self.n_int_samples)
         self.vis_obs, self.noise_data = add_noise(
-            self.vis_avg, self.noise_std, self.key
+            self.vis_avg,
+            self.noise_std,
+            random_seed if random_seed else self.random_seed,
         )

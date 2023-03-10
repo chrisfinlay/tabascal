@@ -66,7 +66,7 @@ def ants_to_bl(G, a1, a2):
 
     Parameters
     ----------
-    G: array_like (n_time, n_ant)
+    G: array_like (n_time, n_ant, n_freq)
         Complex gains at each antenna over time.
     a1: array_like (n_bl,)
         Antenna 1 indexes, between 0 and n_ant-1.
@@ -75,7 +75,7 @@ def ants_to_bl(G, a1, a2):
 
     Returns
     -------
-    G_bl: array_like (n_time, n_bl)
+    G_bl: array_like (n_time, n_bl, n_freq)
         Complex gains on each baseline over time.
     """
 
@@ -178,7 +178,7 @@ def _astro_vis(sources, uvw, lmn, freqs):
 
 @jit
 def _ants_to_bl(G, a1, a2):
-    G_bl = G[:, a1] * jnp.conjugate(G[:, a2])
+    G_bl = G[:, a1, :] * jnp.conjugate(G[:, a2, :])
 
     return G_bl
 
