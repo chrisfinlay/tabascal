@@ -295,7 +295,7 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
             I[:, None, None, :]
             * airy_beam(theta[:, None, None], self.freqs, self.dish_d) ** 2
         )
-        vis_ast = astro_vis(I_app[:, 0, 0, :].T, self.bl_uvw, lmn, self.freqs)
+        vis_ast = astro_vis(I_app[:, 0, 0, :], self.bl_uvw, lmn, self.freqs)
 
         n_src = I.shape[0]
         for i in range(n_src):
@@ -370,8 +370,8 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
 
         vis_rfi = rfi_vis(
-            da.transpose(rfi_A_app, (1, 2, 3, 0)),
-            (da.transpose(distances, (1, 2, 0)) - self.ants_uvw[:, :, None, -1]),
+            rfi_A_app,
+            distances - self.ants_uvw[None, :, :, -1],
             self.freqs,
             self.a1,
             self.a2,
@@ -437,8 +437,8 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
-            da.transpose(rfi_A_app, (1, 2, 3, 0)),
-            (da.transpose(distances, (1, 2, 0)) - self.ants_uvw[:, :, None, -1]),
+            rfi_A_app,
+            distances - self.ants_uvw[None, :, :, -1],
             self.freqs,
             self.a1,
             self.a2,
