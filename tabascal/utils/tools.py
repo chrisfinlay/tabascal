@@ -1,15 +1,17 @@
-import jax.numpy as jnp
-from jax import random
-import jax
-import h5py
-import numpy as np
+import argparse
 import os
 from pathlib import Path
+
+import h5py
+import jax
+import jax.numpy as jnp
+import numpy as np
+from jax import random
 
 pkg_dir = Path(__file__).parent.absolute()
 
 
-def uniform_points_disk(radius, n_src, key=None):
+def uniform_points_disk(radius: float, n_src: int, key=None):
     """
     Generate uniformly distributed random points on a disk.
 
@@ -28,7 +30,7 @@ def uniform_points_disk(radius, n_src, key=None):
         The coordinate positions of the random points centred on (0,0).
     """
     if not isinstance(key, jax.interpreters.xla._DeviceArray):
-        key = random.PRNGKey(101)
+        key = random.PRNGKey(102)
     r = radius * jnp.sqrt(random.uniform(key, (n_src,)))
     key, subkey = random.split(key)
     theta = 2.0 * jnp.pi * random.uniform(key, (n_src,))
@@ -36,7 +38,7 @@ def uniform_points_disk(radius, n_src, key=None):
     return r * jnp.array([jnp.cos(theta), jnp.sin(theta)])
 
 
-def beam_size(diameter, frequency, fwhp=True):
+def beam_size(diameter: float, frequency: float, fwhp=True):
     """
     Calculate the beam size of an antenna or an array. For an array use
     fwhp = True. This assumes an Airy disk primary beam pattern.
@@ -53,17 +55,20 @@ def beam_size(diameter, frequency, fwhp=True):
 
     Returns:
     --------
-    fov: float
-        Field of view in degrees.
+    beam_width: float
+        beam_width in degrees.
     """
+    diameter = jnp.asarray(diameter)
+    frequency = jnp.asarray(frequency)
+
     c = 299792458.0
     lamda = c / frequency
-    fov = 1.02 * lamda / diameter if fwhp else 1.22 * lamda / diameter
+    beam_width = 1.02 * lamda / diameter if fwhp else 1.22 * lamda / diameter
 
-    return jnp.rad2deg(fov)
+    return jnp.rad2deg(beam_width)
 
 
-def generate_random_sky(n_src, mean_I, fov, beam_width=0.0, key=None):
+def generate_random_sky(n_src: int, mean_I, fov: float, beam_width=0.0, key=None):
     """
     Generate uniformly distributed point sources inside the field of view with
     an exponential intensity distribution. Setting the beam width will make
@@ -92,7 +97,7 @@ def generate_random_sky(n_src, mean_I, fov, beam_width=0.0, key=None):
         The sources declinations relative to (0,0).
     """
     if not isinstance(key, jax.interpreters.xla._DeviceArray):
-        key = random.PRNGKey(121)
+        key = random.PRNGKey(101)
     subkey, key = random.split(key)
     I = mean_I * random.exponential(key, (2 * n_src,))
     positions = uniform_points_disk(fov / 2.0, 2 * n_src, subkey)
@@ -107,7 +112,7 @@ def generate_random_sky(n_src, mean_I, fov, beam_width=0.0, key=None):
     return I[idx[:n_src]], positions[0, idx[:n_src]], positions[1, idx[:n_src]]
 
 
-def save_observations(file_path, observations):
+def save_observations(file_path: str, observations: list):
     """
     Save a list of observations to HDF5 file format.
 
@@ -121,6 +126,7 @@ def save_observations(file_path, observations):
     with h5py.File(file_path + ".h5", "w") as fp:
         for i, obs in enumerate(observations):
             fp[f"track{i}/n_ant"] = obs.n_ant
+            fp[f"track{i}/n_bl"] = obs.n_bl
             fp[f"track{i}/n_time"] = obs.n_time
             fp[f"track{i}/n_freq"] = obs.n_freq
             fp[f"track{i}/n_int_samples"] = obs.n_int_samples
@@ -132,6 +138,7 @@ def save_observations(file_path, observations):
             fp[f"track{i}/ants_ENU"] = obs.ENU
             fp[f"track{i}/ants_XYZ"] = obs.ants_xyz
             fp[f"track{i}/ants_UVW"] = obs.ants_uvw
+            fp[f"track{i}/bl_UVW"] = obs.bl_uvw
 
             fp[f"track{i}/latitude"] = obs.latitude
             fp[f"track{i}/longitude"] = obs.longitude
@@ -141,7 +148,8 @@ def save_observations(file_path, observations):
             fp[f"track{i}/vis_ast"] = obs.vis_ast
             fp[f"track{i}/vis_rfi"] = obs.vis_rfi
             fp[f"track{i}/vis_obs"] = obs.vis_obs
-            fp[f"track{i}/noise"] = obs.noise_data
+            fp[f"track{i}/noise"] = obs.noise
+            fp[f"track{i}/noise_data"] = obs.noise_data
 
             fp[f"track{i}/gains"] = obs.gains_ants
 
@@ -178,3 +186,116 @@ def load_antennas(telescope="MeerKAT"):
         print("Only MeerKAT antennas are currentyl available.")
         enu = None
     return enu
+
+
+def str2bool(v: str):
+    """
+    Convert string to boolean.
+
+    Parameters:
+    -----------
+    v: str
+        String to convert to boolean.
+
+    Raises:
+    -------
+        argparse.ArgumentTypeError: If the string is not a boolean.
+
+    Returns:
+    --------
+    bool: bool
+        The boolean value of the string.
+    """
+    if isinstance(v, bool):
+        return v
+    if v.lower() in ("yes", "true", "t", "y", "1"):
+        return True
+    elif v.lower() in ("no", "false", "f", "n", "0"):
+        return False
+    else:
+        raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
+###################################################################################################
+# Progress bar for JAX scan
+# Credit to https://www.jeremiecoullon.com/2021/01/29/jax_progress_bar/
+
+from jax import lax
+from jax.experimental import host_callback
+from tqdm import tqdm
+
+
+def progress_bar_scan(num_samples: int, message=None):
+    "Progress bar for a JAX scan"
+    if message is None:
+        message = f"Running for {num_samples:,} iterations"
+    tqdm_bars = {}
+    if num_samples > 20:
+        print_rate = int(num_samples / 20)
+    else:
+        print_rate = 1  # if you run the sampler for less than 20 iterations
+
+    remainder = num_samples % print_rate
+
+    def _define_tqdm(arg, transform):
+        tqdm_bars[0] = tqdm(range(num_samples))
+        tqdm_bars[0].set_description(message, refresh=False)
+
+    def _update_tqdm(arg, transform):
+        tqdm_bars[0].update(arg)
+
+    def _update_progress_bar(iter_num):
+        "Updates tqdm progress bar of a JAX scan or loop"
+        _ = lax.cond(
+            iter_num == 0,
+            lambda _: host_callback.id_tap(_define_tqdm, None, result=iter_num),
+            lambda _: iter_num,
+            operand=None,
+        )
+
+        _ = lax.cond(
+            # update tqdm every multiple of `print_rate` except at the end
+            (iter_num % print_rate == 0) & (iter_num != num_samples - remainder),
+            lambda _: host_callback.id_tap(_update_tqdm, print_rate, result=iter_num),
+            lambda _: iter_num,
+            operand=None,
+        )
+
+        _ = lax.cond(
+            # update tqdm by `remainder`
+            iter_num == num_samples - remainder,
+            lambda _: host_callback.id_tap(_update_tqdm, remainder, result=iter_num),
+            lambda _: iter_num,
+            operand=None,
+        )
+
+    def _close_tqdm(arg, transform):
+        tqdm_bars[0].close()
+
+    def close_tqdm(result, iter_num):
+        return lax.cond(
+            iter_num == num_samples - 1,
+            lambda _: host_callback.id_tap(_close_tqdm, None, result=result),
+            lambda _: result,
+            operand=None,
+        )
+
+    def _progress_bar_scan(func):
+        """Decorator that adds a progress bar to `body_fun` used in `lax.scan`.
+        Note that `body_fun` must either be looping over `np.arange(num_samples)`,
+        or be looping over a tuple who's first element is `np.arange(num_samples)`
+        This means that `iter_num` is the current iteration number
+        """
+
+        def wrapper_progress_bar(carry, x):
+            if type(x) is tuple:
+                iter_num, *_ = x
+            else:
+                iter_num = x
+            _update_progress_bar(iter_num)
+            result = func(carry, x)
+            return close_tqdm(result, iter_num)
+
+        return wrapper_progress_bar
+
+    return _progress_bar_scan
