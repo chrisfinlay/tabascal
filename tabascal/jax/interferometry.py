@@ -1,15 +1,17 @@
-from jax import jit, random
-import jax.numpy as jnp
-from jax.config import config
-
-from scipy.special import jv
 import sys
+
+import jax.numpy as jnp
+from jax import jit, random
+from jax.config import config
+from jax.lax import scan
+from scipy.special import jv
 
 config.update("jax_enable_x64", True)
 
 c = 2.99792458e8
 
 
+@jit
 def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     """
     Calculate visibilities from distances to rfi sources.
@@ -32,10 +34,21 @@ def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     vis: array_like (n_time, n_bl, n_freq)
         The visibilities.
     """
+    n_src = app_amplitude.shape[0]
+    vis = _rfi_vis(app_amplitude[0, None], c_distances[0, None], freqs, a1, a2)
 
-    return _rfi_vis(app_amplitude, c_distances, freqs, a1, a2)
+    # This is a scan over the sources, but we can't use scan it unless we jit decorate this function
+    def _add_vis(vis, i):
+        return (
+            vis + _rfi_vis(app_amplitude[i, None], c_distances[i, None], freqs, a1, a2),
+            i,
+        )
+
+    return scan(_add_vis, vis, jnp.arange(1, n_src))[0]
+    # return _rfi_vis(app_amplitude, c_distances, freqs, a1, a2)
 
 
+@jit
 def astro_vis(sources, uvw, lmn, freqs):
     """
     Calculate visibilities from a set of point sources using DFT.
@@ -56,8 +69,14 @@ def astro_vis(sources, uvw, lmn, freqs):
     vis: array_like (n_time, n_bl, n_freq)
         Visibilities of the given set of sources and baselines.
     """
+    n_src = sources.shape[0]
+    vis = _astro_vis(sources[0, None], uvw, lmn[0, None], freqs)
 
-    return _astro_vis(sources, uvw, lmn, freqs)
+    # This is a scan over the sources, but we can't use scan it unless we jit decorate this function
+    def _add_vis(vis, i):
+        return vis + _astro_vis(sources[i, None], uvw, lmn[i, None], freqs), i
+
+    return scan(_add_vis, vis, jnp.arange(1, n_src))[0]
 
 
 def ants_to_bl(G, a1, a2):
@@ -134,7 +153,7 @@ def phase_from_distances(distances, a1, a2, freqs):
     return phases
 
 
-# @jit
+@jit
 def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     # Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
 
