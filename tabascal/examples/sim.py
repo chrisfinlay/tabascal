@@ -30,12 +30,12 @@ parser.add_argument(
 )
 parser.add_argument("--N_a", default=8, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
-parser.add_argument("--Rkey", default=0, type=int, help="Random key.")
+parser.add_argument("--seed", default=0, type=int, help="Random seed.")
 parser.add_argument(
-    "--satRFI", default=True, type=str2bool, help="Include satellite-based RFI source."
+    "--satRFI", default="y", type=str2bool, help="Include satellite-based RFI source."
 )
 parser.add_argument(
-    "--grdRFI", default=True, type=str2bool, help="Include ground-based RFI source."
+    "--grdRFI", default="y", type=str2bool, help="Include ground-based RFI source."
 )
 parser.add_argument(
     "--backend", default="dask", type=str, help="Use pure JAX or Dask backend."
@@ -51,11 +51,11 @@ N_t = args.N_t
 N_int = args.N_int
 N_ant = args.N_a
 RFI_amp = args.RFIamp
-Rkey = args.Rkey
+seed = args.seed
 satRFI = args.satRFI
 grdRFI = args.grdRFI
 
-if args.backend.lower == "jax":
+if args.backend.lower() == "jax":
     from tabascal.jax.observation import Observation
 else:
     from tabascal.dask.observation import Observation
@@ -81,13 +81,18 @@ obs = Observation(
 )
 
 I, d_ra, d_dec = generate_random_sky(
-    n_src=100, mean_I=0.1, freqs=obs.freqs, fov=obs.fov, beam_width=obs.syn_bw
+    n_src=100,
+    mean_I=0.1,
+    freqs=obs.freqs,
+    fov=obs.fov,
+    beam_width=obs.syn_bw,
+    random_seed=seed,
 )
 
 obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
 
 # rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((obs.freqs - 1.2e9) / 2e7) ** 2)])
-rfi_P = RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, 1))
+rfi_P = RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, obs.n_freq))
 
 if satRFI:
     obs.addSatelliteRFI(
@@ -99,7 +104,7 @@ if satRFI:
     )
 
 # rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((obs.freqs - 1.5e9) / 2e7) ** 2)])
-rfi_P = RFI_amp * 1e-6 * jnp.ones((1, 1))
+rfi_P = RFI_amp * 1e-6 * jnp.ones((1, obs.n_freq))
 
 if grdRFI:
     obs.addStationaryRFI(
@@ -109,7 +114,7 @@ if grdRFI:
         elevation=jnp.array([obs.elevation]),
     )
 
-obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=jnp.deg2rad(1e-3))
+# obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=jnp.deg2rad(1e-3))
 
 obs.calculate_vis()
 
@@ -120,16 +125,25 @@ f_name = (
 
 save_path = os.path.join(output_path, f_name)
 
-save_observations(
-    save_path,
-    [
-        obs,
-    ],
-)
+# save_observations(
+#     save_path,
+#     [
+#         obs,
+#     ],
+# )
 
 print()
 print("Saved observations to:")
 print("----------------------")
 print(save_path + ".h5")
 
-print(obs)
+# print(obs)
+
+print(args.backend.lower())
+
+if args.backend.lower() == "dask":
+    vis_obs = obs.vis_obs.compute()
+else:
+    vis_obs = obs.vis_obs
+
+print(vis_obs.mean())
