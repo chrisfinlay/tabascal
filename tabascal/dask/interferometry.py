@@ -3,7 +3,7 @@ import numpy as np
 import xarray as xr
 from dask import delayed
 
-from tabascal import interferometry as itf
+from tabascal.jax import interferometry as itf
 
 
 def astro_vis(

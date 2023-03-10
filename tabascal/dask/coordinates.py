@@ -1,4 +1,4 @@
-from tabascal import coordinates as coord
+from tabascal.jax import coordinates as coord
 
 import dask.array as da
 from dask import delayed
