@@ -3,15 +3,13 @@ import os
 from pathlib import Path
 
 import h5py
-import jax
 import jax.numpy as jnp
 import numpy as np
-from jax import random
 
 pkg_dir = Path(__file__).parent.absolute()
 
 
-def uniform_points_disk(radius: float, n_src: int, key=None):
+def uniform_points_disk(radius: float, n_src: int, seed=None):
     """
     Generate uniformly distributed random points on a disk.
 
@@ -21,7 +19,7 @@ def uniform_points_disk(radius: float, n_src: int, key=None):
         Radius of the disk.
     n_src: int
         The number of sources/points to generate.
-    key: jax.random.PRNGKey
+    seed: int
         Random number generator seed/key.
 
     Returns:
@@ -29,11 +27,9 @@ def uniform_points_disk(radius: float, n_src: int, key=None):
     points: array_like (2, n_src)
         The coordinate positions of the random points centred on (0,0).
     """
-    if not isinstance(key, jax.interpreters.xla._DeviceArray):
-        key = random.PRNGKey(102)
-    r = radius * jnp.sqrt(random.uniform(key, (n_src,)))
-    key, subkey = random.split(key)
-    theta = 2.0 * jnp.pi * random.uniform(key, (n_src,))
+    rng = np.random.default_rng(seed)
+    r = jnp.sqrt(rng.uniform(low=0.0, high=radius, size=(n_src,)))
+    theta = rng.uniform(low=0.0, high=2.0 * jnp.pi, size=(n_src,))
 
     return r * jnp.array([jnp.cos(theta), jnp.sin(theta)])
 
@@ -68,7 +64,16 @@ def beam_size(diameter: float, frequency: float, fwhp=True):
     return jnp.rad2deg(beam_width)
 
 
-def generate_random_sky(n_src: int, mean_I, fov: float, beam_width=0.0, key=None):
+def generate_random_sky(
+    n_src: int,
+    mean_I,
+    freqs: jnp.ndarray,
+    spec_idx_mean: float = 0.7,
+    spec_idx_std: float = 0.2,
+    fov: float = 1.0,
+    beam_width=0.0,
+    random_seed: int = None,
+):
     """
     Generate uniformly distributed point sources inside the field of view with
     an exponential intensity distribution. Setting the beam width will make
@@ -80,36 +85,48 @@ def generate_random_sky(n_src: int, mean_I, fov: float, beam_width=0.0, key=None
         Number of sources to generate.
     mean_I: float
         Mean intensity of the sources.
+    freqs: array_like (n_freq,)
+        Frequencies to generate the sources at.
+    spec_idx_mean: float
+        Mean spectral index of the sources.
+    spec_idx_std: float
+        Standard deviation of the spectral index of the sources.
     fov: float
         Field of view to generate positions within. Same units as beam_width.
     beam_width: float
         Width of the resolving beam to ensure sources do not overlap. Sources will be separated by >5*beam_width. Same units as fov.
-    key: jax.random.PRNGKey
+    random_seed: int
         Random number generator seed/key.
 
     Returns:
     --------
-    I: array_like
+    I: array_like (n_src, n_freq)
         The sources intensities.
     delta_ra: array_like
         The sources right ascensions relative to (0,0).
     delta_dec: array_like
         The sources declinations relative to (0,0).
     """
-    if not isinstance(key, jax.interpreters.xla._DeviceArray):
-        key = random.PRNGKey(101)
-    subkey, key = random.split(key)
-    I = mean_I * random.exponential(key, (2 * n_src,))
-    positions = uniform_points_disk(fov / 2.0, 2 * n_src, subkey)
-    source_d = jnp.linalg.norm(positions[:, :, None] - positions[:, None, :], axis=0)
-    source_d = source_d + jnp.triu((5 * beam_width + 1.0) * jnp.ones(source_d.shape))
+    rng = np.random.default_rng(random_seed)
 
-    idx = list(jnp.arange(2 * n_src))
-    for i in jnp.unique(jnp.where(source_d < 5 * beam_width)[0]):
-        idx.remove(i)
-    idx = jnp.array(idx)
+    I = rng.exponential(scale=mean_I, size=(n_src,))
+    positions = uniform_points_disk(fov / 2.0, 1, rng)
+    while positions.shape[1] < n_src:
+        n_sample = 2 * (n_src - positions.shape[1])
+        new_positions = uniform_points_disk(fov / 2.0, n_sample, rng)
+        positions = jnp.concatenate([positions, new_positions], axis=1)
+        s1, s2 = jnp.triu_indices(positions.shape[1], 1)
+        d = jnp.linalg.norm(positions[:, s1] - positions[:, s2], axis=0)
+        idx = jnp.where(d < 5 * beam_width)[0]
+        remove_source_idx = jnp.unique(jnp.concatenate([s1[idx], s2[idx]]))
+        positions = jnp.delete(positions, remove_source_idx, axis=1)
 
-    return I[idx[:n_src]], positions[0, idx[:n_src]], positions[1, idx[:n_src]]
+    d_ra, d_dec = positions[:, :n_src]
+
+    spectral_indices = rng.normal(loc=spec_idx_mean, scale=spec_idx_std, size=(n_src,))
+    I = I[:, None] * ((freqs / freqs[0]) ** (-spectral_indices))[:, None]
+
+    return I, d_ra, d_dec
 
 
 def save_observations(file_path: str, observations: list):
