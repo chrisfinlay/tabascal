@@ -26,7 +26,7 @@ from tabascal.jax.interferometry import (
     apply_gains,
     time_avg,
 )
-from tabascal.utils.tools import beam_size, construct_observation_ds
+from tabascal.utils.tools import beam_size, construct_observation_ds, write_ms
 
 config.update("jax_enable_x64", True)
 
@@ -160,14 +160,16 @@ class Observation(Telescope):
         self.ra = ra
         self.dec = dec
         self.times = times
-        self.int_time = jnp.abs(jnp.diff(times)[0])
+        self.int_time = float(jnp.abs(jnp.diff(times)[0])) if len(times) > 1 else 2.0
         self.n_int_samples = n_int_samples
         self.times_fine = int_sample_times(times, n_int_samples)
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
         self.freqs = freqs
         self.SEFD = SEFD
-        self.chan_width = jnp.diff(freqs)[0] if len(freqs) > 1 else 250e3
+        self.chan_width = (
+            float(jnp.abs(jnp.diff(freqs)[0])) if len(freqs) > 1 else 250e3
+        )
         self.n_freq = len(freqs)
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)
         self.dish_d = dish_d
@@ -482,12 +484,18 @@ Number of stationary RFI : {n_stat}"""
         self.vis_obs, self.noise_data = add_noise(
             self.vis_avg, self.noise_std, self.key
         )
+        self.dataset = construct_observation_ds(self)
+        return self.dataset
 
-    def write_to_disk(self, path: str = "Observation", overwrite: bool = False):
+    def write_to_zarr(self, path: str = "Observation", overwrite: bool = False):
         """
-        Write the visibilities to disk.
+        Write the visibilities to disk using zarr format.
         """
         mode = "w" if overwrite else "w-"
-        ds = construct_observation_ds(self)
-        ds.to_zarr(path, mode=mode)
-        return ds
+        self.dataset.to_zarr(path, mode=mode)
+
+    def write_to_ms(self, path: str = "Observation.ms", overwrite: bool = False):
+        """
+        Write the visibilities to disk using Measurement Set format.
+        """
+        write_ms(self.dataset, path, overwrite=overwrite)

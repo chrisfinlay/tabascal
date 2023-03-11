@@ -146,9 +146,17 @@ f_name = (
 save_path = os.path.join(output_path, f_name)
 
 print(obs)
+
 print()
-print("Saving observation to:")
+print("Saving observation zarr file to:")
 print("----------------------")
 print(save_path)
 
-obs.write_to_disk(save_path, overwrite)
+obs.write_to_zarr(save_path, overwrite)
+
+print()
+print("Saving observation MS file to:")
+print("----------------------")
+print(save_path + ".ms")
+
+obs.write_to_ms(save_path + ".ms", overwrite)

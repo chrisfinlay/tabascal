@@ -25,7 +25,7 @@ from tabascal.dask.interferometry import (
     apply_gains,
     time_avg,
 )
-from tabascal.utils.tools import beam_size, construct_observation_ds
+from tabascal.utils.tools import beam_size, construct_observation_ds, write_ms
 
 config.update("jax_enable_x64", True)
 
@@ -61,10 +61,10 @@ class Telescope(object):
         name=None,
     ):
         self.name = name
-        self.latitude = da.from_array(latitude)
-        self.longitude = da.from_array(longitude)
-        self.elevation = da.from_array(elevation)
-        self.GEO = da.from_array([latitude, longitude, elevation])
+        self.latitude = da.asarray(latitude)
+        self.longitude = da.asarray(longitude)
+        self.elevation = da.asarray(elevation)
+        self.GEO = da.asarray([latitude, longitude, elevation])
         self.ENU_path = None
         self.createArrayENU(ENU_array=ENU_array, ENU_path=ENU_path)
         self.n_ant = len(self.ENU)
@@ -94,7 +94,7 @@ Elevation : {elevation}\n"""
                      array or as a csv like file."""
             print(msg)
             return
-        self.ENU = da.from_array(self.ENU)
+        self.ENU = da.asarray(self.ENU)
         self.ENU_path = ENU_path
         self.GEO_ants = ENU_to_GEO(self.GEO, self.ENU)
 
@@ -181,16 +181,14 @@ class Observation(Telescope):
         self.ant_chunk = self.n_ant
         self.bl_chunk = bl_chunk if bl_chunk else self.n_bl
 
-        self.a1 = da.from_array(a1, chunks=(self.bl_chunk,))
-        self.a2 = da.from_array(a2, chunks=(self.bl_chunk,))
+        self.a1 = da.asarray(a1, chunks=(self.bl_chunk,))
+        self.a2 = da.asarray(a2, chunks=(self.bl_chunk,))
 
-        self.ra = da.from_array(ra)
-        self.dec = da.from_array(dec)
+        self.ra = da.asarray(ra)
+        self.dec = da.asarray(dec)
 
-        time_chunk = self.time_chunk // n_int_samples
-        time_chunk = 1 if time_chunk == 0 else time_chunk
-        self.times = da.from_array(times, chunks=(time_chunk,))
-        self.int_time = da.abs(da.diff(times)[0])
+        self.times = da.asarray(times)
+        self.int_time = da.abs(da.diff(times)[0]) if len(times) > 1 else 2.0
         self.n_int_samples = n_int_samples
         self.times_fine = int_sample_times(self.times, n_int_samples).rechunk(
             self.time_chunk
@@ -198,14 +196,14 @@ class Observation(Telescope):
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
 
-        self.freqs = da.from_array(freqs, chunks=(self.freq_chunk,))
+        self.freqs = da.asarray(freqs, chunks=(self.freq_chunk,))
         self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else 250e3
         self.n_freq = len(freqs)
 
-        self.SEFD = da.from_array(SEFD)
+        self.SEFD = da.asarray(SEFD)
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)
 
-        self.dish_d = da.from_array(dish_d)
+        self.dish_d = da.asarray(dish_d)
         self.fov = beam_size(dish_d, freqs.max())
 
         self.ants_uvw = ENU_to_UVW(
@@ -289,7 +287,6 @@ Number of stationary RFI : {n_stat}"""
             "time_max": self.times.max(),
             "chan_width": self.chan_width / 1e3,
             "n_freq": self.n_freq,
-            "times": self.times,
             "int_time": self.int_time,
             "n_time": self.n_time,
             "sampling_rate": self.n_int_samples / self.int_time,
@@ -379,11 +376,11 @@ Number of stationary RFI : {n_stat}"""
             at t = 0.
         """
         n_src = Pv.shape[0]
-        Pv = da.from_array(Pv, chunks=(n_src, self.freq_chunk))
-        elevation = da.from_array(elevation, chunks=(n_src,))
-        inclination = da.from_array(inclination, chunks=(n_src,))
-        lon_asc_node = da.from_array(lon_asc_node, chunks=(n_src,))
-        periapsis = da.from_array(periapsis, chunks=(n_src,))
+        Pv = da.asarray(Pv, chunks=(n_src, self.freq_chunk))
+        elevation = da.asarray(elevation, chunks=(n_src,))
+        inclination = da.asarray(inclination, chunks=(n_src,))
+        lon_asc_node = da.asarray(lon_asc_node, chunks=(n_src,))
+        periapsis = da.asarray(periapsis, chunks=(n_src,))
 
         rfi_xyz = orbit_vmap(
             self.times_fine, elevation, inclination, lon_asc_node, periapsis
@@ -444,17 +441,18 @@ Number of stationary RFI : {n_stat}"""
             Elevation/Altitude of the source above sea level in metres.
         """
         n_src = Pv.shape[0]
-        Pv = da.from_array(Pv, chunks=(n_src, self.freq_chunk))
-        latitude = da.from_array(latitude, chunks=(n_src,))
-        longitude = da.from_array(longitude, chunks=(n_src,))
-        elevation = da.from_array(elevation, chunks=(n_src,))
+        Pv = da.asarray(Pv, chunks=(n_src, self.freq_chunk))
+        latitude = da.asarray(latitude, chunks=(n_src,))
+        longitude = da.asarray(longitude, chunks=(n_src,))
+        elevation = da.asarray(elevation, chunks=(n_src,))
 
-        rfi_geo = da.from_array([latitude, longitude, elevation]).T[
-            :, None, :
-        ] * da.ones(
-            shape=(1, self.n_time_fine, 1),
-            chunks=(1, self.time_chunk, 1),
+        rfi_geo = (
+            da.stack([latitude, longitude, elevation], axis=1)[:, None, :]
+            * da.ones(shape=(n_src, self.n_time_fine, 3))
+        ).rechunk(
+            (n_src, self.time_chunk, 3),
         )
+
         # rfi_geo is shape (n_src,n_time,3)
         rfi_xyz = GEO_to_XYZ_vmap0(rfi_geo, self.times_fine)
         # rfi_xyz is shape (n_src,n_time_fine,3)
@@ -537,18 +535,26 @@ Number of stationary RFI : {n_stat}"""
         self.vis = apply_gains(
             self.vis_ast, self.vis_rfi, self.gains_ants, self.a1, self.a2
         )
-        self.vis_avg = time_avg(self.vis, self.n_int_samples)
+        self.vis_avg = time_avg(self.vis, self.n_int_samples).rechunk(
+            (self.time_chunk, self.bl_chunk, self.freq_chunk)
+        )
         self.vis_obs, self.noise_data = add_noise(
             self.vis_avg,
             self.noise_std,
             random_seed if random_seed else self.random_seed,
         )
+        self.dataset = construct_observation_ds(self)
+        return self.dataset
 
-    def write_to_disk(self, path: str = "Observation", overwrite: bool = False):
+    def write_to_zarr(self, path: str = "Observation", overwrite: bool = False):
         """
-        Write the visibilities to disk.
+        Write the visibilities to disk using zarr format.
         """
         mode = "w" if overwrite else "w-"
-        ds = construct_observation_ds(self)
-        ds.to_zarr(path, mode=mode)
-        return ds
+        self.dataset.to_zarr(path, mode=mode)
+
+    def write_to_ms(self, path: str = "Observation.ms", overwrite: bool = False):
+        """
+        Write the visibilities to disk using Measurement Set format.
+        """
+        write_ms(self.dataset, path, overwrite=overwrite)
