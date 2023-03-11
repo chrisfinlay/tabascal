@@ -2,6 +2,7 @@
 tabascal.egg-info
 docs/build
 build
+examples
 *.DS_Store
 *.h5
 *.ipynb

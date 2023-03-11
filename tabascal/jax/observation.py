@@ -156,6 +156,7 @@ class Observation(Telescope):
         freq_chunk=None,
         bl_chunk=None,
     ):
+        self.backend = "jax"
         self.ra = ra
         self.dec = dec
         self.times = times

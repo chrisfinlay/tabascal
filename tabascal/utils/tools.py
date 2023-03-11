@@ -2,9 +2,11 @@ import argparse
 import os
 from pathlib import Path
 
+import dask.array as da
 import h5py
 import jax.numpy as jnp
 import numpy as np
+import xarray as xr
 
 pkg_dir = Path(__file__).parent.absolute()
 
@@ -165,7 +167,7 @@ def save_observations(file_path: str, observations: list):
             fp[f"track{i}/vis_ast"] = obs.vis_ast
             fp[f"track{i}/vis_rfi"] = obs.vis_rfi
             fp[f"track{i}/vis_obs"] = obs.vis_obs
-            fp[f"track{i}/noise"] = obs.noise
+            fp[f"track{i}/noise_std"] = obs.noise_std
             fp[f"track{i}/noise_data"] = obs.noise_data
 
             fp[f"track{i}/gains"] = obs.gains_ants
@@ -231,6 +233,112 @@ def str2bool(v: str):
         return False
     else:
         raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
+def construct_observation_ds(obs):
+    """Construct a dataset for a single observation."""
+    data = {
+        "vis_obs": (["time", "bl", "freq"], obs.vis_obs),
+        "vis_ast": (["time_fine", "bl", "freq"], obs.vis_ast),
+    }
+
+    data_opt = {
+        # RFI Visibility
+        "vis_rfi": (["time_fine", "bl", "freq"], obs.vis_rfi),
+        # Antenna indices
+        "antenna1": (["bl"], obs.a1),
+        "antenna2": (["bl"], obs.a2),
+        # Antenna positions
+        "ants_enu": (["ant", "enu"], obs.ENU),
+        "ants_xyz": (["time_fine", "ant", "xyz"], obs.ants_xyz),
+        "ants_uvw": (["time_fine", "ant", "uvw"], obs.ants_uvw),
+        "bl_uvw": (["time_fine", "bl", "uvw"], obs.bl_uvw),
+        # Noise parameters
+        "SEFD": (["freq"], obs.SEFD),
+        "noise_std": (["freq"], obs.noise_std),
+        "noise_data": (["time", "bl", "freq"], obs.noise_data),
+        # Gain parameters
+        "gains_ants": (["time_fine", "ant", "freq"], obs.gains_ants),
+        "gains_bl": (["time_fine", "bl", "freq"], obs.gains_bl),
+        # Astronomical source parameters
+        "ast_I": (["ast_src", "freq"], da.concatenate(obs.ast_I, axis=0)),
+        "ast_lmn": (["ast_src", "lmn"], da.concatenate(obs.ast_lmn, axis=0)),
+        "ast_radec": (["ast_src", "radec"], da.concatenate(obs.ast_radec, axis=0).T),
+        # Satellite RFI parameters
+        "rfi_sat_A": (
+            ["sat_src", "time_fine", "ant", "freq"],
+            da.concatenate(obs.rfi_satellite_A_app, axis=0),
+        ),
+        "rfi_sat_xyz": (
+            ["sat_src", "time_fine", "xyz"],
+            da.concatenate(obs.rfi_satellite_xyz, axis=0),
+        ),
+        "rfi_sat_ang_sep": (
+            ["sat_src", "time_fine", "ant"],
+            da.concatenate(obs.rfi_satellite_ang_sep, axis=0),
+        ),
+        "rfi_sat_orbit": (
+            ["sat_src", "orbit"],
+            da.concatenate(obs.rfi_satellite_orbit, axis=0),
+        ),
+        # Stationary RFI parameters
+        "rfi_stat_A": (
+            ["stat_src", "time_fine", "ant", "freq"],
+            da.concatenate(obs.rfi_stationary_A_app, axis=0),
+        ),
+        "rfi_stat_xyz": (
+            ["stat_src", "time_fine", "xyz"],
+            da.concatenate(obs.rfi_stationary_xyz, axis=0),
+        ),
+        "rfi_stat_ang_sep": (
+            ["stat_src", "time_fine", "ant"],
+            da.concatenate(obs.rfi_stationary_ang_sep, axis=0),
+        ),
+        "rfi_stat_geo": (
+            ["stat_src", "geo"],
+            da.concatenate(obs.rfi_stationary_geo, axis=0),
+        ),
+    }
+
+    coords = {
+        "time": obs.times,
+        "time_fine": obs.times_fine,
+        "bl": np.arange(obs.n_bl),
+        "ant": np.arange(obs.n_ant),
+        "freq": obs.freqs,
+        "uvw": np.array(["u", "v", "w"]),
+        "lmn": np.array(["l", "m", "n"]),
+        "xyz": np.array(["x", "y", "z"]),
+        "enu": np.array(["east", "north", "up"]),
+        "radec": np.array(["ra", "dec"]),
+        "geo": np.array(["latitude", "longitude", "elevation"]),
+    }
+
+    attrs = {
+        "tel_latitude": obs.latitude,
+        "tel_longitude": obs.longitude,
+        "tel_elevation": obs.elevation,
+        "target_ra": obs.ra,
+        "target_dec": obs.dec,
+        "n_ant": obs.n_ant,
+        "n_freq": obs.n_freq,
+        "n_bl": obs.n_bl,
+        "n_time": obs.n_time,
+        "n_time_fine": obs.n_time_fine,
+        "n_int_samples": obs.n_int_samples,
+        "n_sat_src": obs.n_rfi_satellite,
+        "n_stat_src": obs.n_rfi_stationary,
+        "n_ast_src": obs.n_ast,
+    }
+
+    attrs = {
+        key: value.compute() if type(value) == da.Array else value
+        for key, value in attrs.items()
+    }
+
+    data.update(data_opt)
+    ds = xr.Dataset(data, coords=coords, attrs=attrs)
+    return ds
 
 
 ###################################################################################################
