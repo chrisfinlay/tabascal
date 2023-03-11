@@ -7,7 +7,7 @@ from jax import random
 from tabascal.utils.tools import (
     generate_random_sky,
     load_antennas,
-    save_observations,
+    # save_observations,
     str2bool,
 )
 
@@ -32,13 +32,22 @@ parser.add_argument("--N_a", default=8, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
 parser.add_argument("--seed", default=0, type=int, help="Random seed.")
 parser.add_argument(
-    "--satRFI", default="y", type=str2bool, help="Include satellite-based RFI source."
+    "--satRFI", default="yes", type=str2bool, help="Include satellite-based RFI source."
 )
 parser.add_argument(
-    "--grdRFI", default="y", type=str2bool, help="Include ground-based RFI source."
+    "--grdRFI", default="yes", type=str2bool, help="Include ground-based RFI source."
 )
 parser.add_argument(
     "--backend", default="dask", type=str, help="Use pure JAX or Dask backend."
+)
+parser.add_argument(
+    "--overwrite", default="no", type=str2bool, help="Overwrite existing observation."
+)
+parser.add_argument(
+    "--time_chunk", default=1, type=int, help="Chunk size for time dimension."
+)
+parser.add_argument(
+    "--freq_chunk", default=1, type=int, help="Chunk size for frequency dimension."
 )
 
 args = parser.parse_args()
@@ -54,11 +63,22 @@ RFI_amp = args.RFIamp
 seed = args.seed
 satRFI = args.satRFI
 grdRFI = args.grdRFI
+overwrite = args.overwrite
+time_chunk = args.time_chunk
+freq_chunk = args.freq_chunk
 
 if args.backend.lower() == "jax":
     from tabascal.jax.observation import Observation
+
+    print()
+    print("Using JAX backend")
+    print()
 else:
     from tabascal.dask.observation import Observation
+
+    print()
+    print("Using Dask backend")
+    print()
 
 ants_enu = random.permutation(random.PRNGKey(19), load_antennas("MeerKAT"))[:N_ant]
 
@@ -76,8 +96,8 @@ obs = Observation(
     SEFD=SEFD * freqs,
     ENU_array=ants_enu,
     n_int_samples=N_int,
-    time_chunk=len(times) // 5,
-    freq_chunk=1,
+    time_chunk=time_chunk,
+    freq_chunk=freq_chunk,
 )
 
 I, d_ra, d_dec = generate_random_sky(
@@ -91,8 +111,8 @@ I, d_ra, d_dec = generate_random_sky(
 
 obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
 
-# rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((obs.freqs - 1.2e9) / 2e7) ** 2)])
-rfi_P = RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, obs.n_freq))
+rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((freqs - 1.2e9) / 2e7) ** 2)])
+# rfi_P = RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, obs.n_freq))
 
 if satRFI:
     obs.addSatelliteRFI(
@@ -103,8 +123,8 @@ if satRFI:
         periapsis=jnp.array([5.0]),
     )
 
-# rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((obs.freqs - 1.5e9) / 2e7) ** 2)])
-rfi_P = RFI_amp * 1e-6 * jnp.ones((1, obs.n_freq))
+rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((freqs - 1.5e9) / 2e7) ** 2)])
+# rfi_P = RFI_amp * 1e-6 * jnp.ones((1, obs.n_freq))
 
 if grdRFI:
     obs.addStationaryRFI(
@@ -120,30 +140,15 @@ obs.calculate_vis()
 
 f_name = (
     f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T_{obs.n_freq:0>3}F"
-    + f"_{obs.n_ast:0>3}AST_{len(obs.rfi_orbit.keys())}SAT_{len(obs.rfi_geo.keys())}GRD"
+    + f"_{obs.n_ast:0>3}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
 )
 
 save_path = os.path.join(output_path, f_name)
 
-# save_observations(
-#     save_path,
-#     [
-#         obs,
-#     ],
-# )
-
+print(obs)
 print()
-print("Saved observations to:")
+print("Saving observation to:")
 print("----------------------")
-print(save_path + ".h5")
+print(save_path)
 
-# print(obs)
-
-print(args.backend.lower())
-
-if args.backend.lower() == "dask":
-    vis_obs = obs.vis_obs.compute()
-else:
-    vis_obs = obs.vis_obs
-
-print(vis_obs.mean())
+obs.write_to_disk(save_path, overwrite)
