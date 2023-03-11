@@ -13,7 +13,7 @@ def astro_vis(
 
     Parameters:
     -----------
-    sources: da.Array (n_freq, n_src)
+    sources: da.Array (n_src, n_freq)
         Array of point source intensities in Jy.
     uvw: da.Array (ntime, n_bl, 3)
         (u,v,w) coordinates of each baseline.
@@ -26,15 +26,15 @@ def astro_vis(
     --------
     vis: da.Array (n_time, n_bl, n_freq)
     """
-    n_time, n_bl, _ = uvw.shape
-    n_freq, _ = sources.shape
+    n_time, n_bl = uvw.shape[:2]
+    n_freq = freqs.shape[0]
 
     time_chunk, bl_chunk = uvw.chunksize[:2]
     freq_chunk = freqs.chunksize[0]
 
     input = xr.Dataset(
         {
-            "I": (["freq", "src"], sources),
+            "I": (["src", "freq"], sources),
             "uvw": (["time", "bl", "space"], uvw),
             "lmn": (["src", "space"], lmn),
             "freqs": (["freq"], freqs),
@@ -76,9 +76,9 @@ def rfi_vis(
 
     Parameters:
     -----------
-    app_amplitude: da.Array (n_time, n_ant, n_freq, n_src)
+    app_amplitude: da.Array (n_src, n_time, n_ant, n_freq)
         Apparent amplitude of the sources at each antenna.
-    c_distances: da.Array (n_time, n_ant, n_src)
+    c_distances: da.Array (n_src, n_time, n_ant)
         The phase corrected distances between the rfi sources and the antennas in metres.
     freqs: da.Array (n_freq,)
         Frequencies in Hz.
@@ -91,16 +91,18 @@ def rfi_vis(
     --------
     vis: da.Array (n_time, n_bl, n_freq)
     """
-    n_time, _, n_freq = app_amplitude.shape[:3]
+    n_time = app_amplitude.shape[1]
+    n_freq = freqs.shape[0]
     n_bl = a1.shape[0]
 
-    time_chunk, _, freq_chunk = app_amplitude.chunksize[:3]
+    time_chunk = app_amplitude.chunksize[1]
+    freq_chunk = freqs.chunksize[0]
     bl_chunk = a1.chunksize[0]
 
     input = xr.Dataset(
         {
-            "app_amplitude": (["time", "ant", "freq", "src"], app_amplitude),
-            "c_distances": (["time", "ant", "src"], c_distances),
+            "app_amplitude": (["src", "time", "ant", "freq"], app_amplitude),
+            "c_distances": (["src", "time", "ant"], c_distances),
             "freqs": (["freq"], freqs),
             "a1": (["bl"], a1),
             "a2": (["bl"], a2),

@@ -1,24 +1,26 @@
-from jax import jit, random
-import jax.numpy as jnp
-from jax.config import config
-
-from scipy.special import jv
 import sys
+
+import jax.numpy as jnp
+from jax import jit, random
+from jax.config import config
+from jax.lax import scan
+from scipy.special import jv
 
 config.update("jax_enable_x64", True)
 
 c = 2.99792458e8
 
 
+@jit
 def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     """
     Calculate visibilities from distances to rfi sources.
 
     Parameters
     ----------
-    app_amplitude: array_like (n_time, n_ant, n_freq, n_src)
+    app_amplitude: array_like (n_src, n_time, n_ant, n_freq)
         Apparent amplitude at the antennas.
-    c_distances: array_like (n_time, n_ant, n_src)
+    c_distances: array_like (n_src, n_time, n_ant)
         The phase corrected distances between the rfi sources and the antennas in metres.
     freqs: array_like (n_freq,)
         Frequencies in Hz.
@@ -32,17 +34,28 @@ def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     vis: array_like (n_time, n_bl, n_freq)
         The visibilities.
     """
+    n_src = app_amplitude.shape[0]
+    vis = _rfi_vis(app_amplitude[0, None], c_distances[0, None], freqs, a1, a2)
 
-    return _rfi_vis(app_amplitude, c_distances, freqs, a1, a2)
+    # This is a scan over the sources, but we can't use scan it unless we jit decorate this function
+    def _add_vis(vis, i):
+        return (
+            vis + _rfi_vis(app_amplitude[i, None], c_distances[i, None], freqs, a1, a2),
+            i,
+        )
+
+    return scan(_add_vis, vis, jnp.arange(1, n_src))[0]
+    # return _rfi_vis(app_amplitude, c_distances, freqs, a1, a2)
 
 
+@jit
 def astro_vis(sources, uvw, lmn, freqs):
     """
     Calculate visibilities from a set of point sources using DFT.
 
     Parameters
     ----------
-    sources: array_like (n_freq, n_src)
+    sources: array_like (n_src, n_freq)
         Array of point source intensities in Jy.
     uvw: array_like (ntime, n_bl, 3)
         (u,v,w) coordinates of each baseline.
@@ -56,8 +69,14 @@ def astro_vis(sources, uvw, lmn, freqs):
     vis: array_like (n_time, n_bl, n_freq)
         Visibilities of the given set of sources and baselines.
     """
+    n_src = sources.shape[0]
+    vis = _astro_vis(sources[0, None], uvw, lmn[0, None], freqs)
 
-    return _astro_vis(sources, uvw, lmn, freqs)
+    # This is a scan over the sources, but we can't use scan it unless we jit decorate this function
+    def _add_vis(vis, i):
+        return vis + _astro_vis(sources[i, None], uvw, lmn[i, None], freqs), i
+
+    return scan(_add_vis, vis, jnp.arange(1, n_src))[0]
 
 
 def ants_to_bl(G, a1, a2):
@@ -100,14 +119,14 @@ def amp_to_intensity(amps, a1, a2):
     """Calculate intensity on a baseline ffrom the amplitudes at each antenna.
 
     Args:
-        amps (jnp.ndarray): Amplitudes at the antennas. (n_time, n_ant, n_freq, n_src)
+        amps (jnp.ndarray): Amplitudes at the antennas. (n_src, n_time, n_ant, n_freq)
         a1 (jnp.ndarray): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
         a2 (jnp.ndarray): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
 
     Returns:
         jnp.ndarray: Intensity on baselines.
     """
-    return amps[:, a1] * jnp.conjugate(amps[:, a2])
+    return amps[:, :, a1] * jnp.conjugate(amps[:, :, a2])
 
 
 @jit
@@ -115,7 +134,7 @@ def phase_from_distances(distances, a1, a2, freqs):
     """Calculate phase differences between antennas from distances.
 
     Args:
-        distances (jnp.ndarray): Distances to antennas. (n_time, n_ant, n_src)
+        distances (jnp.ndarray): Distances to antennas. (n_src, n_time, n_ant)
         a1 (jnp.ndarray): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
         a2 (jnp.ndarray): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
         freqs (jnp.ndarray): Frequencies in Hz. (n_freq,)
@@ -123,11 +142,12 @@ def phase_from_distances(distances, a1, a2, freqs):
     Returns:
         jnp.ndarray: Phases on baselines.
     """
-    freqs = freqs[None, None, :, None]
-    distances = distances[:, :, None, :]
+    # Create array of shape (n_src, n_time, n_bl, n_freq)
+    freqs = freqs[None, None, None, :]
+    distances = distances[:, :, :, None]
 
     phases = minus_two_pi_over_lamda(freqs) * (
-        distances[:, a1, :] - distances[:, a2, :]
+        distances[:, :, a1, :] - distances[:, :, a2, :]
     )
 
     return phases
@@ -135,7 +155,7 @@ def phase_from_distances(distances, a1, a2, freqs):
 
 @jit
 def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
-    # Create array of shape (n_time, n_bl, n_freq, n_src), then sum over n_src
+    # Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
 
     app_amplitude = jnp.asarray(app_amplitude)
     c_distances = jnp.asarray(c_distances)
@@ -146,32 +166,24 @@ def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     phase = phase_from_distances(c_distances, a1, a2, freqs)
     intensity = amp_to_intensity(app_amplitude, a1, a2)
 
-    vis = jnp.sum(intensity * jnp.exp(1.0j * phase), axis=-1)
+    vis = jnp.sum(intensity * jnp.exp(1.0j * phase), axis=0)
 
     return vis
 
 
 @jit
 def _astro_vis(sources, uvw, lmn, freqs):
-    #     Create array of shape (n_time, n_bl, n_freq, n_src), then sum over n_src
+    #     Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
 
-    sources = jnp.asarray(
-        sources[None, None, :, :]
-    )  #     (1,      1,    n_freq, n_src)
-    freqs = jnp.asarray(freqs[None, None, :, None])  #      (1,      1,    n_freq, 1)
-    uvw = jnp.asarray(
-        uvw[:, :, None, None, :]
-    )  #          (n_time, n_bl, 1,      1,     3)
-    lmn = jnp.asarray(
-        lmn[None, None, None, :, :]
-    )  #       (1,      1,    1,      n_src, 3)
-    s0 = jnp.array([0, 0, 1])[
-        None, None, None, None, :
-    ]  # (1,      1,    1,      1,     3)
+    sources = jnp.asarray(sources[:, None, None, :])  #     (n_src, 1, n_freq)
+    freqs = jnp.asarray(freqs[None, None, None, :])  #      (1, 1, 1, n_freq)
+    uvw = jnp.asarray(uvw[None, :, :, None, :])  #          (1, n_time, n_bl, 1, 3)
+    lmn = jnp.asarray(lmn[:, None, None, None, :])  #       (n_src, 1, 1, 1, 3)
+    s0 = jnp.array([0, 0, 1])[None, None, None, None, :]  # (1, 1, 1, 1, 3)
 
     phase = minus_two_pi_over_lamda(freqs) * jnp.sum(uvw * (lmn - s0), axis=-1)
 
-    vis = jnp.sum(sources * jnp.exp(1.0j * phase), axis=-1)
+    vis = jnp.sum(sources * jnp.exp(1.0j * phase), axis=0)
 
     return vis
 
