@@ -237,14 +237,41 @@ def str2bool(v: str):
 
 def construct_observation_ds(obs):
     """Construct a dataset for a single observation."""
+
+    visibility_data = get_visibility_data(obs)
+    optional_data = get_optional_data(obs)
+
+    astromonical_source_data = get_astromonical_source_data(obs)
+    rfi_satellite_data = get_satellite_rfi_data(obs)
+    rfi_stationary_data = get_stationary_rfi_data(obs)
+
+    coordinates = get_coordinates(obs)
+    attributes = get_observation_attributes(obs)
+
     data = {
-        "vis_obs": (["time", "bl", "freq"], obs.vis_obs),
-        "vis_ast": (["time_fine", "bl", "freq"], obs.vis_ast),
+        **visibility_data,
+        **optional_data,
+        **astromonical_source_data,
+        **rfi_satellite_data,
+        **rfi_stationary_data,
     }
 
-    data_opt = {
-        # RFI Visibility
+    ds = xr.Dataset(data_vars=data, coords=coordinates, attrs=attributes)
+
+    return ds
+
+
+def get_visibility_data(obs):
+    vis_data = {
+        "vis_obs": (["time", "bl", "freq"], obs.vis_obs),
+        "vis_ast": (["time_fine", "bl", "freq"], obs.vis_ast),
         "vis_rfi": (["time_fine", "bl", "freq"], obs.vis_rfi),
+    }
+    return vis_data
+
+
+def get_optional_data(obs):
+    opt_data = {
         # Antenna indices
         "antenna1": (["bl"], obs.a1),
         "antenna2": (["bl"], obs.a2),
@@ -260,60 +287,11 @@ def construct_observation_ds(obs):
         # Gain parameters
         "gains_ants": (["time_fine", "ant", "freq"], obs.gains_ants),
         "gains_bl": (["time_fine", "bl", "freq"], obs.gains_bl),
-        # Astronomical source parameters
-        "ast_I": (["ast_src", "freq"], da.concatenate(obs.ast_I, axis=0)),
-        "ast_lmn": (["ast_src", "lmn"], da.concatenate(obs.ast_lmn, axis=0)),
-        "ast_radec": (["ast_src", "radec"], da.concatenate(obs.ast_radec, axis=0).T),
-        # Satellite RFI parameters
-        "rfi_sat_A": (
-            ["sat_src", "time_fine", "ant", "freq"],
-            da.concatenate(obs.rfi_satellite_A_app, axis=0),
-        ),
-        "rfi_sat_xyz": (
-            ["sat_src", "time_fine", "xyz"],
-            da.concatenate(obs.rfi_satellite_xyz, axis=0),
-        ),
-        "rfi_sat_ang_sep": (
-            ["sat_src", "time_fine", "ant"],
-            da.concatenate(obs.rfi_satellite_ang_sep, axis=0),
-        ),
-        "rfi_sat_orbit": (
-            ["sat_src", "orbit"],
-            da.concatenate(obs.rfi_satellite_orbit, axis=0),
-        ),
-        # Stationary RFI parameters
-        "rfi_stat_A": (
-            ["stat_src", "time_fine", "ant", "freq"],
-            da.concatenate(obs.rfi_stationary_A_app, axis=0),
-        ),
-        "rfi_stat_xyz": (
-            ["stat_src", "time_fine", "xyz"],
-            da.concatenate(obs.rfi_stationary_xyz, axis=0),
-        ),
-        "rfi_stat_ang_sep": (
-            ["stat_src", "time_fine", "ant"],
-            da.concatenate(obs.rfi_stationary_ang_sep, axis=0),
-        ),
-        "rfi_stat_geo": (
-            ["stat_src", "geo"],
-            da.concatenate(obs.rfi_stationary_geo, axis=0),
-        ),
     }
+    return opt_data
 
-    coords = {
-        "time": obs.times,
-        "time_fine": obs.times_fine,
-        "bl": np.arange(obs.n_bl),
-        "ant": np.arange(obs.n_ant),
-        "freq": obs.freqs,
-        "uvw": np.array(["u", "v", "w"]),
-        "lmn": np.array(["l", "m", "n"]),
-        "xyz": np.array(["x", "y", "z"]),
-        "enu": np.array(["east", "north", "up"]),
-        "radec": np.array(["ra", "dec"]),
-        "geo": np.array(["latitude", "longitude", "elevation"]),
-    }
 
+def get_observation_attributes(obs):
     attrs = {
         "tel_latitude": obs.latitude,
         "tel_longitude": obs.longitude,
@@ -330,15 +308,97 @@ def construct_observation_ds(obs):
         "n_stat_src": obs.n_rfi_stationary,
         "n_ast_src": obs.n_ast,
     }
+    if obs.backend == "dask":
+        attrs = {
+            key: value.compute() if type(value) == da.Array else value
+            for key, value in attrs.items()
+        }
+    return attrs
 
-    attrs = {
-        key: value.compute() if type(value) == da.Array else value
-        for key, value in attrs.items()
+
+def get_coordinates(obs):
+    coords = {
+        "time": obs.times,
+        "time_fine": obs.times_fine,
+        "freq": obs.freqs,
+        "bl": np.arange(obs.n_bl),
+        "ant": np.arange(obs.n_ant),
+        "uvw": np.array(["u", "v", "w"]),
+        "lmn": np.array(["l", "m", "n"]),
+        "xyz": np.array(["x", "y", "z"]),
+        "enu": np.array(["east", "north", "up"]),
+        "radec": np.array(["ra", "dec"]),
+        "geo": np.array(["latitude", "longitude", "elevation"]),
     }
+    return coords
 
-    data.update(data_opt)
-    ds = xr.Dataset(data, coords=coords, attrs=attrs)
-    return ds
+
+def get_astromonical_source_data(obs):
+    if obs.n_ast > 0:
+        ast_data = {
+            # Astronomical source parameters
+            "ast_I": (["ast_src", "freq"], da.concatenate(obs.ast_I, axis=0)),
+            "ast_lmn": (["ast_src", "lmn"], da.concatenate(obs.ast_lmn, axis=0)),
+            "ast_radec": (
+                ["ast_src", "radec"],
+                da.concatenate(obs.ast_radec, axis=0).T,
+            ),
+        }
+    else:
+        ast_data = {}
+    return ast_data
+
+
+def get_satellite_rfi_data(obs):
+    if obs.n_rfi_satellite > 0:
+        rfi_sat = {
+            # Satellite RFI parameters
+            "rfi_sat_A": (
+                ["sat_src", "time_fine", "ant", "freq"],
+                da.concatenate(obs.rfi_satellite_A_app, axis=0),
+            ),
+            "rfi_sat_xyz": (
+                ["sat_src", "time_fine", "xyz"],
+                da.concatenate(obs.rfi_satellite_xyz, axis=0),
+            ),
+            "rfi_sat_ang_sep": (
+                ["sat_src", "time_fine", "ant"],
+                da.concatenate(obs.rfi_satellite_ang_sep, axis=0),
+            ),
+            "rfi_sat_orbit": (
+                ["sat_src", "orbit"],
+                da.concatenate(obs.rfi_satellite_orbit, axis=0),
+            ),
+        }
+    else:
+        rfi_sat = {}
+    return rfi_sat
+
+
+def get_stationary_rfi_data(obs):
+    if obs.n_rfi_stationary > 0:
+        rfi_stat = {
+            # Stationary RFI parameters
+            "rfi_stat_A": (
+                ["stat_src", "time_fine", "ant", "freq"],
+                da.concatenate(obs.rfi_stationary_A_app, axis=0),
+            ),
+            "rfi_stat_xyz": (
+                ["stat_src", "time_fine", "xyz"],
+                da.concatenate(obs.rfi_stationary_xyz, axis=0),
+            ),
+            "rfi_stat_ang_sep": (
+                ["stat_src", "time_fine", "ant"],
+                da.concatenate(obs.rfi_stationary_ang_sep, axis=0),
+            ),
+            "rfi_stat_geo": (
+                ["stat_src", "geo"],
+                da.concatenate(obs.rfi_stationary_geo, axis=0),
+            ),
+        }
+    else:
+        rfi_stat = {}
+    return rfi_stat
 
 
 ###################################################################################################
