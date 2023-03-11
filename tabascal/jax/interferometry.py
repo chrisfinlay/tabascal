@@ -391,6 +391,42 @@ def generate_gains(
     return gains_ants
 
 
+def apply_gains(
+    vis_ast: jnp.ndarray,
+    vis_rfi: jnp.ndarray,
+    gains: jnp.ndarray,
+    a1: jnp.ndarray,
+    a2: jnp.ndarray,
+):
+    """Apply antenna gains to visibilities.
+
+    Parameters
+    ----------
+    vis_ast: ndarray (n_time, n_bl, n_freq)
+        The astronomical visibilities.
+    vis_rfi: ndarray (n_time, n_bl, n_freq)
+        The RFI visibilities.
+    gains: ndarray (n_time, n_ant, n_freq)
+        The antenna gains.
+    a1: ndarray (n_bl,)
+        The first antenna index for each baseline.
+    a2: ndarray (n_bl,)
+        The second antenna index for each baseline.
+
+    Returns
+    -------
+    vis_obs: ndarray (n_time, n_bl, n_freq)
+        The visibilities with gains applied.
+    """
+    vis_ast = jnp.asarray(vis_ast)
+    vis_rfi = jnp.asarray(vis_rfi)
+    gains = jnp.asarray(gains)
+    a1 = jnp.asarray(a1)
+    a2 = jnp.asarray(a2)
+    vis_obs = gains[:, a1] * (vis_ast + vis_rfi) * jnp.conj(gains[:, a2])
+    return vis_obs
+
+
 def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
     """Average visibilities in time.
 

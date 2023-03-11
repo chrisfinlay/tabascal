@@ -297,6 +297,52 @@ def generate_gains(
     return gain_ants
 
 
+def apply_gains(
+    vis_ast: da.Array,
+    vis_rfi: da.Array,
+    gains: da.Array,
+    a1: da.Array,
+    a2: da.Array,
+) -> da.Array:
+    n_time, n_bl, n_freq = vis_ast.shape
+
+    time_chunk, bl_chunk, freq_chunk = vis_ast.chunksize
+
+    input = xr.Dataset(
+        {
+            "vis_ast": (["time", "bl", "freq"], vis_ast),
+            "vis_rfi": (["time", "bl", "freq"], vis_rfi),
+            "gains": (["time", "ant", "freq"], gains),
+            "a1": (["bl"], a1),
+            "a2": (["bl"], a2),
+        }
+    )
+
+    output = xr.Dataset(
+        {
+            "vis_obs": (
+                ["time", "bl", "freq"],
+                da.zeros(
+                    (n_time, n_bl, n_freq),
+                    chunks=(time_chunk, bl_chunk, freq_chunk),
+                    dtype=vis_ast.dtype,
+                ),
+            )
+        }
+    )
+
+    def _apply_gains(ds):
+        vis_obs = delayed(itf.apply_gains)(
+            ds.vis_ast.data, ds.vis_rfi.data, ds.gains.data, ds.a1.data, ds.a2.data
+        ).compute()
+        ds_out = xr.Dataset({"vis_obs": (["time", "bl", "freq"], vis_obs)})
+        return ds_out
+
+    ds = xr.map_blocks(_apply_gains, input, template=output)
+
+    return ds.vis_obs.data
+
+
 def time_avg(vis, n_int_samples):
     return da.mean(
         da.reshape(vis, (-1, n_int_samples, vis.shape[1], vis.shape[2])), axis=1

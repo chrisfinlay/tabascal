@@ -267,6 +267,8 @@ def get_visibility_data(obs):
         "vis_ast": (["time_fine", "bl", "freq"], obs.vis_ast),
         "vis_rfi": (["time_fine", "bl", "freq"], obs.vis_rfi),
     }
+    if obs.backend == "jax":
+        vis_data = {k: (v[0], da.from_array(v[1])) for k, v in vis_data.items()}
     return vis_data
 
 
@@ -286,8 +288,9 @@ def get_optional_data(obs):
         "noise_data": (["time", "bl", "freq"], obs.noise_data),
         # Gain parameters
         "gains_ants": (["time_fine", "ant", "freq"], obs.gains_ants),
-        "gains_bl": (["time_fine", "bl", "freq"], obs.gains_bl),
     }
+    if obs.backend == "jax":
+        opt_data = {k: (v[0], da.from_array(v[1])) for k, v in opt_data.items()}
     return opt_data
 
 
@@ -310,8 +313,7 @@ def get_observation_attributes(obs):
     }
     if obs.backend == "dask":
         attrs = {
-            key: value.compute() if type(value) == da.Array else value
-            for key, value in attrs.items()
+            k: v.compute() if isinstance(v, da.Array) else v for k, v in attrs.items()
         }
     return attrs
 
@@ -330,6 +332,8 @@ def get_coordinates(obs):
         "radec": np.array(["ra", "dec"]),
         "geo": np.array(["latitude", "longitude", "elevation"]),
     }
+    if obs.backend == "jax":
+        coords = {k: da.from_array(v) for k, v in coords.items()}
     return coords
 
 

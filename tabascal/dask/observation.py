@@ -22,7 +22,7 @@ from tabascal.dask.interferometry import (
     SEFD_to_noise_std,
     int_sample_times,
     generate_gains,
-    ants_to_bl,
+    apply_gains,
     time_avg,
 )
 from tabascal.utils.tools import beam_size, construct_observation_ds
@@ -244,11 +244,6 @@ class Observation(Telescope):
             chunks=(self.time_chunk, self.ant_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
-        self.gains_bl = da.ones(
-            shape=(self.n_time_fine, self.n_bl, self.n_freq),
-            chunks=(self.time_chunk, self.bl_chunk, self.freq_chunk),
-            dtype=jnp.complex128,
-        )
         self.random_seed = np.random.default_rng(random_seed)
 
         self.n_ast = 0
@@ -406,15 +401,6 @@ Number of stationary RFI : {n_stat}"""
 
         # angular_seps is shape (n_src,n_time_fine,n_ant)
         rfi_A_app = da.sqrt(I) * airy_beam(angular_seps, self.freqs, self.dish_d)
-
-        orbits = da.stack([elevation, inclination, lon_asc_node, periapsis], axis=1)
-
-        self.rfi_satellite_xyz.append(rfi_xyz)
-        self.rfi_satellite_orbit.append(orbits)
-        self.rfi_satellite_ang_sep.append(angular_seps)
-        self.rfi_satellite_A_app.append(rfi_A_app)
-        self.n_rfi_satellite += len(I)
-
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # distances is shape (n_src,n_time_fine,n_ant)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
@@ -427,6 +413,14 @@ Number of stationary RFI : {n_stat}"""
             self.a2,
         )
         self.vis_rfi += vis_rfi
+
+        orbits = da.stack([elevation, inclination, lon_asc_node, periapsis], axis=1)
+
+        self.rfi_satellite_xyz.append(rfi_xyz)
+        self.rfi_satellite_orbit.append(orbits)
+        self.rfi_satellite_ang_sep.append(angular_seps)
+        self.rfi_satellite_A_app.append(rfi_A_app)
+        self.n_rfi_satellite += len(I)
 
     def addStationaryRFI(
         self,
@@ -475,14 +469,6 @@ Number of stationary RFI : {n_stat}"""
         angular_seps = angular_separation(rfi_xyz, self.ants_xyz, self.ra, self.dec)
         rfi_A_app = da.sqrt(I) * airy_beam(angular_seps, self.freqs, self.dish_d)
 
-        positions = da.stack([latitude, longitude, elevation], axis=1)
-
-        self.rfi_stationary_xyz.append(rfi_xyz)
-        self.rfi_stationary_geo.append(positions)
-        self.rfi_stationary_ang_sep.append(angular_seps)
-        self.rfi_stationary_A_app.append(rfi_A_app)
-        self.n_rfi_stationary += len(I)
-
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
@@ -492,7 +478,16 @@ Number of stationary RFI : {n_stat}"""
             self.a1,
             self.a2,
         )
+
         self.vis_rfi += vis_rfi
+
+        positions = da.stack([latitude, longitude, elevation], axis=1)
+
+        self.rfi_stationary_xyz.append(rfi_xyz)
+        self.rfi_stationary_geo.append(positions)
+        self.rfi_stationary_ang_sep.append(angular_seps)
+        self.rfi_stationary_A_app.append(rfi_A_app)
+        self.n_rfi_stationary += len(I)
 
     def addGains(
         self,
@@ -533,14 +528,15 @@ Number of stationary RFI : {n_stat}"""
             self.n_freq,
             random_seed if random_seed else self.random_seed,
         )
-        self.gains_bl = ants_to_bl(self.gains_ants, self.a1, self.a2)
 
     def calculate_vis(self, random_seed=None):
         """
         Calculate the total gain amplified visibilities,  average down to the
         originally defined sampling rate and add noise.
         """
-        self.vis = self.gains_bl * (self.vis_ast + self.vis_rfi)
+        self.vis = apply_gains(
+            self.vis_ast, self.vis_rfi, self.gains_ants, self.a1, self.a2
+        )
         self.vis_avg = time_avg(self.vis, self.n_int_samples)
         self.vis_obs, self.noise_data = add_noise(
             self.vis_avg,

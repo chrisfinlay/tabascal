@@ -23,10 +23,10 @@ from tabascal.jax.interferometry import (
     SEFD_to_noise_std,
     int_sample_times,
     generate_gains,
-    ants_to_bl,
+    apply_gains,
     time_avg,
 )
-from tabascal.utils.tools import beam_size
+from tabascal.utils.tools import beam_size, construct_observation_ds
 
 config.update("jax_enable_x64", True)
 
@@ -204,49 +204,80 @@ class Observation(Telescope):
         self.vis_rfi = jnp.zeros(
             (self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128
         )
-        self.gains_bl = jnp.ones(
-            (self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128
+        self.gains_ants = jnp.ones(
+            (self.n_time_fine, self.n_ant, self.n_freq), dtype=jnp.complex128
         )
         self.key = random.PRNGKey(random_seed)
+
+        self.n_ast = 0
+        self.n_rfi_satellite = 0
+        self.n_rfi_stationary = 0
+
         self.create_source_dicts()
 
     def __str__(self):
-        msg = f"""
+        msg = """
 Observation Details
 -------------------
-Phase Centre (ra, dec) :  ({self.ra:.1f}, {self.dec:.1f}) deg.
-Number of antennas :       {self.n_ants}
-Number of baselines :      {self.n_bl}
-Autocorrelations :         {self.auto_corrs}
+Phase Centre (ra, dec) :  ({ra:.1f}, {dec:.1f}) deg.
+Number of antennas :       {n_ant}
+Number of baselines :      {n_bl}
+Autocorrelations :         {auto_corrs}
 
-Frequency range :         ({self.freqs.min()/1e6:.0f} - {self.freqs.max()/1e6:.0f}) MHz
-Channel width :            {self.chan_width/1e3:.0f} kHz
-Number of channels :       {self.n_freq}
+Frequency range :         ({freq_min:.0f} - {freq_max:.0f}) MHz
+Channel width :            {chan_width:.0f} kHz
+Number of channels :       {n_freq}
 
-Observation time :        ({self.times[0]:.0f} - {self.times[-1]:.0f}) s
-Integration time :         {self.int_time:.0f} s
-Sampling rate :            {self.n_int_samples/self.int_time:.1f} Hz
-Number of time steps :     {self.n_time}
+Observation time :        ({time_min:.0f} - {time_max:.0f}) s
+Integration time :         {int_time:.0f} s
+Sampling rate :            {sampling_rate:.1f} Hz
+Number of time steps :     {n_time}
 
 Source Details
 --------------
-Number of ast. sources:    {self.n_ast}
-Number of RFI sources:     {self.n_rfi}
-Number of satellite RFI :  {len(self.rfi_orbit.keys())}
-Number of stationary RFI : {len(self.rfi_geo.keys())}"""
-        return super().__str__() + msg
+Number of ast. sources:    {n_ast}
+Number of RFI sources:     {n_rfi}
+Number of satellite RFI :  {n_sat}
+Number of stationary RFI : {n_stat}"""
+
+        params = {
+            "ra": self.ra,
+            "dec": self.dec,
+            "n_ant": self.n_ant,
+            "n_bl": self.n_bl,
+            "auto_corrs": self.auto_corrs,
+            "freq_min": self.freqs.min() / 1e6,
+            "freq_max": self.freqs.max() / 1e6,
+            "time_min": self.times.min(),
+            "time_max": self.times.max(),
+            "chan_width": self.chan_width / 1e3,
+            "n_freq": self.n_freq,
+            "times": self.times,
+            "int_time": self.int_time,
+            "n_time": self.n_time,
+            "sampling_rate": self.n_int_samples / self.int_time,
+            "n_ast": self.n_ast,
+            "n_rfi": self.n_rfi_satellite + self.n_rfi_stationary,
+            "n_sat": self.n_rfi_satellite,
+            "n_stat": self.n_rfi_stationary,
+        }
+
+        return super().__str__() + msg.format(**params)
 
     def create_source_dicts(self):
-        self.ast_I = {}
-        self.ast_lmn = {}
-        self.ast_radec = {}
+        self.ast_I = []
+        self.ast_lmn = []
+        self.ast_radec = []
 
-        self.rfi_I = {}
-        self.rfi_xyz = {}
-        self.rfi_orbit = {}
-        self.rfi_geo = {}
-        self.rfi_ang_sep = {}
-        self.rfi_A_app = {}
+        self.rfi_satellite_xyz = []
+        self.rfi_satellite_orbit = []
+        self.rfi_satellite_ang_sep = []
+        self.rfi_satellite_A_app = []
+
+        self.rfi_stationary_xyz = []
+        self.rfi_stationary_geo = []
+        self.rfi_stationary_ang_sep = []
+        self.rfi_stationary_A_app = []
 
     def addAstro(self, I: jnp.ndarray, ra: jnp.ndarray, dec: jnp.ndarray):
         """
@@ -264,18 +295,16 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
         theta = jnp.arcsin(jnp.linalg.norm(lmn[:, :-1], axis=-1))
         I_app = (
-            I[:, None, None, :]
-            * airy_beam(theta[:, None, None], self.freqs, self.dish_d) ** 2
+            I
+            * airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, 0, 0, :] ** 2
         )
-        vis_ast = astro_vis(I_app[:, 0, 0, :], self.bl_uvw, lmn, self.freqs)
 
-        n_src = I.shape[0]
-        for i in range(n_src):
-            self.ast_I.update({self.n_ast: I[i]})
-            self.ast_lmn.update({self.n_ast: lmn})
-            self.ast_radec.update({self.n_ast: jnp.array([ra, dec])})
-            self.n_ast += 1
-        self.vis_ast += vis_ast
+        self.vis_ast += astro_vis(I_app, self.bl_uvw, lmn, self.freqs)
+
+        self.ast_I.append(I)
+        self.ast_lmn.append(lmn)
+        self.ast_radec.append(jnp.array([ra, dec]))
+        self.n_ast += len(I)
 
     def addSatelliteRFI(
         self,
@@ -314,7 +343,6 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
         # distances is shape (n_src,n_time_fine,n_ant)
         I = Pv_to_Sv(Pv, distances)
         # I is shape (n_src,n_time_fine,n_ant,n_freq)
-        rfi_orbit = jnp.array([elevation, inclination, lon_asc_node, periapsis]).T
 
         angular_seps = angular_separation(rfi_xyz, self.ants_xyz, self.ra, self.dec)
         # angular_seps is shape (n_src,n_time_fine,n_ant)
@@ -322,14 +350,13 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
             angular_seps[:, :, :], self.freqs, self.dish_d
         )
 
-        n_src = Pv.shape[0]
-        for i in range(n_src):
-            self.rfi_I.update({self.n_rfi: I[i]})
-            self.rfi_xyz.update({self.n_rfi: rfi_xyz[i]})
-            self.rfi_orbit.update({self.n_rfi: rfi_orbit[i]})
-            self.rfi_ang_sep.update({self.n_rfi: angular_seps[i]})
-            self.rfi_A_app.update({self.n_rfi: rfi_A_app[i]})
-            self.n_rfi += 1
+        orbits = jnp.stack([elevation, inclination, lon_asc_node, periapsis], axis=1)
+
+        self.rfi_satellite_xyz.append(rfi_xyz)
+        self.rfi_satellite_orbit.append(orbits)
+        self.rfi_satellite_ang_sep.append(angular_seps)
+        self.rfi_satellite_A_app.append(rfi_A_app)
+        self.n_rfi_satellite += len(I)
 
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # distances is shape (n_src,n_time_fine,n_ant)
@@ -381,15 +408,6 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
             angular_seps[:, :, :], self.freqs, self.dish_d
         )
 
-        n_src = Pv.shape[0]
-        for i in range(n_src):
-            self.rfi_I.update({self.n_rfi: I[i]})
-            self.rfi_xyz.update({self.n_rfi: rfi_xyz[i]})
-            self.rfi_geo.update({self.n_rfi: rfi_geo[i]})
-            self.rfi_ang_sep.update({self.n_rfi: angular_seps[i]})
-            self.rfi_A_app.update({self.n_rfi: rfi_A_app[i]})
-            self.n_rfi += 1
-
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
@@ -399,7 +417,16 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
             self.a1,
             self.a2,
         )
+
         self.vis_rfi += vis_rfi
+
+        positions = jnp.stack([latitude, longitude, elevation], axis=1)
+
+        self.rfi_stationary_xyz.append(rfi_xyz)
+        self.rfi_stationary_geo.append(positions)
+        self.rfi_stationary_ang_sep.append(angular_seps)
+        self.rfi_stationary_A_app.append(rfi_A_app)
+        self.n_rfi_stationary += len(I)
 
     def addGains(
         self,
@@ -442,15 +469,25 @@ Number of stationary RFI : {len(self.rfi_geo.keys())}"""
             self.n_freq,
             key,
         )
-        self.gains_bl = ants_to_bl(self.gains_ants, self.a1, self.a2)
 
     def calculate_vis(self):
         """
         Calculate the total gain amplified visibilities and average down to the
         originally defined sampling rate.
         """
-        self.vis = self.gains_bl * (self.vis_ast + self.vis_rfi)
+        self.vis = apply_gains(
+            self.vis_ast, self.vis_rfi, self.gains_ants, self.a1, self.a2
+        )
         self.vis_avg = time_avg(self.vis, self.n_int_samples)
         self.vis_obs, self.noise_data = add_noise(
             self.vis_avg, self.noise_std, self.key
         )
+
+    def write_to_disk(self, path: str = "Observation", overwrite: bool = False):
+        """
+        Write the visibilities to disk.
+        """
+        mode = "w" if overwrite else "w-"
+        ds = construct_observation_ds(self)
+        ds.to_zarr(path, mode=mode)
+        return ds
