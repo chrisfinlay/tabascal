@@ -7,3 +7,4 @@ examples
 *.h5
 *.ipynb
 *.npy
+*.log
