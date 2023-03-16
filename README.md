@@ -8,6 +8,23 @@ including certain near-field effects. Visibility data is jointly calibrated and
 cleaned from specific RFI contamination by modelling the RFI signal in the
 visibilities.
 
+# Installation
+
+`git clone https://github.com/chrisfinlay/tabascal.git`
+
+## Conda Environment (Recommended)
+
+`conda env create -f tabascal/tabascal_env.yaml`
+`pip install ./tabascal/`
+
+# Simulate a contaminated MeerKAT observation
+
+`python tabascal/examples/sim.py`
+
+## Help function
+
+`python tabascal/examples/sim.py --help`
+
 # Documentation
 
 [https://tabascal.readthedocs.io/en/latest/](https://tabascal.readthedocs.io/en/latest/)

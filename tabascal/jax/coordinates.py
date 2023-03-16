@@ -11,6 +11,7 @@ R_e = 6.371e6  # Average radius of the Earth
 T_s = 86164.0905  # Sidereal day in seconds
 
 
+@jit
 def radec_to_lmn(
     ra: jnp.ndarray, dec: jnp.ndarray, phase_centre: jnp.ndarray
 ) -> jnp.ndarray:
@@ -50,6 +51,7 @@ def radec_to_lmn(
     return jnp.array([l, m, n]).T
 
 
+@jit
 def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray) -> jnp.ndarray:
     """
     Convert Right ascension and Declination to unit vector in ECI coordinates.
@@ -76,6 +78,7 @@ def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray) -> jnp.ndarray:
     return jnp.array([x, y, z]).T
 
 
+@jit
 def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray) -> jnp.ndarray:
     """
     Convert a set of points in ENU co-ordinates to geographic coordinates i.e.
@@ -105,6 +108,7 @@ def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray) -> jnp.ndarray:
     return geo_ants
 
 
+@jit
 def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
     """
     Convert geographic coordinates to an Earth Centred Inertial (ECI)
@@ -143,6 +147,7 @@ def GEO_to_XYZ(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
     return jnp.array([x, y, z]).T
 
 
+@jit
 def GEO_to_XYZ_vmap0(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
     """
     Convert geographic coordinates to an Earth Centred Inertial (ECI)
@@ -168,6 +173,7 @@ def GEO_to_XYZ_vmap0(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
     return vmap(GEO_to_XYZ, in_axes=(0, None), out_axes=0)(geo, times)
 
 
+@jit
 def GEO_to_XYZ_vmap1(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
     """
     Convert geographic coordinates to an Earth Centred Inertial (ECI)
@@ -193,6 +199,7 @@ def GEO_to_XYZ_vmap1(geo: jnp.ndarray, times: jnp.ndarray) -> jnp.ndarray:
     return vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)(geo, times)
 
 
+@jit
 def ENU_to_ITRF(enu: jnp.ndarray, lat: float, lon: float) -> jnp.ndarray:
     """
     Calculate ITRF coordinates from ENU coordinates of antennas given the
@@ -226,6 +233,7 @@ def ENU_to_ITRF(enu: jnp.ndarray, lat: float, lon: float) -> jnp.ndarray:
     return itrf
 
 
+@jit
 def ITRF_to_UVW(
     ITRF: jnp.ndarray, ra: float, dec: float, lon: float, time: float
 ) -> jnp.ndarray:
@@ -275,7 +283,7 @@ def ITRF_to_UVW(
     return uvw
 
 
-# @jit
+@jit
 def ENU_to_UVW(
     enu: jnp.ndarray,
     latitude: float,
@@ -324,6 +332,7 @@ def ENU_to_UVW(
     return uvw
 
 
+@jit
 def angular_separation(
     rfi_xyz: jnp.ndarray, ants_xyz: jnp.ndarray, ra: float, dec: float
 ) -> jnp.ndarray:
@@ -361,7 +370,7 @@ def angular_separation(
     return angles
 
 
-# @jit
+@jit
 def Rotx(theta: float) -> jnp.ndarray:
     """
     Define a rotation matrix about the 'x-axis' by an angle theta, in degrees.
@@ -384,7 +393,7 @@ def Rotx(theta: float) -> jnp.ndarray:
     return Rx
 
 
-# @jit
+@jit
 def Rotz(theta: float) -> jnp.ndarray:
     """
     Define a rotation matrix about the 'z-axis' by an angle theta, in degrees.
@@ -407,7 +416,7 @@ def Rotz(theta: float) -> jnp.ndarray:
     return Rz
 
 
-# @jit
+@jit
 def orbit(
     times: jnp.ndarray,
     elevation: float,
@@ -421,7 +430,7 @@ def orbit(
     Parameters
     ----------
     times: ndarray (n_time,)
-        Times at which to evaluate the rotation matrices.
+        Times at which to evaluate the positions.
     elevation: float
         Elevation/Altitude of the orbit in metres.
     inclination: float
@@ -435,8 +444,8 @@ def orbit(
 
     Returns
     -------
-    velocity: ndarray (n_time, 3)
-         The velocity vector of the orbiting object at each specified time.
+    positions: ndarray (n_time, 3)
+         The position vector of the orbiting object at each specified time.
     """
     times = jnp.asarray(times)
     elevation = jnp.asarray(elevation).flatten()[0]
@@ -468,7 +477,7 @@ def orbit_vmap(
     Parameters
     ----------
     times: ndarray (n_time,)
-        Times at which to evaluate the rotation matrices.
+        Times at which to evaluate the positions.
     elevation: nd_array (n_orbits,)
         Elevation/Altitude of the orbit in metres.
     inclination: nd_array (n_orbits,)
@@ -482,15 +491,15 @@ def orbit_vmap(
 
     Returns
     -------
-    velocity: ndarray (n_orbits, n_time, 3)
-         The velocity vector of the orbiting object at each specified time.
+    positions: ndarray (n_orbits, n_time, 3)
+         The position vectors of the orbiting objects at each specified time.
     """
     return vmap(orbit, in_axes=(None, 0, 0, 0, 0))(
         times, elevation, inclination, lon_asc_node, periapsis
     )
 
 
-# @jit
+@jit
 def orbit_velocity(
     times: jnp.ndarray,
     elevation: float,
@@ -534,7 +543,7 @@ def orbit_velocity(
     return velocity
 
 
-# @jit
+@jit
 def R_uvw(
     times: jnp.ndarray,
     elevation: float,
@@ -584,7 +593,7 @@ def R_uvw(
     return R
 
 
-# @jit
+@jit
 def RIC_dev(
     times: jnp.ndarray,
     true_orbit_params: jnp.ndarray,
@@ -623,7 +632,7 @@ def RIC_dev(
     return est_uvw - true_uvw
 
 
-# @jit
+@jit
 def orbit_fisher(
     times: jnp.ndarray, orbit_params: jnp.ndarray, RIC_std: jnp.ndarray
 ) -> jnp.ndarray:

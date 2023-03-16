@@ -230,6 +230,7 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
     return (2 * jv(1, x) / x) * mask
 
 
+# @jit
 def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
     """
     Convert emission power to received intensity in Jy. Assumes constant
@@ -257,6 +258,7 @@ def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
     return Pv[:, None, None, :] / (4 * jnp.pi * d[:, :, :, None] ** 2) * 1e26
 
 
+# @jit
 def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):
     """
     Add complex gaussian noise to the integrated visibilities. The real and
@@ -281,6 +283,7 @@ def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):
     return vis + noise, noise
 
 
+# @jit
 def SEFD_to_noise_std(
     SEFD: jnp.ndarray, chan_width: jnp.ndarray, int_time: jnp.ndarray
 ):
@@ -307,6 +310,7 @@ def SEFD_to_noise_std(
     return SEFD / jnp.sqrt(2 * chan_width * int_time)
 
 
+# @jit
 def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
     """Calculate the times at which to sample the visibilities for
 
@@ -333,6 +337,7 @@ def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
     return times_fine
 
 
+# @jit
 def generate_gains(
     G0_mean: complex,
     G0_std: float,
@@ -391,6 +396,7 @@ def generate_gains(
     return gains_ants
 
 
+# @jit
 def apply_gains(
     vis_ast: jnp.ndarray,
     vis_rfi: jnp.ndarray,
@@ -427,6 +433,7 @@ def apply_gains(
     return vis_obs
 
 
+@jit
 def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
     """Average visibilities in time.
 
@@ -451,6 +458,7 @@ def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
     return vis_avg
 
 
+# @jit
 def db_to_lin(dB: float):
     """
     Convert deciBels to linear units.

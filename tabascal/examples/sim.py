@@ -1,8 +1,7 @@
 import argparse
 import os
 
-import jax.numpy as jnp
-from jax import random
+import numpy as np
 
 from tabascal.utils.tools import (
     generate_random_sky,
@@ -82,10 +81,11 @@ else:
     print("Using Dask backend")
     print()
 
-ants_enu = random.permutation(random.PRNGKey(19), load_antennas("MeerKAT"))[:N_ant]
+rng = np.random.default_rng(12345)
+ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
 
-times = jnp.arange(t_0, t_0 + N_t * dT, dT)
-freqs = jnp.linspace(1.1e9, 1.4e9, N_freq)
+times = np.arange(t_0, t_0 + N_t * dT, dT)
+freqs = np.linspace(1.1e9, 1.4e9, N_freq)
 
 obs = Observation(
     latitude=-30.0,
@@ -95,10 +95,10 @@ obs = Observation(
     dec=15.0,
     times=times,
     freqs=freqs,
-    SEFD=SEFD * freqs,
+    SEFD=SEFD,
     ENU_array=ants_enu,
     n_int_samples=N_int,
-    max_chunk_bytes=chunksize,
+    max_chunk_MB=chunksize,
 )
 
 I, d_ra, d_dec = generate_random_sky(
@@ -112,30 +112,30 @@ I, d_ra, d_dec = generate_random_sky(
 
 obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
 
-rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((freqs - 1.2e9) / 2e7) ** 2)])
+rfi_P = RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 2e7) ** 2)
 # rfi_P = RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, obs.n_freq))
 
 if satRFI:
     obs.addSatelliteRFI(
         Pv=rfi_P,
-        elevation=jnp.array([202e5]),
-        inclination=jnp.array([55.0]),
-        lon_asc_node=jnp.array([21.0]),
-        periapsis=jnp.array([5.0]),
+        elevation=202e5,
+        inclination=55.0,
+        lon_asc_node=21.0,
+        periapsis=5.0,
     )
 
-rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2)])
+rfi_P = RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2)
 # rfi_P = RFI_amp * 1e-6 * jnp.ones((1, obs.n_freq))
 
 if grdRFI:
     obs.addStationaryRFI(
         Pv=rfi_P,
-        latitude=jnp.array([-20.0]),
-        longitude=jnp.array([30.0]),
-        elevation=jnp.array([obs.elevation]),
+        latitude=-20.0,
+        longitude=30.0,
+        elevation=obs.elevation,
     )
 
-obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=jnp.deg2rad(1e-3))
+obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=np.deg2rad(1e-3))
 
 obs.calculate_vis()
 

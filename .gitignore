@@ -8,3 +8,4 @@ examples
 *.ipynb
 *.npy
 *.log
+*.ipynb_checkpoints

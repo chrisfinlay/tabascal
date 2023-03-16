@@ -164,7 +164,7 @@ class Observation(Telescope):
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
         self.freqs = jnp.asarray(freqs)
-        self.SEFD = jnp.asarray(SEFD)
+        self.SEFD = jnp.asarray(SEFD) * jnp.ones(len(freqs))
         self.chan_width = (
             float(jnp.abs(jnp.diff(freqs)[0])) if len(freqs) > 1 else 250e3
         )
@@ -332,6 +332,11 @@ Number of stationary RFI : {n_stat}"""
             Perisapsis of the orbit. This is the angular starting point of the orbit
             at t = 0.
         """
+        Pv = jnp.atleast_2d(Pv)
+        elevation = jnp.atleast_1d(elevation)
+        inclination = jnp.atleast_1d(inclination)
+        lon_asc_node = jnp.atleast_1d(lon_asc_node)
+        periapsis = jnp.atleast_1d(periapsis)
         rfi_xyz = orbit_vmap(
             self.times_fine, elevation, inclination, lon_asc_node, periapsis
         )
@@ -391,6 +396,10 @@ Number of stationary RFI : {n_stat}"""
         elevation: ndarray (n_src,)
             Elevation/Altitude of the source above sea level in metres.
         """
+        Pv = jnp.atleast_2d(Pv)
+        latitude = jnp.atleast_1d(latitude)
+        longitude = jnp.atleast_1d(longitude)
+        elevation = jnp.atleast_1d(elevation)
         rfi_geo = jnp.array([latitude, longitude, elevation]).T[:, None, :]
         # rfi_geo is shape (n_src,n_time,3)
         rfi_xyz = GEO_to_XYZ_vmap0(rfi_geo, self.times_fine)

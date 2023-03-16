@@ -162,7 +162,7 @@ class Observation(Telescope):
         auto_corrs: bool = False,
         n_int_samples: int = 4,
         name: str = "MeerKAT",
-        max_chunk_bytes: float = 100.0,
+        max_chunk_MB: float = 100.0,
     ):
         super().__init__(
             latitude,
@@ -189,7 +189,7 @@ class Observation(Telescope):
         self.dec = da.asarray(dec)
 
         chunksize = get_chunksizes(
-            len(times), len(freqs), n_int_samples, self.n_bl, max_chunk_bytes
+            len(times), len(freqs), n_int_samples, self.n_bl, max_chunk_MB
         )
         self.time_chunk = chunksize["time"]
         self.time_fine_chunk = self.time_chunk * n_int_samples
@@ -208,7 +208,7 @@ class Observation(Telescope):
         self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else 250e3
         self.n_freq = len(freqs)
 
-        self.SEFD = da.asarray(SEFD)
+        self.SEFD = da.asarray(SEFD) * da.ones(self.n_freq, chunks=(self.freq_chunk,))
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)
 
         self.dish_d = da.asarray(dish_d)
@@ -383,12 +383,11 @@ Number of stationary RFI : {n_stat}"""
             Perisapsis of the orbit. This is the angular starting point of the orbit
             at t = 0.
         """
-        n_src = Pv.shape[0]
-        Pv = da.asarray(Pv, chunks=(n_src, self.freq_chunk))
-        elevation = da.asarray(elevation, chunks=(n_src,))
-        inclination = da.asarray(inclination, chunks=(n_src,))
-        lon_asc_node = da.asarray(lon_asc_node, chunks=(n_src,))
-        periapsis = da.asarray(periapsis, chunks=(n_src,))
+        Pv = da.asarray(da.atleast_2d(Pv), chunks=(-1, self.freq_chunk))
+        elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
+        inclination = da.asarray(da.atleast_1d(inclination), chunks=(-1,))
+        lon_asc_node = da.asarray(da.atleast_1d(lon_asc_node), chunks=(-1,))
+        periapsis = da.asarray(da.atleast_1d(periapsis), chunks=(-1,))
 
         rfi_xyz = orbit_vmap(
             self.times_fine, elevation, inclination, lon_asc_node, periapsis
@@ -448,17 +447,16 @@ Number of stationary RFI : {n_stat}"""
         elevation: ndarray (n_src,)
             Elevation/Altitude of the source above sea level in metres.
         """
-        n_src = Pv.shape[0]
-        Pv = da.asarray(Pv, chunks=(n_src, self.freq_chunk))
-        latitude = da.asarray(latitude, chunks=(n_src,))
-        longitude = da.asarray(longitude, chunks=(n_src,))
-        elevation = da.asarray(elevation, chunks=(n_src,))
+        Pv = da.asarray(da.atleast_2d(Pv), chunks=(-1, self.freq_chunk))
+        latitude = da.asarray(da.atleast_1d(latitude), chunks=(-1,))
+        longitude = da.asarray(da.atleast_1d(longitude), chunks=(-1,))
+        elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
 
         rfi_geo = (
             da.stack([latitude, longitude, elevation], axis=1)[:, None, :]
-            * da.ones(shape=(n_src, self.n_time_fine, 3))
+            * da.ones(shape=(1, self.n_time_fine, 3))
         ).rechunk(
-            (n_src, self.time_fine_chunk, 3),
+            (-1, self.time_fine_chunk, 3),
         )
 
         # rfi_geo is shape (n_src,n_time,3)
