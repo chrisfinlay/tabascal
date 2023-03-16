@@ -152,21 +152,19 @@ class Observation(Telescope):
         auto_corrs=False,
         n_int_samples=4,
         name="MeerKAT",
-        time_chunk=None,
-        freq_chunk=None,
-        bl_chunk=None,
+        max_chunk_bytes: float = 300e6,
     ):
         self.backend = "jax"
         self.ra = ra
         self.dec = dec
-        self.times = times
+        self.times = jnp.asarray(times)
         self.int_time = float(jnp.abs(jnp.diff(times)[0])) if len(times) > 1 else 2.0
         self.n_int_samples = n_int_samples
         self.times_fine = int_sample_times(times, n_int_samples)
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
-        self.freqs = freqs
-        self.SEFD = SEFD
+        self.freqs = jnp.asarray(freqs)
+        self.SEFD = jnp.asarray(SEFD)
         self.chan_width = (
             float(jnp.abs(jnp.diff(freqs)[0])) if len(freqs) > 1 else 250e3
         )

@@ -128,7 +128,7 @@ def generate_random_sky(
     d_ra, d_dec = positions[:, :n_src]
 
     spectral_indices = rng.normal(loc=spec_idx_mean, scale=spec_idx_std, size=(n_src,))
-    I = I[:, None] * ((freqs / freqs[0]) ** (-spectral_indices))[:, None]
+    I = I[:, None] * ((freqs[None, :] / freqs[0]) ** -spectral_indices[:, None])
 
     return I, d_ra, d_dec
 
@@ -183,6 +183,66 @@ def str2bool(v: str):
         return False
     else:
         raise argparse.ArgumentTypeError("Boolean value expected.")
+
+
+def get_factors(n):
+    """Get the integer factors of n.
+
+    Parameters:
+    -----------
+    n: int
+        Number to get the factors of.
+
+    Returns:
+    --------
+    factors: array_like
+        The factors of n.
+    """
+    factors = [1, n]
+    root_n = jnp.sqrt(n)
+    if root_n == int(root_n):
+        factors.append(root_n)
+    for i in range(1, int(root_n)):
+        if n % i == 0:
+            factors += [i, n // i]
+    return jnp.unique(jnp.array(factors).sort().astype(int))
+
+
+def get_chunksizes(n_t, n_f, n_int, n_bl, MB_max):
+    """Get the chunk sizes for a given number of time and frequency samples.
+
+    Parameters:
+    -----------
+    n_t: int
+        Number of time samples.
+    n_f: int
+        Number of frequency samples.
+    n_int: int
+        Number of integration samples per time sample.
+    n_bl: int
+        Number of baselines.
+    MB_max: float
+        Maximum megabytes to use for a chunk.
+
+    Returns:
+    --------
+    chunksize: dict
+        Dictionary containing the time and frequency chunk sizes.
+    """
+    time_factors = get_factors(n_t)
+    freq_factors = get_factors(n_f)
+    extra = MB_max * 1e6 / (16 * n_int * n_bl)
+    tt, ff = jnp.meshgrid(time_factors, freq_factors)
+    idx = jnp.argmin(jnp.abs(tt * ff - extra))
+    time_chunksize = int(tt.flatten()[idx])
+    freq_chunksize = int(ff.flatten()[idx])
+    chunk_bytes = 16 * n_int * n_bl * time_chunksize * freq_chunksize
+    chunksize = {
+        "time": time_chunksize,
+        "freq": freq_chunksize,
+        "chunk_bytes": f"{chunk_bytes/1e6:.0f} MB",
+    }
+    return chunksize
 
 
 def construct_observation_ds(obs):
@@ -558,6 +618,8 @@ def construct_ms_spectral_window_table(ds, ms_path):
     n_freq = ds.attrs["n_freq"]
     chan_freq = da.asarray(ds.coords["freq"].data.reshape(1, n_freq))
     chan_width = ds.attrs["chan_width"] * da.ones((1, n_freq))
+    ref_freq = chan_freq[:, 0]
+    total_bw = chan_width.sum(axis=1)
     zero = da.zeros(1)
     one = da.ones(1)
 
@@ -573,9 +635,9 @@ def construct_ms_spectral_window_table(ds, ms_path):
         # 'NAME': (('row'), zero),
         "NET_SIDEBAND": (("row"), one),
         "NUM_CHAN": (("row"), one),
-        "REF_FREQUENCY": (("row"), chan_freq[0]),
+        "REF_FREQUENCY": (("row"), ref_freq),
         "RESOLUTION": (("row", "chan"), chan_width),
-        "TOTAL_BANDWIDTH": (("row"), chan_width[0]),
+        "TOTAL_BANDWIDTH": (("row"), total_bw),
     }
 
     return xds_to_table(

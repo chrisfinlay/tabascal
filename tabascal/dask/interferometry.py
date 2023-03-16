@@ -294,6 +294,7 @@ def generate_gains(
     gain_ants = G0 + gain_amp * da.exp(1.0j * gain_phase)
     # Set the gain on the last antenna to have zero phase (reference antenna)
     gain_ants[:, -1, :] = da.abs(gain_ants[:, -1, :])
+
     return gain_ants
 
 

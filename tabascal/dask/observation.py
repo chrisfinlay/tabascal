@@ -25,7 +25,12 @@ from tabascal.dask.interferometry import (
     apply_gains,
     time_avg,
 )
-from tabascal.utils.tools import beam_size, construct_observation_ds, write_ms
+from tabascal.utils.tools import (
+    beam_size,
+    construct_observation_ds,
+    write_ms,
+    get_chunksizes,
+)
 
 config.update("jax_enable_x64", True)
 
@@ -150,16 +155,14 @@ class Observation(Telescope):
         times: jnp.ndarray,
         freqs: jnp.ndarray,
         SEFD: jnp.ndarray,
-        ENU_path=None,
-        ENU_array=None,
-        dish_d=13.965,
-        random_seed=0,
-        auto_corrs=False,
-        n_int_samples=4,
-        name="MeerKAT",
-        time_chunk=None,
-        freq_chunk=None,
-        bl_chunk=None,
+        ENU_path: str = None,
+        ENU_array: jnp.ndarray = None,
+        dish_d: float = 13.965,
+        random_seed: int = 0,
+        auto_corrs: bool = False,
+        n_int_samples: int = 4,
+        name: str = "MeerKAT",
+        max_chunk_bytes: float = 100.0,
     ):
         super().__init__(
             latitude,
@@ -176,10 +179,8 @@ class Observation(Telescope):
         a1, a2 = jnp.triu_indices(self.n_ant, 0 if auto_corrs else 1)
         self.n_bl = len(a1)
 
-        self.time_chunk = time_chunk if time_chunk else len(times) * n_int_samples
-        self.freq_chunk = freq_chunk if freq_chunk else len(freqs)
         self.ant_chunk = self.n_ant
-        self.bl_chunk = bl_chunk if bl_chunk else self.n_bl
+        self.bl_chunk = self.n_bl
 
         self.a1 = da.asarray(a1, chunks=(self.bl_chunk,))
         self.a2 = da.asarray(a2, chunks=(self.bl_chunk,))
@@ -187,11 +188,18 @@ class Observation(Telescope):
         self.ra = da.asarray(ra)
         self.dec = da.asarray(dec)
 
-        self.times = da.asarray(times)
+        chunksize = get_chunksizes(
+            len(times), len(freqs), n_int_samples, self.n_bl, max_chunk_bytes
+        )
+        self.time_chunk = chunksize["time"]
+        self.time_fine_chunk = self.time_chunk * n_int_samples
+        self.freq_chunk = chunksize["freq"]
+
+        self.times = da.asarray(times).rechunk(self.time_chunk)
         self.int_time = da.abs(da.diff(times)[0]) if len(times) > 1 else 2.0
         self.n_int_samples = n_int_samples
         self.times_fine = int_sample_times(self.times, n_int_samples).rechunk(
-            self.time_chunk
+            self.time_fine_chunk
         )
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
@@ -223,23 +231,23 @@ class Observation(Telescope):
             self.GEO_ants[None, ...]
             * da.ones(
                 shape=(self.n_time_fine, self.n_ant, 3),
-                chunks=(self.time_chunk, self.ant_chunk, 3),
+                chunks=(self.time_fine_chunk, self.ant_chunk, 3),
             ),
             self.times_fine,
         )
         self.vis_ast = da.zeros(
             shape=(self.n_time_fine, self.n_bl, self.n_freq),
-            chunks=(self.time_chunk, self.bl_chunk, self.freq_chunk),
+            chunks=(self.time_fine_chunk, self.bl_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
         self.vis_rfi = da.zeros(
             shape=(self.n_time_fine, self.n_bl, self.n_freq),
-            chunks=(self.time_chunk, self.bl_chunk, self.freq_chunk),
+            chunks=(self.time_fine_chunk, self.bl_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
         self.gains_ants = da.ones(
             shape=(self.n_time_fine, self.n_ant, self.n_freq),
-            chunks=(self.time_chunk, self.ant_chunk, self.freq_chunk),
+            chunks=(self.time_fine_chunk, self.ant_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
         self.random_seed = np.random.default_rng(random_seed)
@@ -450,7 +458,7 @@ Number of stationary RFI : {n_stat}"""
             da.stack([latitude, longitude, elevation], axis=1)[:, None, :]
             * da.ones(shape=(n_src, self.n_time_fine, 3))
         ).rechunk(
-            (n_src, self.time_chunk, 3),
+            (n_src, self.time_fine_chunk, 3),
         )
 
         # rfi_geo is shape (n_src,n_time,3)
@@ -525,7 +533,7 @@ Number of stationary RFI : {n_stat}"""
             self.n_ant,
             self.n_freq,
             random_seed if random_seed else self.random_seed,
-        )
+        ).rechunk((self.time_fine_chunk, self.ant_chunk, self.freq_chunk))
 
     def calculate_vis(self, random_seed=None):
         """
@@ -534,9 +542,9 @@ Number of stationary RFI : {n_stat}"""
         """
         self.vis = apply_gains(
             self.vis_ast, self.vis_rfi, self.gains_ants, self.a1, self.a2
-        )
+        ).rechunk((self.time_fine_chunk, self.bl_chunk, self.freq_chunk))
         self.vis_avg = time_avg(self.vis, self.n_int_samples).rechunk(
-            (self.time_chunk, self.bl_chunk, self.freq_chunk)
+            ((self.time_chunk, self.bl_chunk, self.freq_chunk))
         )
         self.vis_obs, self.noise_data = add_noise(
             self.vis_avg,

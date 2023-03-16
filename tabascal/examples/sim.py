@@ -7,7 +7,6 @@ from jax import random
 from tabascal.utils.tools import (
     generate_random_sky,
     load_antennas,
-    # save_observations,
     str2bool,
 )
 
@@ -28,7 +27,10 @@ parser.add_argument("--N_t", default=10, type=int, help="Number of time steps.")
 parser.add_argument(
     "--N_int", default=16, type=int, help="Number of integration samples."
 )
-parser.add_argument("--N_a", default=8, type=int, help="Number of antennas.")
+parser.add_argument(
+    "--N_f", default=128, type=int, help="Number of frequency channels."
+)
+parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
 parser.add_argument("--seed", default=0, type=int, help="Random seed.")
 parser.add_argument(
@@ -44,10 +46,10 @@ parser.add_argument(
     "--overwrite", default="no", type=str2bool, help="Overwrite existing observation."
 )
 parser.add_argument(
-    "--time_chunk", default=1, type=int, help="Chunk size for time dimension."
-)
-parser.add_argument(
-    "--freq_chunk", default=1, type=int, help="Chunk size for frequency dimension."
+    "--chunksize",
+    default=100.0,
+    type=float,
+    help="Chunksize for Dask visibility array in MB.",
 )
 
 args = parser.parse_args()
@@ -58,14 +60,14 @@ t_0 = args.t_0
 dT = args.delta_t
 N_t = args.N_t
 N_int = args.N_int
+N_freq = args.N_f
 N_ant = args.N_a
 RFI_amp = args.RFIamp
 seed = args.seed
 satRFI = args.satRFI
 grdRFI = args.grdRFI
 overwrite = args.overwrite
-time_chunk = args.time_chunk
-freq_chunk = args.freq_chunk
+chunksize = args.chunksize
 
 if args.backend.lower() == "jax":
     from tabascal.jax.observation import Observation
@@ -83,7 +85,7 @@ else:
 ants_enu = random.permutation(random.PRNGKey(19), load_antennas("MeerKAT"))[:N_ant]
 
 times = jnp.arange(t_0, t_0 + N_t * dT, dT)
-freqs = jnp.array([1.227e9])
+freqs = jnp.linspace(1.1e9, 1.4e9, N_freq)
 
 obs = Observation(
     latitude=-30.0,
@@ -96,8 +98,7 @@ obs = Observation(
     SEFD=SEFD * freqs,
     ENU_array=ants_enu,
     n_int_samples=N_int,
-    time_chunk=time_chunk,
-    freq_chunk=freq_chunk,
+    max_chunk_bytes=chunksize,
 )
 
 I, d_ra, d_dec = generate_random_sky(
@@ -123,7 +124,7 @@ if satRFI:
         periapsis=jnp.array([5.0]),
     )
 
-rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((freqs - 1.5e9) / 2e7) ** 2)])
+rfi_P = jnp.array([6e-4 * jnp.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2)])
 # rfi_P = RFI_amp * 1e-6 * jnp.ones((1, obs.n_freq))
 
 if grdRFI:
@@ -134,7 +135,7 @@ if grdRFI:
         elevation=jnp.array([obs.elevation]),
     )
 
-# obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=jnp.deg2rad(1e-3))
+obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=jnp.deg2rad(1e-3))
 
 obs.calculate_vis()
 
