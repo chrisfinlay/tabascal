@@ -14,7 +14,10 @@ setup(
     license="MIT",
     packages=find_packages(),
     package_data={"tabascal": ["tabascal/data/*"]},
-    # scripts=['bin/'],
-    install_requires=["jax", "jaxlib", "dask[array]", "xarray", "dask-ms"],
+    entry_points="""
+        [console_scripts]
+        sim-vis=tabascal.examples.sim:cli
+    """,
+    install_requires=["jax", "jaxlib", "dask", "xarray", "dask-ms"],
     zip_safe=False,
 )

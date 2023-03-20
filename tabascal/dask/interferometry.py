@@ -250,7 +250,9 @@ Pv_to_Sv.__doc__ = itf.Pv_to_Sv.__doc__
 
 def add_noise(vis, noise_std, key: int):
     rng = np.random.default_rng(key)
-    noise = rng.normal(0, noise_std, size=vis.shape)
+    noise = rng.normal(0, noise_std, size=vis.shape) + 1.0j * rng.normal(
+        0, noise_std, size=vis.shape
+    )
     return vis + noise, noise
 
 
