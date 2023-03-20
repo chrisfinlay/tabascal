@@ -11,37 +11,47 @@ visibilities.
 `tabascal` is written in [JAX](https://jax.readthedocs.io/en/latest/notebooks/quickstart.html) 
 and [Dask](https://www.dask.org) and can therefore use GPUs and/or CPUs and be distributed across clusters of these compute units.
 
-# Installation
+## Installation
 
-```git clone https://github.com/chrisfinlay/tabascal.git```
+```bash
+git clone https://github.com/chrisfinlay/tabascal.git
+```
 
-## Conda Environment (Recommended)
+### Conda Environment (Recommended)
 
-```conda env create -f tabascal/tabascal_env.yaml```
+```bash
+conda env create -f tabascal/tabascal_env.yaml
+pip install ./tabascal/
+```
 
-```pip install ./tabascal/```
-
-## GPU 
+### GPU 
  
 To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using conda, otherwise, refer to the JAX installation [documentation](https://github.com/google/jax#installation).
 
-```conda install jaxlib=*=*cuda* jax cuda-nvcc -c conda-forge -c nvidia```
+```bash
+conda install jaxlib=*=*cuda* jax cuda-nvcc -c conda-forge -c nvidia
+```
 
-# Simulate a contaminated MeerKAT observation
+## Simulate a contaminated MeerKAT observation
 
-```python tabascal/examples/sim.py```
+```bash
+python tabascal/examples/sim.py
+```
 
-## Help function
+### Help function
 
-```python tabascal/examples/sim.py --help```
+```bash
+python tabascal/examples/sim.py --help
+```
 
-# Documentation
+## Documentation
 
 [https://tabascal.readthedocs.io/en/latest/](https://tabascal.readthedocs.io/en/latest/)
 
-# Citing tabascal
+## Citing tabascal
 
-```@article{finlay2023trajectory,
+```
+@article{finlay2023trajectory,
   title={Trajectory Based RFI Subtraction and Calibration for Radio Interferometry},
   author={Finlay, Chris and Bassett, Bruce A and Kunz, Martin and Oozeer, Nadeem},
   journal={arXiv preprint arXiv:2301.04188},
