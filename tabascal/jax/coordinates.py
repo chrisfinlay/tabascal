@@ -79,6 +79,54 @@ def radec_to_XYZ(ra: jnp.ndarray, dec: jnp.ndarray) -> jnp.ndarray:
 
 
 @jit
+def radec_to_altaz(ra, dec, latitude, longitude, times):
+    """
+    Convert Right ascension and Declination to unit vector in ECI coordinates.
+
+    Parameters
+    ----------
+    ra : float
+        Right-ascension in degrees.
+    dec : float
+        Declination in degrees.
+    latitude: float
+        The latitude of the observer in degrees.
+    times: ndarray (n_time,)
+        The time of each position in seconds.
+
+    Returns
+    -------
+    altaz: ndarray (n_time, 2)
+        The altiude and azimuth of the source at each time.
+    """
+    ra, dec = jnp.deg2rad(jnp.asarray([ra, dec]))
+    lat, lon = jnp.deg2rad(jnp.asarray([latitude, longitude]))
+    times = jnp.asarray(times)
+    gmst = 2.0 * jnp.pi * times / T_s
+    ha = (gmst + lon - ra) % 2 * jnp.pi
+
+    alt = jnp.arcsin(
+        jnp.sin(dec) * jnp.sin(lat) + jnp.cos(dec) * jnp.cos(lat) * jnp.cos(ha)
+    )
+
+    az = jnp.arctan2(
+        -jnp.sin(ha), jnp.cos(ha) * jnp.sin(lat) - jnp.tan(dec) * jnp.cos(lat)
+    )
+
+    # az = jnp.arccos(
+    #     (jnp.sin(dec) - jnp.sin(alt) * jnp.sin(lat)) / (jnp.cos(alt) * jnp.cos(lat))
+    # )
+    # az = jnp.where(ha < 0, 2 * jnp.pi - az, az)
+
+    # az = jnp.arcsin(
+    #     jnp.sin(dec) * jnp.sin(lat) + jnp.cos(dec) * jnp.cos(lat) * jnp.cos(ha)
+    # )
+    # az = jnp.where(ha < jnp.pi, 2 * jnp.pi - az, az)
+
+    return jnp.rad2deg(jnp.array([alt, az]).T)
+
+
+@jit
 def ENU_to_GEO(geo_ref: jnp.ndarray, enu: jnp.ndarray) -> jnp.ndarray:
     """
     Convert a set of points in ENU co-ordinates to geographic coordinates i.e.

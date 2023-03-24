@@ -12,6 +12,7 @@ from tabascal.jax.coordinates import (
     GEO_to_XYZ_vmap1,
     orbit_vmap,
     radec_to_lmn,
+    radec_to_altaz,
     angular_separation,
 )
 from tabascal.jax.interferometry import (
@@ -112,7 +113,7 @@ class Observation(Telescope):
     dec: float
         Declination of the phase centre.
     times: ndarray (n_time,)
-        Time centroids of each data point.
+        Time centroids of each data point. This is the Greenwich Mean Sidereal Time (GMST).
     freqs: ndarray (n_freq,)
         Frequency centroids for each observation channel.
     SEFD: ndarray (n_freq,)
@@ -152,14 +153,15 @@ class Observation(Telescope):
         auto_corrs=False,
         n_int_samples=4,
         name="MeerKAT",
-        max_chunk_bytes: float = 300e6,
+        max_chunk_MB: float = None,
     ):
         self.backend = "jax"
         self.ra = ra
         self.dec = dec
         self.times = jnp.asarray(times)
+        self.altaz = radec_to_altaz(self.ra, self.dec, latitude, longitude, self.times)
         self.int_time = float(jnp.abs(jnp.diff(times)[0])) if len(times) > 1 else 2.0
-        self.n_int_samples = n_int_samples
+        self.n_int_samples = int(n_int_samples)
         self.times_fine = int_sample_times(times, n_int_samples)
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)

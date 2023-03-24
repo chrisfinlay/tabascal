@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import argparse
 import os
 
@@ -29,14 +31,16 @@ parser.add_argument(
 parser.add_argument(
     "--N_f", default=128, type=int, help="Number of frequency channels."
 )
+parser.add_argument("--freq_start", default=1.1e9, type=float, help="Start frequency.")
+parser.add_argument("--freq_end", default=1.4e9, type=float, help="End frequency.")
 parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
 parser.add_argument("--seed", default=0, type=int, help="Random seed.")
 parser.add_argument(
-    "--satRFI", default="yes", type=str2bool, help="Include satellite-based RFI source."
+    "--N_sat", default=1, type=int, help="Number of satellite-based RFI sources."
 )
 parser.add_argument(
-    "--grdRFI", default="yes", type=str2bool, help="Include ground-based RFI source."
+    "--N_grd", default=1, type=int, help="Number of ground-based RFI sources."
 )
 parser.add_argument(
     "--backend", default="dask", type=str, help="Use pure JAX or Dask backend."
@@ -63,10 +67,12 @@ N_freq = args.N_f
 N_ant = args.N_a
 RFI_amp = args.RFIamp
 seed = args.seed
-satRFI = args.satRFI
-grdRFI = args.grdRFI
+N_sat = args.N_sat
+N_grd = args.N_grd
 overwrite = args.overwrite
 chunksize = args.chunksize
+freq_start = args.freq_start
+freq_end = args.freq_end
 
 if args.backend.lower() == "jax":
     from tabascal.jax.observation import Observation
@@ -85,7 +91,7 @@ rng = np.random.default_rng(12345)
 ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
 
 times = np.arange(t_0, t_0 + N_t * dT, dT)
-freqs = np.linspace(1.1e9, 1.4e9, N_freq)
+freqs = np.linspace(freq_start, freq_end, N_freq)
 
 obs = Observation(
     latitude=-30.0,
@@ -101,46 +107,82 @@ obs = Observation(
     max_chunk_MB=chunksize,
 )
 
+beam_width = obs.syn_bw if obs.syn_bw < 1e-2 else 1e-2
+
+print(f'Generating "Astro" sources with >{3600*5*beam_width:.0f}" separation ...')
+
+
 I, d_ra, d_dec = generate_random_sky(
     n_src=100,
     mean_I=0.1,
     freqs=obs.freqs,
     fov=obs.fov,
-    beam_width=obs.syn_bw,
+    beam_width=beam_width,
     random_seed=seed,
 )
 
+print('Adding "Astro" sources ...')
+
 obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
 
-rfi_P = RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 2e7) ** 2)
-# rfi_P = RFI_amp * 200.0 * 0.29e-6 * jnp.ones((1, obs.n_freq))
+#### Satellite-based RFI ####
 
-if satRFI:
+print('Adding "Satellite" sources ...')
+
+rfi_P = [
+    RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
+    RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
+]
+
+elevation = [20200e3, 19140e3]
+inclination = [55.0, 64.8]
+lon_asc_node = [21.0, 17.0]
+periapsis = [7.0, 1.0]
+
+if N_sat > 0 and N_sat <= 2:
     obs.addSatelliteRFI(
-        Pv=rfi_P,
-        elevation=202e5,
-        inclination=55.0,
-        lon_asc_node=21.0,
-        periapsis=5.0,
+        Pv=rfi_P[:N_sat],
+        elevation=elevation[:N_sat],
+        inclination=inclination[:N_sat],
+        lon_asc_node=lon_asc_node[:N_sat],
+        periapsis=periapsis[:N_sat],
     )
+elif N_sat > 2:
+    raise ValueError("Maximum number of satellite-based RFI sources is 2.")
 
-rfi_P = RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2)
-# rfi_P = RFI_amp * 1e-6 * jnp.ones((1, obs.n_freq))
+#### Ground-based RFI ####
 
-if grdRFI:
+print('Adding "Ground" sources ...')
+
+rfi_P = [
+    RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
+    RFI_amp * 1.5e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
+    RFI_amp * 0.4e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
+]
+latitude = [-20.0, -20.0, -25.0]
+longitude = [30.0, 20.0, 20.0]
+elevation = [obs.elevation, obs.elevation, obs.elevation]
+
+if N_grd > 0 and N_grd <= 3:
     obs.addStationaryRFI(
-        Pv=rfi_P,
-        latitude=-20.0,
-        longitude=30.0,
-        elevation=obs.elevation,
+        Pv=rfi_P[:N_grd],
+        latitude=latitude[:N_grd],
+        longitude=longitude[:N_grd],
+        elevation=elevation[:N_grd],
     )
+elif N_grd > 3:
+    raise ValueError("Maximum number of ground-based RFI sources is 3.")
+
+print('Adding "Gains" ...')
 
 obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=np.deg2rad(1e-3))
+
+print("Calculating visibilities ...")
 
 obs.calculate_vis()
 
 f_name = (
-    f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T_{obs.n_freq:0>3}F"
+    f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F"
     + f"_{obs.n_ast:0>3}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
 )
 

@@ -6,6 +6,8 @@ from jax.config import config
 from jax.lax import scan
 from scipy.special import jv
 
+from functools import partial
+
 config.update("jax_enable_x64", True)
 
 c = 2.99792458e8
@@ -433,7 +435,7 @@ def apply_gains(
     return vis_obs
 
 
-@jit
+@partial(jit, static_argnums=(1,))
 def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
     """Average visibilities in time.
 
@@ -450,7 +452,7 @@ def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
         The averaged visibilities.
     """
     vis = jnp.asarray(vis)
-    n_int_samples = jnp.asarray(n_int_samples)
+    # n_int_samples = jnp.asarray(n_int_samples)
     vis_avg = jnp.mean(
         jnp.reshape(vis, (-1, n_int_samples, vis.shape[1], vis.shape[2])),
         axis=1,
