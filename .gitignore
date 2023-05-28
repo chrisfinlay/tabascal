@@ -13,3 +13,6 @@ examples
 *.ipynb_checkpoints
 *.tle
 *.zarr
+tabascal/optimize/mcmc.py
+tabascal/utils/ms.py
+tabascal/data/MeerKAT_real.ENU.txt
