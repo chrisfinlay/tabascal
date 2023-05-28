@@ -287,7 +287,7 @@ def ITRF_to_UVW(
 ) -> jnp.ndarray:
     """
     Calculate uvw coordinates from ITRF/ECEF coordinates,
-    longitude a Greenwich Mean Sidereal Time.
+    longitude and Greenwich Mean Sidereal Time.
 
     Parameters
     ----------

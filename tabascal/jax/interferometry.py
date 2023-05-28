@@ -314,7 +314,9 @@ def SEFD_to_noise_std(
 
 # @jit
 def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
-    """Calculate the times at which to sample the visibilities for
+    """Calculate the times at which to sample the visibilities given the time centroids.
+    This shoudl produce `n_int_samples` times per integration time that are evenly
+    spaced around the time centroid.
 
     Parameters
     ----------
@@ -331,10 +333,13 @@ def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
     times = jnp.asarray(times)
     n_int_samples = jnp.asarray(n_int_samples)
     int_time = times[1] - times[0]
-    times_fine = int_time / (2 * n_int_samples) + jnp.arange(
-        times[0] - int_time / 2,
-        times[-1] + int_time / 2,
-        int_time / n_int_samples,
+    times_fine = (
+        int_time / (2 * n_int_samples)
+        + jnp.arange(
+            times[0] - int_time / 2,
+            times[-1] + int_time / 2,
+            int_time / n_int_samples,
+        )[: n_int_samples * len(times)]
     )
     return times_fine
 
