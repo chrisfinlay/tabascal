@@ -11,9 +11,11 @@ from tabascal.utils.tools import (
     str2bool,
 )
 
-parser = argparse.ArgumentParser(description="Simulate RFI contaminated visibilities.")
+parser = argparse.ArgumentParser(
+    description="Simulate a target observation contaminated by RFI."
+)
 parser.add_argument(
-    "--f_name", default="test", help="File name to save the observations."
+    "--f_name", default="target_", help="File name to save the observations."
 )
 parser.add_argument("--o_path", default="./", help="Path to save the observations.")
 parser.add_argument(
@@ -24,15 +26,15 @@ parser.add_argument(
 )
 parser.add_argument("--t_0", default=440.0, type=float, help="Start time in seconds.")
 parser.add_argument("--delta_t", default=2.0, type=float, help="Time step in seconds.")
-parser.add_argument("--N_t", default=10, type=int, help="Number of time steps.")
+parser.add_argument("--N_t", default=450, type=int, help="Number of time steps.")
 parser.add_argument(
-    "--N_int", default=16, type=int, help="Number of integration samples."
+    "--N_int", default=128, type=int, help="Number of integration samples."
 )
 parser.add_argument(
     "--N_f", default=128, type=int, help="Number of frequency channels."
 )
-parser.add_argument("--freq_start", default=1.1e9, type=float, help="Start frequency.")
-parser.add_argument("--freq_end", default=1.4e9, type=float, help="End frequency.")
+parser.add_argument("--freq_start", default=1.2e9, type=float, help="Start frequency.")
+parser.add_argument("--freq_end", default=1.226752e9, type=float, help="End frequency.")
 parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
 parser.add_argument("--seed", default=0, type=int, help="Random seed.")
@@ -130,8 +132,8 @@ obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
 print('Adding "Satellite" sources ...')
 
 rfi_P = [
-    RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
-    RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
+    RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 5e6) ** 2),
+    RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 5e6) ** 2),
 ]
 
 elevation = [20200e3, 19140e3]
@@ -155,9 +157,9 @@ elif N_sat > 2:
 print('Adding "Ground" sources ...')
 
 rfi_P = [
-    RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
-    RFI_amp * 1.5e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
-    RFI_amp * 0.4e-4 * np.exp(-0.5 * ((freqs - 1.3e9) / 2e7) ** 2),
+    RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
+    RFI_amp * 1.5e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
+    RFI_amp * 0.4e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
 ]
 latitude = [-20.0, -20.0, -25.0]
 longitude = [30.0, 20.0, 20.0]

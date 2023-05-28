@@ -3,6 +3,8 @@ tabascal.egg-info
 docs/build
 build
 examples
+!examples/calibration_observation.py
+!examples/target_observation.py
 *.DS_Store
 *.h5
 *.ipynb
@@ -10,3 +12,4 @@ examples
 *.log
 *.ipynb_checkpoints
 *.tle
+*.zarr
