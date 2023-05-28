@@ -37,6 +37,30 @@ def uniform_points_disk(radius: float, n_src: int, seed=None):
 
     return r * jnp.array([jnp.cos(theta), jnp.sin(theta)])
 
+def random_power_law(n_src: int, I_min: float = 1e-4, I_max: float = 1e0, alpha: float = 1.6, seed=None):
+    '''Generate a random power law distribution of source fluxes with minimum source 
+    flux defined by `I0`.
+    
+    Parameters:
+    -----------
+    n_src: int
+        Number of source fluxes to draw.
+    I0: float
+        Minimum source flux.
+    alpha: float
+        Power law index.
+        
+    Returns:
+    --------
+    I: array_like (n_src,)
+        Array of source fluxes.'''
+    
+    rng = np.random.default_rng(seed)
+    rand_unif = rng.uniform(size=(n_src,))
+    I = I_min * (1. - rand_unif)**( 1. / (1. - alpha) )
+    I = jnp.where(I < I_max, I, I_max)
+    return I
+
 
 def beam_size(diameter: float, frequency: float, fwhp=True):
     """
@@ -70,8 +94,10 @@ def beam_size(diameter: float, frequency: float, fwhp=True):
 
 def generate_random_sky(
     n_src: int,
-    mean_I,
     freqs: jnp.ndarray,
+    min_I: float = 1e-4,
+    max_I: float = 1e0,
+    I_power_law: float = 1.6,
     spec_idx_mean: float = 0.7,
     spec_idx_std: float = 0.2,
     fov: float = 1.0,
@@ -113,7 +139,7 @@ def generate_random_sky(
     """
     rng = np.random.default_rng(random_seed)
 
-    I = rng.exponential(scale=mean_I, size=(n_src,))
+    I = random_power_law(n_src, min_I, max_I, I_power_law, rng)
     positions = uniform_points_disk(fov / 2.0, 1, rng)
     while positions.shape[1] < n_src:
         n_sample = 2 * (n_src - positions.shape[1])
