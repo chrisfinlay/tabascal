@@ -168,7 +168,7 @@ class Observation(Telescope):
         self.freqs = jnp.asarray(freqs)
         self.SEFD = jnp.asarray(SEFD) * jnp.ones(len(freqs))
         self.chan_width = (
-            float(jnp.abs(jnp.diff(freqs)[0])) if len(freqs) > 1 else 250e3
+            float(jnp.abs(jnp.diff(freqs)[0])) if len(freqs) > 1 else 209e3
         )
         self.n_freq = len(freqs)
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)

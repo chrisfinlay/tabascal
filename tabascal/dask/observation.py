@@ -205,7 +205,7 @@ class Observation(Telescope):
         self.n_time_fine = len(self.times_fine)
 
         self.freqs = da.asarray(freqs, chunks=(self.freq_chunk,))
-        self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else 250e3
+        self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else 209e3
         self.n_freq = len(freqs)
 
         self.SEFD = da.asarray(SEFD) * da.ones(self.n_freq, chunks=(self.freq_chunk,))
@@ -341,6 +341,9 @@ Number of stationary RFI : {n_stat}"""
         dec: array (n_src,)
             Declination of the sources in degrees.
         """
+        I = da.atleast_2d(I)
+        ra = da.atleast_1d(ra)
+        dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
         theta = da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1))
         I_app = (

@@ -184,7 +184,8 @@ print("Calculating visibilities ...")
 obs.calculate_vis()
 
 f_name = (
-    f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F"
+    f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T-{int(obs.times[0]):0>4}-{int(obs.times[-1]):0>4}"
+    + f"_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F-{float(obs.freqs[0]):.3e}-{float(obs.freqs[-1]):.3e}"
     + f"_{obs.n_ast:0>3}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
 )
 

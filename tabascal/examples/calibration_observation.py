@@ -10,7 +10,9 @@ from tabascal.utils.tools import (
     str2bool,
 )
 
-parser = argparse.ArgumentParser(description="Simulate RFI contaminated visibilities.")
+parser = argparse.ArgumentParser(
+    description="Simulate a calibrator observation contaminated by RFI."
+)
 parser.add_argument(
     "--f_name", default="calibrator", help="File name to save the observations."
 )
@@ -25,12 +27,12 @@ parser.add_argument("--t_0", default=0.0, type=float, help="Start time in second
 parser.add_argument("--delta_t", default=2.0, type=float, help="Time step in seconds.")
 parser.add_argument("--N_t", default=150, type=int, help="Number of time steps.")
 parser.add_argument(
-    "--N_int", default=64, type=int, help="Number of integration samples."
+    "--N_int", default=128, type=int, help="Number of integration samples."
 )
+parser.add_argument("--N_f", default=1, type=int, help="Number of frequency channels.")
 parser.add_argument(
-    "--N_f", default=128, type=int, help="Number of frequency channels."
+    "--freq_start", default=1.227e9, type=float, help="Start frequency."
 )
-parser.add_argument("--freq_start", default=1.2e9, type=float, help="Start frequency.")
 parser.add_argument("--freq_end", default=1.226752e9, type=float, help="End frequency.")
 parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
@@ -98,8 +100,8 @@ obs = Observation(
     latitude=-30.0,
     longitude=21.0,
     elevation=1050.0,
-    ra=27.0,
-    dec=15.0,
+    ra=21.0,
+    dec=10.0,
     times=times,
     freqs=freqs,
     SEFD=SEFD,
@@ -115,6 +117,7 @@ obs.addAstro(I=CAL_amp * np.ones(len(freqs)), ra=obs.ra, dec=obs.dec)
 print('Adding "Satellite" sources ...')
 
 rfi_P = [
+    RFI_amp * 5.8e-6 * np.exp(-0.5 * ((freqs - 1.227e9) / 5e6) ** 2),
     RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 5e6) ** 2),
     RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 5e6) ** 2),
 ]
@@ -122,9 +125,9 @@ rfi_P = [
 elevation = [20200e3, 19140e3]
 inclination = [55.0, 64.8]
 lon_asc_node = [21.0, 17.0]
-periapsis = [7.0, 1.0]
+periapsis = [5.0, 1.0]
 
-if N_sat > 0 and N_sat <= 2:
+if N_sat > 0 and N_sat <= 3:
     obs.addSatelliteRFI(
         Pv=rfi_P[:N_sat],
         elevation=elevation[:N_sat],
@@ -167,7 +170,8 @@ print("Calculating visibilities ...")
 obs.calculate_vis()
 
 f_name = (
-    f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F"
+    f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T-{int(obs.times[0]):0>4}-{int(obs.times[-1]):0>4}"
+    + f"_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F-{float(obs.freqs[0]):.3e}-{float(obs.freqs[-1]):.3e}"
     + f"_{obs.n_ast:0>3}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
 )
 
