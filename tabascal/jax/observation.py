@@ -27,7 +27,8 @@ from tabascal.jax.interferometry import (
     apply_gains,
     time_avg,
 )
-from tabascal.utils.tools import beam_size, construct_observation_ds, write_ms
+from tabascal.utils.tools import beam_size
+from tabascal.utils.write import construct_observation_ds, write_ms
 
 config.update("jax_enable_x64", True)
 
@@ -153,7 +154,7 @@ class Observation(Telescope):
         auto_corrs=False,
         n_int_samples=4,
         name="MeerKAT",
-        max_chunk_MB: float = None,
+        max_chunk_MB: float = None,  # Dummy parameter for compatibility with dask version
     ):
         self.backend = "jax"
         self.ra = ra
@@ -294,6 +295,9 @@ Number of stationary RFI : {n_stat}"""
         dec: array (n_src,)
             Declination of the sources in degrees.
         """
+        I = jnp.atleast_2d(I)
+        ra = jnp.atleast_1d(ra)
+        dec = jnp.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
         theta = jnp.arcsin(jnp.linalg.norm(lmn[:, :-1], axis=-1))
         I_app = (

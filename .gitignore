@@ -2,9 +2,8 @@
 tabascal.egg-info
 docs/build
 build
-examples
-!examples/calibration_observation.py
-!examples/target_observation.py
+tabascal/examples/target_obs*
+tabascal/examples/calibrator_obs*
 *.DS_Store
 *.h5
 *.ipynb

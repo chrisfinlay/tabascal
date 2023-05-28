@@ -5,17 +5,14 @@ import os
 
 import numpy as np
 
-from tabascal.utils.tools import (
-    generate_random_sky,
-    load_antennas,
-    str2bool,
-)
+from tabascal.utils.sky import generate_random_sky
+from tabascal.utils.tools import load_antennas, str2bool
 
 parser = argparse.ArgumentParser(
     description="Simulate a target observation contaminated by RFI."
 )
 parser.add_argument(
-    "--f_name", default="target_", help="File name to save the observations."
+    "--f_name", default="target", help="File name to save the observations."
 )
 parser.add_argument("--o_path", default="./", help="Path to save the observations.")
 parser.add_argument(
@@ -116,7 +113,8 @@ print(f'Generating "Astro" sources with >{3600*5*beam_width:.0f}" separation ...
 
 I, d_ra, d_dec = generate_random_sky(
     n_src=100,
-    mean_I=0.1,
+    min_I=obs.noise_std / 5.0,
+    max_I=1.0,
     freqs=obs.freqs,
     fov=obs.fov,
     beam_width=beam_width,

@@ -25,12 +25,9 @@ from tabascal.dask.interferometry import (
     apply_gains,
     time_avg,
 )
-from tabascal.utils.tools import (
-    beam_size,
-    construct_observation_ds,
-    write_ms,
-    get_chunksizes,
-)
+from tabascal.utils.tools import beam_size
+from tabascal.utils.write import construct_observation_ds, write_ms
+from tabascal.utils.dask import get_chunksizes
 
 config.update("jax_enable_x64", True)
 
