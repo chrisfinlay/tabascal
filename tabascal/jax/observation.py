@@ -1,7 +1,7 @@
 import jax.numpy as jnp
 from jax import random
 from jax.config import config
-from jax.interpreters.xla import _DeviceArray
+import jax
 
 import numpy as np
 
@@ -472,7 +472,7 @@ Number of stationary RFI : {n_stat}"""
         key: jax.random.PRNGKey
             Random number generator key.
         """
-        if not isinstance(key, _DeviceArray):
+        if not isinstance(key, jax.Array):
             key = self.key
         self.gains_ants = generate_gains(
             G0_mean,

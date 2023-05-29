@@ -30,7 +30,9 @@ parser.add_argument(
 parser.add_argument(
     "--N_f", default=128, type=int, help="Number of frequency channels."
 )
-parser.add_argument("--freq_start", default=1.2e9, type=float, help="Start frequency.")
+parser.add_argument(
+    "--freq_start", default=1.227e9, type=float, help="Start frequency."
+)
 parser.add_argument("--freq_end", default=1.226752e9, type=float, help="End frequency.")
 parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
@@ -130,8 +132,8 @@ obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
 print('Adding "Satellite" sources ...')
 
 rfi_P = [
-    RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 5e6) ** 2),
-    RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.2e9) / 5e6) ** 2),
+    RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.227e9) / 5e6) ** 2),
+    RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.227e9) / 5e6) ** 2),
 ]
 
 elevation = [20200e3, 19140e3]
