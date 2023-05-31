@@ -1,19 +1,18 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from tabascal.jax.observation import Observation
+
 import os
 import shutil
 
 import dask
 import dask.array as da
 import numpy as np
-
 import xarray as xr
 from daskms import Dataset, xds_to_table
-
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from tabascal.jax.observation import Observation
 
 
 def construct_observation_ds(obs: Observation):
