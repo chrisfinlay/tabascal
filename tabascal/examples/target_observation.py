@@ -27,13 +27,9 @@ parser.add_argument("--N_t", default=450, type=int, help="Number of time steps."
 parser.add_argument(
     "--N_int", default=128, type=int, help="Number of integration samples."
 )
-parser.add_argument(
-    "--N_f", default=128, type=int, help="Number of frequency channels."
-)
-parser.add_argument(
-    "--freq_start", default=1.227e9, type=float, help="Start frequency."
-)
-parser.add_argument("--freq_end", default=1.226752e9, type=float, help="End frequency.")
+parser.add_argument("--N_f", default=1, type=int, help="Number of frequency channels.")
+parser.add_argument("--freq_start", default=1227e6, type=float, help="Start frequency.")
+parser.add_argument("--freq_end", default=1227.209e6, type=float, help="End frequency.")
 parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
 parser.add_argument("--seed", default=0, type=int, help="Random seed.")
