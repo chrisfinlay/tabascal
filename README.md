@@ -1,6 +1,6 @@
 # tabascal
 
-[https://arxiv.org/abs/2301.04188](https://arxiv.org/abs/2301.04188)
+[https://academic.oup.com/mnras/article/524/3/3231/7219326](https://academic.oup.com/mnras/article/524/3/3231/7219326)
 
 **T**r**A**jectory **BA**sed RFI **S**ubtraction and **CAL**ibration (tabascal)
 of radio interferometry data. A source to visibility model for RFI sources
