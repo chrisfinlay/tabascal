@@ -2,8 +2,7 @@
 tabascal.egg-info
 docs/build
 build
-tabascal/examples/target_obs*
-tabascal/examples/calibrator_obs*
+tabascal/examples/data
 *.DS_Store
 *.h5
 *.ipynb

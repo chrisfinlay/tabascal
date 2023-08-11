@@ -115,7 +115,7 @@ print(f'Generating "Astro" sources with >{3600*5*beam_width:.0f}" separation ...
 
 I, d_ra, d_dec = generate_random_sky(
     n_src=100,
-    min_I=obs.noise_std / 5.0,
+    min_I=np.mean(obs.noise_std) / 5.0,
     max_I=1.0,
     freqs=obs.freqs,
     fov=obs.fov,
