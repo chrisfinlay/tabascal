@@ -2,8 +2,6 @@
 
 [![DOI:10.1093/mnras/stad1979](https://zenodo.org/badge/DOI/10.1093/mnras/stad1979.svg)](https://doi.org/10.1093/mnras/stad1979)
 
-[https://academic.oup.com/mnras/article/524/3/3231/7219326](https://academic.oup.com/mnras/article/524/3/3231/7219326)
-
 **T**r**A**jectory **BA**sed RFI **S**ubtraction and **CAL**ibration (tabascal)
 of radio interferometry data. A source to visibility model for RFI sources
 including certain near-field effects. Visibility data is jointly calibrated and
