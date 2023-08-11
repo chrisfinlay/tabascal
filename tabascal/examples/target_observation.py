@@ -14,7 +14,9 @@ parser = argparse.ArgumentParser(
 parser.add_argument(
     "--f_name", default="target", help="File name to save the observations."
 )
-parser.add_argument("--o_path", default="./", help="Path to save the observations.")
+parser.add_argument(
+    "--o_path", default="./data/", help="Path to save the observations."
+)
 parser.add_argument(
     "--SEFD",
     default=420.0,
