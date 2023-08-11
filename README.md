@@ -20,8 +20,8 @@ git clone https://github.com/chrisfinlay/tabascal.git
 ### Conda Environment (Recommended)
 
 ```bash
-conda env create -f tabascal/tabascal_env.yaml
-pip install ./tabascal/
+conda env create -f tabascal/env.yaml
+conda develop ./tabascal/
 ```
 
 ### GPU 
