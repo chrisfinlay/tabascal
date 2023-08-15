@@ -1,8 +1,8 @@
 Programming References
 ======================
 
-Observation Class
------------------
+Observation Class (JAX)
+-----------------------
 
 .. autoclass:: tabascal.jax.observation.Observation
 
@@ -15,6 +15,30 @@ Observation Class
 .. automethod:: tabascal.jax.observation.Observation.addGains
 
 .. automethod:: tabascal.jax.observation.Observation.calculate_vis
+
+.. automethod:: tabascal.jax.observation.Observation.write_to_zarr
+
+.. automethod:: tabascal.jax.observation.Observation.write_to_ms
+
+
+Observation Class (Dask)
+-----------------------
+
+.. autoclass:: tabascal.dask.observation.Observation
+
+.. automethod:: tabascal.dask.observation.Observation.addAstro
+
+.. automethod:: tabascal.dask.observation.Observation.addSatelliteRFI
+
+.. automethod:: tabascal.dask.observation.Observation.addStationaryRFI
+
+.. automethod:: tabascal.dask.observation.Observation.addGains
+
+.. automethod:: tabascal.dask.observation.Observation.calculate_vis
+
+.. automethod:: tabascal.dask.observation.Observation.write_to_zarr
+
+.. automethod:: tabascal.dask.observation.Observation.write_to_ms
 
 Coordinates
 -----------
@@ -51,3 +75,17 @@ Interferometry
 .. autofunction:: tabascal.jax.interferometry.astro_vis
 
 .. autofunction:: tabascal.jax.interferometry.ants_to_bl
+
+.. autofunction:: tabascal.jax.interferometry.airy_beam
+
+.. autofunction:: tabascal.jax.interferometry.Pv_to_Sv
+
+.. autofunction:: tabascal.jax.interferometry.SEFD_to_noise_std
+
+.. autofunction:: tabascal.jax.interferometry.int_sample_times
+
+.. autofunction:: tabascal.jax.interferometry.generate_gains
+
+.. autofunction:: tabascal.jax.interferometry.apply_gains
+
+.. autofunction:: tabascal.jax.interferometry.time_avg
