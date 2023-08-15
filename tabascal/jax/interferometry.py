@@ -57,7 +57,7 @@ def astro_vis(sources, uvw, lmn, freqs):
 
     Parameters
     ----------
-    sources: array_like (n_src, n_freq)
+    sources: array_like (n_src, n_time, n_freq)
         Array of point source intensities in Jy.
     uvw: array_like (ntime, n_bl, 3)
         (u,v,w) coordinates of each baseline.
@@ -177,7 +177,7 @@ def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
 def _astro_vis(sources, uvw, lmn, freqs):
     #     Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
 
-    sources = jnp.asarray(sources[:, None, None, :])  #     (n_src, 1, n_freq)
+    sources = jnp.asarray(sources[:, :, None, :])  #     (n_src, 1, 1, n_freq)
     freqs = jnp.asarray(freqs[None, None, None, :])  #      (1, 1, 1, n_freq)
     uvw = jnp.asarray(uvw[None, :, :, None, :])  #          (1, n_time, n_bl, 1, 3)
     lmn = jnp.asarray(lmn[:, None, None, None, :])  #       (n_src, 1, 1, 1, 3)
@@ -245,7 +245,7 @@ def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
 
     Parameters
     ----------
-    Pv: ndarray (n_src, n_freq)
+    Pv: ndarray (n_src, n_time, n_freq)
         Specific emission power in W/Hz.
     d: ndarray (n_src, n_time, n_ant)
         Distances from source to receiving antennas in m.
@@ -257,7 +257,7 @@ def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
     """
     Pv = jnp.asarray(Pv)
     d = jnp.asarray(d)
-    return Pv[:, None, None, :] / (4 * jnp.pi * d[:, :, :, None] ** 2) * 1e26
+    return Pv[:, :, None, :] / (4 * jnp.pi * d[:, :, :, None] ** 2) * 1e26
 
 
 # @jit

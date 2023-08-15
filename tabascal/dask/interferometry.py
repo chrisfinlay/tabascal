@@ -13,7 +13,7 @@ def astro_vis(
 
     Parameters:
     -----------
-    sources: da.Array (n_src, n_freq)
+    sources: da.Array (n_src, n_time, n_freq)
         Array of point source intensities in Jy.
     uvw: da.Array (ntime, n_bl, 3)
         (u,v,w) coordinates of each baseline.
@@ -34,7 +34,7 @@ def astro_vis(
 
     input = xr.Dataset(
         {
-            "I": (["src", "freq"], sources),
+            "I": (["src", "time", "freq"], sources),
             "uvw": (["time", "bl", "space"], uvw),
             "lmn": (["src", "space"], lmn),
             "freqs": (["freq"], freqs),
@@ -215,13 +215,15 @@ airy_beam.__doc__ = itf.airy_beam.__doc__
 
 
 def Pv_to_Sv(Pv, d):
-    n_src, n_freq = Pv.shape
+    n_src, _, n_freq = Pv.shape
     n_time, n_ant = d.shape[1:]
 
-    src_chunk, freq_chunk = Pv.chunksize
+    src_chunk, _, freq_chunk = Pv.chunksize
     time_chunk, ant_chunk = d.chunksize[1:]
 
-    input = xr.Dataset({"Pv": (["src", "freq"], Pv), "d": (["src", "time", "ant"], d)})
+    input = xr.Dataset(
+        {"Pv": (["src", "time", "freq"], Pv), "d": (["src", "time", "ant"], d)}
+    )
 
     output = xr.Dataset(
         {

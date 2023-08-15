@@ -331,14 +331,19 @@ Number of stationary RFI : {n_stat}"""
 
         Parameters
         ----------
-        I: ndarray (n_src, n_freq)
-            Intensity of the sources in Jy.
+        I: ndarray (n_src, n_time, n_freq) or
+            Intensity of the sources in Jy. If I.ndim==2, then this is assumed
+            to the spectrogram (n_time, n_freq) of a single source. If
+            I.ndim==1, then this is assumed to be the spectral profile of a
+            single source.
         ra: array (n_src,)
             Right ascension of the sources in degrees.
         dec: array (n_src,)
             Declination of the sources in degrees.
         """
         I = da.atleast_2d(I)
+        if I.ndim == 2:
+            I = da.expand_dims(I, axis=0)
         ra = da.atleast_1d(ra)
         dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
@@ -370,7 +375,7 @@ Number of stationary RFI : {n_stat}"""
 
         Parameters
         ----------
-        Pv: ndarray (n_src, n_freq)
+        Pv: ndarray (n_src, n_time_fine, n_freq)
             Specific Emission Power in W/Hz
         elevation: ndarray (n_src,)
             Elevation/Altitude of the orbit in metres.
@@ -383,7 +388,10 @@ Number of stationary RFI : {n_stat}"""
             Perisapsis of the orbit. This is the angular starting point of the orbit
             at t = 0.
         """
-        Pv = da.asarray(da.atleast_2d(Pv), chunks=(-1, self.freq_chunk))
+        Pv = da.atleast_2d(Pv)
+        if Pv.ndim == 2:
+            Pv = da.expand_dims(Pv, axis=0)
+        Pv = Pv.rechunk((-1, self.time_fine_chunk, self.freq_chunk))
         elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
         inclination = da.asarray(da.atleast_1d(inclination), chunks=(-1,))
         lon_asc_node = da.asarray(da.atleast_1d(lon_asc_node), chunks=(-1,))
@@ -404,7 +412,9 @@ Number of stationary RFI : {n_stat}"""
         angular_seps = angular_separation(rfi_xyz, self.ants_xyz, self.ra, self.dec)
 
         # angular_seps is shape (n_src,n_time_fine,n_ant)
-        rfi_A_app = da.sqrt(I) * airy_beam(angular_seps, self.freqs, self.dish_d)
+        rfi_A_app = da.sqrt(da.abs(I)) * airy_beam(
+            angular_seps, self.freqs, self.dish_d
+        )
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # distances is shape (n_src,n_time_fine,n_ant)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
@@ -438,7 +448,7 @@ Number of stationary RFI : {n_stat}"""
 
         Parameters
         ----------
-        Pv: ndarray (n_src, n_freq)
+        Pv: ndarray (n_src, n_time_fine, n_freq)
             Specific Emission Power in W/Hz
         latitude: ndarray (n_src,)
             Geopgraphic latitude of the source in degrees.
@@ -447,7 +457,10 @@ Number of stationary RFI : {n_stat}"""
         elevation: ndarray (n_src,)
             Elevation/Altitude of the source above sea level in metres.
         """
-        Pv = da.asarray(da.atleast_2d(Pv), chunks=(-1, self.freq_chunk))
+        Pv = da.atleast_2d(Pv)
+        if Pv.ndim == 2:
+            Pv = da.expand_dims(Pv, axis=0)
+        Pv = Pv.rechunk((-1, self.time_fine_chunk, self.freq_chunk))
         latitude = da.asarray(da.atleast_1d(latitude), chunks=(-1,))
         longitude = da.asarray(da.atleast_1d(longitude), chunks=(-1,))
         elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
@@ -471,7 +484,9 @@ Number of stationary RFI : {n_stat}"""
         # I is shape (n_src,n_time,n_ant,n_freq)
 
         angular_seps = angular_separation(rfi_xyz, self.ants_xyz, self.ra, self.dec)
-        rfi_A_app = da.sqrt(I) * airy_beam(angular_seps, self.freqs, self.dish_d)
+        rfi_A_app = da.sqrt(da.abs(I)) * airy_beam(
+            angular_seps, self.freqs, self.dish_d
+        )
 
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
