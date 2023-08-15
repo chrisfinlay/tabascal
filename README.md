@@ -1,6 +1,7 @@
 # tabascal
 
 [![DOI:10.1093/mnras/stad1979](https://zenodo.org/badge/DOI/10.1093/mnras/stad1979.svg)](https://doi.org/10.1093/mnras/stad1979)
+[![Documentation Status](https://readthedocs.org/projects/tabascal/badge/?version=latest)](https://tabascal.readthedocs.io/en/latest/?badge=latest)
 
 **T**r**A**jectory **BA**sed RFI **S**ubtraction and **CAL**ibration (tabascal)
 of radio interferometry data. A source to visibility model for RFI sources
