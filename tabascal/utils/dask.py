@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 
+
 def get_factors(n: int):
     """Get the integer factors of n.
 
@@ -16,7 +17,7 @@ def get_factors(n: int):
     factors = [1, n]
     root_n = jnp.sqrt(n)
     if root_n == int(root_n):
-        factors.append(root_n)
+        factors.append(int(root_n))
     for i in range(1, int(root_n)):
         if n % i == 0:
             factors += [i, n // i]

@@ -1,9 +1,10 @@
-from __future__ import annotations
+# from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Optional
 
 if TYPE_CHECKING:
-    from tabascal.jax.observation import Observation
+    from tabascal.jax.observation import Observation as jaxObservation
+    from tabascal.dask.observation import Observation as daskObservation
 
 import os
 import shutil
@@ -15,7 +16,7 @@ import xarray as xr
 from daskms import Dataset, xds_to_table
 
 
-def construct_observation_ds(obs: Observation):
+def construct_observation_ds(obs: jaxObservation | daskObservation) -> xr.Dataset:
     """Construct a dataset for a single observation."""
 
     visibility_data = get_visibility_data(obs)
@@ -41,7 +42,7 @@ def construct_observation_ds(obs: Observation):
     return ds
 
 
-def get_visibility_data(obs: Observation):
+def get_visibility_data(obs: jaxObservation | daskObservation) -> dict:
     vis_data = {
         "vis_obs": (["time", "bl", "freq"], obs.vis_obs),
         "vis_ast": (["time_fine", "bl", "freq"], obs.vis_ast),
@@ -52,7 +53,7 @@ def get_visibility_data(obs: Observation):
     return vis_data
 
 
-def get_optional_data(obs: Observation):
+def get_optional_data(obs: jaxObservation | daskObservation) -> dict:
     opt_data = {
         # Antenna indices
         "antenna1": (["bl"], obs.a1),
@@ -74,7 +75,7 @@ def get_optional_data(obs: Observation):
     return opt_data
 
 
-def get_observation_attributes(obs: Observation):
+def get_observation_attributes(obs: jaxObservation | daskObservation) -> dict:
     attrs = {
         "tel_name": obs.name,
         "tel_latitude": obs.latitude,
@@ -102,7 +103,7 @@ def get_observation_attributes(obs: Observation):
     return attrs
 
 
-def get_coordinates(obs: Observation):
+def get_coordinates(obs: jaxObservation | daskObservation) -> dict:
     coords = {
         "time": obs.times,
         "time_fine": obs.times_fine,
@@ -121,7 +122,7 @@ def get_coordinates(obs: Observation):
     return coords
 
 
-def get_astromonical_source_data(obs: Observation):
+def get_astromonical_source_data(obs: jaxObservation | daskObservation) -> dict:
     if obs.n_ast > 0:
         ast_data = {
             # Astronomical source parameters
@@ -137,7 +138,7 @@ def get_astromonical_source_data(obs: Observation):
     return ast_data
 
 
-def get_satellite_rfi_data(obs: Observation):
+def get_satellite_rfi_data(obs: jaxObservation | daskObservation) -> dict:
     if obs.n_rfi_satellite > 0:
         rfi_sat = {
             # Satellite RFI parameters
@@ -163,7 +164,7 @@ def get_satellite_rfi_data(obs: Observation):
     return rfi_sat
 
 
-def get_stationary_rfi_data(obs: Observation):
+def get_stationary_rfi_data(obs: jaxObservation | daskObservation) -> dict:
     if obs.n_rfi_stationary > 0:
         rfi_stat = {
             # Stationary RFI parameters
@@ -193,9 +194,9 @@ def write_ms(
     ds: Dataset,
     ms_path: str,
     overwrite: bool = False,
-    vis_corr: dask.Array = None,
-    flags: dask.Array = None,
-):
+    vis_corr: Optional[da.Array] = None,
+    flags: Optional[da.Array] = None,
+) -> None:
     """Write a dataset to a Measurement Set."""
     if os.path.exists(ms_path):
         if overwrite:

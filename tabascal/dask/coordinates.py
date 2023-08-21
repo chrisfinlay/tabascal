@@ -1,14 +1,15 @@
 from tabascal.jax import coordinates as coord
 
+from jax import Array
+from numpy.typing import ArrayLike
+
 import dask.array as da
 from dask import delayed
 import xarray as xr
 
 
-def radec_to_lmn(ra: da.Array, dec: da.Array, phase_centre: da.Array) -> da.Array:
+def radec_to_lmn(ra: Array, dec: Array, phase_centre: ArrayLike) -> da.Array:
     n_src = ra.shape[0]
-
-    src_chunk = ra.chunksize[0]
 
     input = xr.Dataset(
         {
@@ -23,7 +24,7 @@ def radec_to_lmn(ra: da.Array, dec: da.Array, phase_centre: da.Array) -> da.Arra
                 ["src", "lmn_space"],
                 da.zeros(
                     shape=(n_src, 3),
-                    chunks=(src_chunk, 3),
+                    chunks=(n_src, 3),
                     dtype=float,
                 ),
             )
@@ -383,16 +384,15 @@ angular_separation.__doc__ = coord.angular_separation.__doc__
 
 def orbit_vmap(
     times: da.Array,
-    elevation: da.Array,
-    inclination: da.Array,
-    lon_asc_node: da.Array,
+    elevation: Array,
+    inclination: Array,
+    lon_asc_node: Array,
     periapsis,
 ) -> da.Array:
     n_time = times.shape[0]
     n_src = elevation.shape[0]
 
     time_chunk = times.chunksize[0]
-    src_chunk = elevation.chunksize[0]
 
     input = xr.Dataset(
         {
@@ -410,7 +410,7 @@ def orbit_vmap(
                 ["src", "time", "space"],
                 da.zeros(
                     shape=(n_src, n_time, 3),
-                    chunks=(src_chunk, time_chunk, 3),
+                    chunks=(n_src, time_chunk, 3),
                     dtype=float,
                 ),
             )

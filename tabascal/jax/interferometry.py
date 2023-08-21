@@ -4,6 +4,12 @@ import jax.numpy as jnp
 from jax import jit, random
 from jax.config import config
 from jax.lax import scan
+
+from jax import Array
+from jax.typing import ArrayLike
+
+from typing import Optional
+
 from scipy.special import jv
 
 from functools import partial
@@ -14,7 +20,9 @@ c = 2.99792458e8
 
 
 @jit
-def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
+def rfi_vis(
+    app_amplitude: Array, c_distances: Array, freqs: Array, a1: Array, a2: Array
+) -> Array:
     """
     Calculate visibilities from distances to rfi sources.
 
@@ -108,10 +116,10 @@ def minus_two_pi_over_lamda(freqs):
     """Calculate -2pi/lambda for each frequency.
 
     Args:
-        freqs (jnp.ndarray): Frequencies in Hz. (n_freq,)
+        freqs (Array): Frequencies in Hz. (n_freq,)
 
     Returns:
-        jnp.ndarray: -2pi/lambda for each frequency. (n_freq,)
+        Array: -2pi/lambda for each frequency. (n_freq,)
     """
     return -2.0 * jnp.pi * freqs / c
 
@@ -121,12 +129,12 @@ def amp_to_intensity(amps, a1, a2):
     """Calculate intensity on a baseline ffrom the amplitudes at each antenna.
 
     Args:
-        amps (jnp.ndarray): Amplitudes at the antennas. (n_src, n_time, n_ant, n_freq)
-        a1 (jnp.ndarray): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
-        a2 (jnp.ndarray): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
+        amps (Array): Amplitudes at the antennas. (n_src, n_time, n_ant, n_freq)
+        a1 (Array): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
+        a2 (Array): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
 
     Returns:
-        jnp.ndarray: Intensity on baselines.
+        Array: Intensity on baselines.
     """
     return amps[:, :, a1] * jnp.conjugate(amps[:, :, a2])
 
@@ -136,13 +144,13 @@ def phase_from_distances(distances, a1, a2, freqs):
     """Calculate phase differences between antennas from distances.
 
     Args:
-        distances (jnp.ndarray): Distances to antennas. (n_src, n_time, n_ant)
-        a1 (jnp.ndarray): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
-        a2 (jnp.ndarray): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
-        freqs (jnp.ndarray): Frequencies in Hz. (n_freq,)
+        distances (Array): Distances to antennas. (n_src, n_time, n_ant)
+        a1 (Array): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
+        a2 (Array): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
+        freqs (Array): Frequencies in Hz. (n_freq,)
 
     Returns:
-        jnp.ndarray: Phases on baselines.
+        Array: Phases on baselines.
     """
     # Create array of shape (n_src, n_time, n_bl, n_freq)
     freqs = freqs[None, None, None, :]
@@ -181,7 +189,7 @@ def _astro_vis(sources, uvw, lmn, freqs):
     freqs = jnp.asarray(freqs[None, None, None, :])  #      (1, 1, 1, n_freq)
     uvw = jnp.asarray(uvw[None, :, :, None, :])  #          (1, n_time, n_bl, 1, 3)
     lmn = jnp.asarray(lmn[:, None, None, None, :])  #       (n_src, 1, 1, 1, 3)
-    s0 = jnp.array([0, 0, 1])[None, None, None, None, :]  # (1, 1, 1, 1, 3)
+    s0 = Array([0, 0, 1])[None, None, None, None, :]  # (1, 1, 1, 1, 3)
 
     phase = minus_two_pi_over_lamda(freqs) * jnp.sum(uvw * (lmn - s0), axis=-1)
 
@@ -197,7 +205,7 @@ def _ants_to_bl(G, a1, a2):
     return G_bl
 
 
-def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
+def airy_beam(theta: Array, freqs: Array, dish_d: float):
     """
     Calculate the primary beam voltage at a given angular distance from the
     pointing direction. The beam intensity model is the Airy disk as
@@ -220,7 +228,7 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
     """
     theta = jnp.asarray(theta[:, :, :, None])
     freqs = jnp.asarray(freqs)
-    dish_d = jnp.asarray(dish_d).flatten()[0]
+    # dish_d = jnp.asarray(dish_d).flatten()[0]
     mask = jnp.where(theta > 90.0, 0, 1)
     theta = jnp.deg2rad(theta)
     x = jnp.where(
@@ -233,7 +241,7 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
 
 
 # @jit
-def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
+def Pv_to_Sv(Pv: Array, d: Array) -> Array:
     """
     Convert emission power to received intensity in Jy. Assumes constant
     power across the bandwidth. Calculated from
@@ -261,7 +269,7 @@ def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
 
 
 # @jit
-def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):
+def add_noise(vis: Array, noise_std: Array, key: Array):
     """
     Add complex gaussian noise to the integrated visibilities. The real and
     imaginary components will each get this level of noise.
@@ -287,16 +295,18 @@ def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):
 
 # @jit
 def SEFD_to_noise_std(
-    SEFD: jnp.ndarray, chan_width: jnp.ndarray, int_time: jnp.ndarray
-):
+    SEFD: ArrayLike,
+    chan_width: ArrayLike,
+    int_time: ArrayLike,
+) -> Array:
     """Calculate the standard deviation of the complex noise in a visibility
     given the system equivalent flux density, the channel width and integration time.
 
     Parameters
     ----------
-    SEFD: ndarray (n_freq, )
+    SEFD: ndarray (n_freq,)
         System equivalent flux density in Jy.
-    chan_width: ndarray (n_time, n_ant, n_freq)
+    chan_width: ndarray (n_freq,)
         Channel width in Hz.
     int_time: float
         Integration time in seconds.
@@ -313,7 +323,7 @@ def SEFD_to_noise_std(
 
 
 # @jit
-def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
+def int_sample_times(times: Array, n_int_samples: int = 1):
     """Calculate the times at which to sample the visibilities given the time centroids.
     This shoudl produce `n_int_samples` times per integration time that are evenly
     spaced around the time centroid.
@@ -331,7 +341,7 @@ def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
         The times at which to sample the visibilities.
     """
     times = jnp.asarray(times)
-    n_int_samples = jnp.asarray(n_int_samples)
+    # n_int_samples = jnp.asarray(n_int_samples)
     int_time = times[1] - times[0]
     times_fine = (
         int_time / (2 * n_int_samples)
@@ -350,10 +360,10 @@ def generate_gains(
     G0_std: float,
     Gt_std_amp: float,
     Gt_std_phase: float,
-    times: jnp.ndarray,
+    times: Array,
     n_ant: int,
     n_freq: int,
-    key: jnp.ndarray,
+    key: random.PRNGKeyArray,
 ):
     """
     Generate complex antenna gains. Gain amplitudes and phases
@@ -377,14 +387,14 @@ def generate_gains(
     key: jax.random.PRNGKey
         Random number generator key.
     """
-    G0_mean = jnp.asarray(G0_mean)
-    G0_std = jnp.asarray(G0_std)
-    Gt_std_amp = jnp.asarray(Gt_std_amp)
-    Gt_std_phase = jnp.asarray(Gt_std_phase)
+    # G0_mean = jnp.asarray(G0_mean)
+    # G0_std = jnp.asarray(G0_std)
+    # Gt_std_amp = jnp.asarray(Gt_std_amp)
+    # Gt_std_phase = jnp.asarray(Gt_std_phase)
     times = jnp.asarray(times)
-    n_ant = jnp.asarray(n_ant)
-    n_freq = jnp.asarray(n_freq)
-    key = jnp.asarray(key)
+    # n_ant = jnp.asarray(n_ant)
+    # n_freq = jnp.asarray(n_freq)
+    # key = jnp.asarray(key)
     G0 = G0_mean * jnp.exp(
         1.0j * jnp.pi * (random.uniform(key, (1, n_ant, n_freq)) - 0.5)
     )
@@ -405,11 +415,11 @@ def generate_gains(
 
 # @jit
 def apply_gains(
-    vis_ast: jnp.ndarray,
-    vis_rfi: jnp.ndarray,
-    gains: jnp.ndarray,
-    a1: jnp.ndarray,
-    a2: jnp.ndarray,
+    vis_ast: Array,
+    vis_rfi: Array,
+    gains: Array,
+    a1: Array,
+    a2: Array,
 ):
     """Apply antenna gains to visibilities.
 
@@ -441,7 +451,7 @@ def apply_gains(
 
 
 @partial(jit, static_argnums=(1,))
-def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
+def time_avg(vis: Array, n_int_samples: int = 1):
     """Average visibilities in time.
 
     Parameters
@@ -479,5 +489,5 @@ def db_to_lin(dB: float):
     -------
     lin: float, ndarray
     """
-    dB = jnp.asarray(dB)
+    # dB = jnp.asarray(dB)
     return 10.0 ** (dB / 10.0)

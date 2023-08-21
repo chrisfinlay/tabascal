@@ -1,8 +1,11 @@
 import numpy as np
 import jax.numpy as jnp
+from numpy.random import Generator
 
 
-def uniform_points_disk(radius: float, n_src: int, random_seed: int = None):
+def uniform_points_disk(
+    radius: float, n_src: int, random_seed: int | Generator | None = None
+):
     """
     Generate uniformly distributed random points on a disk.
 
@@ -32,7 +35,7 @@ def random_power_law(
     I_min: float = 1e-4,
     I_max: float = 1.0,
     alpha: float = 1.6,
-    random_seed: int = None,
+    random_seed: int | Generator | None = None,
 ):
     """Generate a random power law distribution of source fluxes with minimum source
     flux defined by `I0`.
@@ -75,7 +78,7 @@ def generate_random_sky(
     spec_idx_std: float = 0.2,
     fov: float = 1.0,
     beam_width: float = 0.0,
-    random_seed: int = None,
+    random_seed: int | Generator | None = None,
 ):
     """
     Generate uniformly distributed point sources inside the field of view with

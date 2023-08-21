@@ -1,7 +1,9 @@
 import jax.numpy as jnp
-from jax import random
+from jax import random, Array
 from jax.config import config
 import jax
+from numpy.typing import ArrayLike
+from typing import Optional
 
 import numpy as np
 
@@ -59,18 +61,16 @@ class Telescope(object):
         latitude: float,
         longitude: float,
         elevation: float,
-        ENU_array=None,
-        ENU_path=None,
-        name=None,
+        ENU_array: ArrayLike | None = None,
+        ENU_path: str | None = None,
+        name: str | None = None,
     ):
         self.name = name
         self.latitude = latitude
         self.longitude = longitude
         self.elevation = elevation
         self.GEO = np.array([latitude, longitude, elevation])
-        self.ENU_path = None
         self.createArrayENU(ENU_array=ENU_array, ENU_path=ENU_path)
-        self.n_ants = len(self.ENU)
 
     def __str__(self):
         msg = f"""\nTelescope Location
@@ -94,6 +94,7 @@ Elevation : {self.elevation}\n"""
 
         self.ENU_path = ENU_path
         self.GEO_ants = ENU_to_GEO(self.GEO, self.ENU)
+        self.n_ants = len(self.ENU)
 
 
 class Observation(Telescope):
@@ -144,38 +145,42 @@ class Observation(Telescope):
         elevation: float,
         ra: float,
         dec: float,
-        times: jnp.ndarray,
-        freqs: jnp.ndarray,
-        SEFD: jnp.ndarray,
-        ENU_path=None,
+        times: Array,
+        freqs: Array,
+        SEFD: Array,
+        ENU_path: str | None = None,
         ENU_array=None,
         dish_d=13.965,
         random_seed=0,
         auto_corrs=False,
         n_int_samples=4,
         name="MeerKAT",
-        max_chunk_MB: float = None,  # Dummy parameter for compatibility with dask version
+        max_chunk_MB=None,  # Dummy parameter for compatibility with dask version
     ):
-        self.backend = "jax"
-        self.ra = ra
-        self.dec = dec
-        self.times = jnp.asarray(times)
-        self.altaz = radec_to_altaz(self.ra, self.dec, latitude, longitude, self.times)
-        self.int_time = float(jnp.abs(jnp.diff(times)[0])) if len(times) > 1 else 2.0
-        self.n_int_samples = int(n_int_samples)
-        self.times_fine = int_sample_times(times, n_int_samples)
-        self.n_time = len(times)
-        self.n_time_fine = len(self.times_fine)
-        self.freqs = jnp.asarray(freqs)
-        self.SEFD = jnp.asarray(SEFD) * jnp.ones(len(freqs))
-        self.chan_width = (
+        self.backend: str = "jax"
+        self.ra: float = ra
+        self.dec: float = dec
+        self.times: Array = jnp.asarray(times)
+        self.altaz: Array = radec_to_altaz(
+            self.ra, self.dec, latitude, longitude, self.times
+        )
+        self.int_time: float = (
+            float(jnp.abs(jnp.diff(times)[0])) if len(times) > 1 else 2.0
+        )
+        self.n_int_samples: int = int(n_int_samples)
+        self.times_fine: Array = int_sample_times(times, n_int_samples)
+        self.n_time: int = len(times)
+        self.n_time_fine: int = len(self.times_fine)
+        self.freqs: Array = jnp.asarray(freqs)
+        self.SEFD: Array = jnp.asarray(SEFD) * jnp.ones(len(freqs))
+        self.chan_width: float = (
             float(jnp.abs(jnp.diff(freqs)[0])) if len(freqs) > 1 else 209e3
         )
-        self.n_freq = len(freqs)
+        self.n_freq: int = len(freqs)
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)
-        self.dish_d = dish_d
-        self.fov = beam_size(self.dish_d, self.freqs.max())
-        self.auto_corrs = auto_corrs
+        self.dish_d: float = dish_d
+        self.fov: float = beam_size(self.dish_d, self.freqs.max())
+        self.auto_corrs: bool = auto_corrs
         super().__init__(
             latitude,
             longitude,
@@ -184,8 +189,8 @@ class Observation(Telescope):
             ENU_path=ENU_path,
             name=name,
         )
-        self.n_ant = len(self.ENU)
-        self.ants_uvw = ENU_to_UVW(
+        self.n_ant: int = len(self.ENU)
+        self.ants_uvw: Array = ENU_to_UVW(
             self.ENU,
             latitude=self.latitude,
             longitude=self.longitude,
@@ -193,28 +198,31 @@ class Observation(Telescope):
             dec=self.dec,
             times=self.times_fine,
         )
+        self.a1: Array
+        self.a2: Array
         self.a1, self.a2 = jnp.triu_indices(self.n_ants, 0 if auto_corrs else 1)
-        self.bl_uvw = self.ants_uvw[:, self.a1, :] - self.ants_uvw[:, self.a2, :]
-        self.mag_uvw = jnp.linalg.norm(self.bl_uvw[0], axis=-1)
-        self.n_bl = len(self.a1)
-        self.ants_xyz = GEO_to_XYZ_vmap1(self.GEO_ants[None, ...], self.times_fine)
+        self.bl_uvw: Array = self.ants_uvw[:, self.a1, :] - self.ants_uvw[:, self.a2, :]
+        self.mag_uvw: Array = jnp.linalg.norm(self.bl_uvw[0], axis=-1)
+        self.n_bl: int = len(self.a1)
+        self.ants_xyz: Array = GEO_to_XYZ_vmap1(
+            self.GEO_ants[None, ...], self.times_fine
+        )
         self.syn_bw = beam_size(self.mag_uvw.max(), self.freqs[-1])
-        self.n_ast = 0
-        self.n_rfi = 0
-        self.vis_ast = jnp.zeros(
+        self.vis_ast: Array = jnp.zeros(
             (self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128
         )
-        self.vis_rfi = jnp.zeros(
+        self.vis_rfi: Array = jnp.zeros(
             (self.n_time_fine, self.n_bl, self.n_freq), dtype=jnp.complex128
         )
-        self.gains_ants = jnp.ones(
+        self.gains_ants: Array = jnp.ones(
             (self.n_time_fine, self.n_ant, self.n_freq), dtype=jnp.complex128
         )
         self.key = random.PRNGKey(random_seed)
 
-        self.n_ast = 0
-        self.n_rfi_satellite = 0
-        self.n_rfi_stationary = 0
+        self.n_ast: int = 0
+        self.n_rfi_satellite: int = 0
+        self.n_rfi_stationary: int = 0
+        self.n_rfi: int = 0
 
         self.create_source_dicts()
 
@@ -282,7 +290,7 @@ Number of stationary RFI : {n_stat}"""
         self.rfi_stationary_ang_sep = []
         self.rfi_stationary_A_app = []
 
-    def addAstro(self, I: jnp.ndarray, ra: jnp.ndarray, dec: jnp.ndarray):
+    def addAstro(self, I: Array, ra: Array, dec: Array):
         """
         Add a set of astronomical sources to the observation.
 
@@ -314,11 +322,11 @@ Number of stationary RFI : {n_stat}"""
 
     def addSatelliteRFI(
         self,
-        Pv: jnp.ndarray,
-        elevation: jnp.ndarray,
-        inclination: jnp.ndarray,
-        lon_asc_node: jnp.ndarray,
-        periapsis: jnp.ndarray,
+        Pv: Array,
+        elevation: Array,
+        inclination: Array,
+        lon_asc_node: Array,
+        periapsis: Array,
     ):
         """
         Add a satellite-based source of RFI to the observation.
@@ -383,10 +391,10 @@ Number of stationary RFI : {n_stat}"""
 
     def addStationaryRFI(
         self,
-        Pv: jnp.ndarray,
-        latitude: jnp.ndarray,
-        longitude: jnp.ndarray,
-        elevation: jnp.ndarray,
+        Pv: Array,
+        latitude: Array,
+        longitude: Array,
+        elevation: Array,
     ):
         """
         Add a stationary source of RFI to the observation.

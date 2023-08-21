@@ -4,6 +4,14 @@ from jax.config import config
 import dask.array as da
 import numpy as np
 
+from jax import Array
+from numpy.typing import ArrayLike
+
+from typing import List, MutableMapping, Literal
+from os import PathLike
+
+from xarray import Dataset
+
 from tabascal.dask.coordinates import (
     ENU_to_UVW,
     ENU_to_GEO,
@@ -58,18 +66,16 @@ class Telescope(object):
         latitude: float,
         longitude: float,
         elevation: float,
-        ENU_array=None,
-        ENU_path=None,
-        name=None,
+        ENU_array: ArrayLike | None = None,
+        ENU_path: str | None = None,
+        name: str | None = None,
     ):
         self.name = name
         self.latitude = da.asarray(latitude)
         self.longitude = da.asarray(longitude)
         self.elevation = da.asarray(elevation)
         self.GEO = da.asarray([latitude, longitude, elevation])
-        self.ENU_path = None
         self.createArrayENU(ENU_array=ENU_array, ENU_path=ENU_path)
-        self.n_ant = len(self.ENU)
 
     def __str__(self):
         msg = """\nTelescope Location
@@ -99,6 +105,7 @@ Elevation : {elevation}\n"""
         self.ENU = da.asarray(self.ENU)
         self.ENU_path = ENU_path
         self.GEO_ants = ENU_to_GEO(self.GEO, self.ENU)
+        self.n_ant = len(self.ENU)
 
 
 class Observation(Telescope):
@@ -149,11 +156,11 @@ class Observation(Telescope):
         elevation: float,
         ra: float,
         dec: float,
-        times: jnp.ndarray,
-        freqs: jnp.ndarray,
-        SEFD: jnp.ndarray,
-        ENU_path: str = None,
-        ENU_array: jnp.ndarray = None,
+        times: Array,
+        freqs: Array,
+        SEFD: Array,
+        ENU_path: str | None = None,
+        ENU_array: Array | None = None,
         dish_d: float = 13.965,
         random_seed: int = 0,
         auto_corrs: bool = False,
@@ -310,22 +317,22 @@ Number of stationary RFI : {n_stat}"""
 
         return super().__str__() + msg.format(**params)
 
-    def create_source_dicts(self):
-        self.ast_I = []
-        self.ast_lmn = []
-        self.ast_radec = []
+    def create_source_dicts(self) -> None:
+        self.ast_I: List[ArrayLike] = []
+        self.ast_lmn: List[ArrayLike] = []
+        self.ast_radec: List[ArrayLike] = []
 
-        self.rfi_satellite_xyz = []
-        self.rfi_satellite_orbit = []
-        self.rfi_satellite_ang_sep = []
-        self.rfi_satellite_A_app = []
+        self.rfi_satellite_xyz: List[ArrayLike] = []
+        self.rfi_satellite_orbit: List[ArrayLike] = []
+        self.rfi_satellite_ang_sep: List[ArrayLike] = []
+        self.rfi_satellite_A_app: List[ArrayLike] = []
 
-        self.rfi_stationary_xyz = []
-        self.rfi_stationary_geo = []
-        self.rfi_stationary_ang_sep = []
-        self.rfi_stationary_A_app = []
+        self.rfi_stationary_xyz: List[ArrayLike] = []
+        self.rfi_stationary_geo: List[ArrayLike] = []
+        self.rfi_stationary_ang_sep: List[ArrayLike] = []
+        self.rfi_stationary_A_app: List[ArrayLike] = []
 
-    def addAstro(self, I: jnp.ndarray, ra: jnp.ndarray, dec: jnp.ndarray):
+    def addAstro(self, I: Array, ra: Array, dec: Array) -> None:
         """
         Add a set of astronomical sources to the observation.
 
@@ -364,12 +371,12 @@ Number of stationary RFI : {n_stat}"""
 
     def addSatelliteRFI(
         self,
-        Pv: jnp.ndarray,
-        elevation: jnp.ndarray,
-        inclination: jnp.ndarray,
-        lon_asc_node: jnp.ndarray,
-        periapsis: jnp.ndarray,
-    ):
+        Pv: Array,
+        elevation: Array,
+        inclination: Array,
+        lon_asc_node: Array,
+        periapsis: Array,
+    ) -> None:
         """
         Add a satellite-based source of RFI to the observation.
 
@@ -391,7 +398,7 @@ Number of stationary RFI : {n_stat}"""
         Pv = da.atleast_2d(Pv)
         if Pv.ndim == 2:
             Pv = da.expand_dims(Pv, axis=0)
-        Pv = Pv.rechunk((-1, self.time_fine_chunk, self.freq_chunk))
+        Pv = da.rechunk(Pv, (-1, self.time_fine_chunk, self.freq_chunk))
         elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
         inclination = da.asarray(da.atleast_1d(inclination), chunks=(-1,))
         lon_asc_node = da.asarray(da.atleast_1d(lon_asc_node), chunks=(-1,))
@@ -438,11 +445,11 @@ Number of stationary RFI : {n_stat}"""
 
     def addStationaryRFI(
         self,
-        Pv: jnp.ndarray,
-        latitude: jnp.ndarray,
-        longitude: jnp.ndarray,
-        elevation: jnp.ndarray,
-    ):
+        Pv: Array,
+        latitude: Array,
+        longitude: Array,
+        elevation: Array,
+    ) -> None:
         """
         Add a stationary source of RFI to the observation.
 
@@ -460,7 +467,7 @@ Number of stationary RFI : {n_stat}"""
         Pv = da.atleast_2d(Pv)
         if Pv.ndim == 2:
             Pv = da.expand_dims(Pv, axis=0)
-        Pv = Pv.rechunk((-1, self.time_fine_chunk, self.freq_chunk))
+        Pv = da.rechunk(Pv, (-1, self.time_fine_chunk, self.freq_chunk))
         latitude = da.asarray(da.atleast_1d(latitude), chunks=(-1,))
         longitude = da.asarray(da.atleast_1d(longitude), chunks=(-1,))
         elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
@@ -515,7 +522,7 @@ Number of stationary RFI : {n_stat}"""
         Gt_std_amp: float,
         Gt_std_phase: float,
         random_seed=None,
-    ):
+    ) -> None:
         """Add complex antenna gains to the simulation. Gain amplitudes and phases
         are modelled as linear time-variates. Gains for all antennas at t = 0
         are randomly sampled from a Gaussian described by the G0 parameters.
@@ -548,7 +555,7 @@ Number of stationary RFI : {n_stat}"""
             random_seed if random_seed else self.random_seed,
         ).rechunk((self.time_fine_chunk, self.ant_chunk, self.freq_chunk))
 
-    def calculate_vis(self, random_seed=None):
+    def calculate_vis(self, random_seed=None) -> Dataset:
         """
         Calculate the total gain amplified visibilities,  average down to the
         originally defined sampling rate and add noise.
@@ -567,11 +574,15 @@ Number of stationary RFI : {n_stat}"""
         self.dataset = construct_observation_ds(self)
         return self.dataset
 
-    def write_to_zarr(self, path: str = "Observation", overwrite: bool = False):
+    def write_to_zarr(
+        self,
+        path: MutableMapping | str | PathLike[str] | None = "Observation",
+        overwrite: bool = False,
+    ):
         """
         Write the visibilities to disk using zarr format.
         """
-        mode = "w" if overwrite else "w-"
+        mode: Literal["w", "w-", "a", "r+"] = "w" if overwrite else "w-"
         self.dataset.to_zarr(path, mode=mode)
 
     def write_to_ms(self, path: str = "Observation.ms", overwrite: bool = False):

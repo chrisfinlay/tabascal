@@ -3,12 +3,16 @@ import os
 from pathlib import Path
 
 import jax.numpy as jnp
+from jax import Array
+from jax.typing import ArrayLike
+
 import numpy as np
+
 
 pkg_dir = Path(__file__).parent.absolute()
 
 
-def beam_size(diameter: float, frequency: float, fwhp: bool = True):
+def beam_size(diameter: ArrayLike, frequency: ArrayLike, fwhp: bool = True):
     """
     Calculate the beam size of an antenna or an array. For an array use
     fwhp = True. This assumes an Airy disk primary beam pattern.
@@ -88,4 +92,3 @@ def str2bool(v: str):
         return False
     else:
         raise argparse.ArgumentTypeError("Boolean value expected.")
-
