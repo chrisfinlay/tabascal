@@ -1,0 +1,16 @@
+# Base requirements
+numpy
+jax
+dask
+xarray
+#dask-ms
+
+# Development requirements
+pytest
+pytest-cov
+flake8
+black
+isort
+mypy
+tox
+
