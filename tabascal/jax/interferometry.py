@@ -221,7 +221,7 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
     theta = jnp.asarray(theta[:, :, :, None])
     freqs = jnp.asarray(freqs)
     dish_d = jnp.asarray(dish_d).flatten()[0]
-    mask = jnp.where(theta > 90.0, 0, 1)
+    # mask = jnp.where(theta > 90.0, 0, 1)
     theta = jnp.deg2rad(theta)
     x = jnp.where(
         theta == 0.0,
@@ -229,7 +229,8 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
         jnp.pi * freqs[None, None, None, :] * dish_d * jnp.sin(theta) / c,
     )
 
-    return (2 * jv(1, x) / x) * mask
+    return 2 * jv(1, x) / x
+    # return (2 * jv(1, x) / x) * mask
 
 
 # @jit

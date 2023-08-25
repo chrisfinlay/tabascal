@@ -2,7 +2,7 @@
 tabascal.egg-info
 docs/build
 build
-tabascal/examples/data/*
+examples/data/*
 *.DS_Store
 *.h5
 *.ipynb
@@ -14,3 +14,4 @@ tabascal/examples/data/*
 tabascal/optimize/mcmc.py
 tabascal/utils/ms.py
 tabascal/data/MeerKAT_real.ENU.txt
+.coverage
