@@ -27,7 +27,7 @@ parser.add_argument("--t_0", default=440.0, type=float, help="Start time in seco
 parser.add_argument("--delta_t", default=2.0, type=float, help="Time step in seconds.")
 parser.add_argument("--N_t", default=450, type=int, help="Number of time steps.")
 parser.add_argument(
-    "--N_int", default=128, type=int, help="Number of integration samples."
+    "--N_int", default=4, type=int, help="Number of integration samples."
 )
 parser.add_argument("--N_f", default=1, type=int, help="Number of frequency channels.")
 parser.add_argument("--freq_start", default=1227e6, type=float, help="Start frequency.")
@@ -36,10 +36,10 @@ parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
 parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
 parser.add_argument("--seed", default=0, type=int, help="Random seed.")
 parser.add_argument(
-    "--N_sat", default=1, type=int, help="Number of satellite-based RFI sources."
+    "--N_sat", default=2, type=int, help="Number of satellite-based RFI sources."
 )
 parser.add_argument(
-    "--N_grd", default=1, type=int, help="Number of ground-based RFI sources."
+    "--N_grd", default=3, type=int, help="Number of ground-based RFI sources."
 )
 parser.add_argument(
     "--backend", default="dask", type=str, help="Use pure JAX or Dask backend."
@@ -123,16 +123,22 @@ I, d_ra, d_dec = generate_random_sky(
 
 print('Adding "Astro" sources ...')
 
-obs.addAstro(I=I, ra=obs.ra + d_ra, dec=obs.dec + d_dec)
+obs.addAstro(
+    I=I[:, None, :] * np.ones((1, obs.n_time_fine, 1)),
+    ra=obs.ra + d_ra,
+    dec=obs.dec + d_dec,
+)
 
 #### Satellite-based RFI ####
 
 print('Adding "Satellite" sources ...')
 
-rfi_P = [
-    RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.227e9) / 5e6) ** 2),
-    RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.227e9) / 5e6) ** 2),
-]
+rfi_P = np.array(
+    [
+        RFI_amp * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.227e9) / 5e6) ** 2),
+        RFI_amp * 2 * 0.6e-4 * np.exp(-0.5 * ((freqs - 1.227e9) / 5e6) ** 2),
+    ]
+)
 
 elevation = [20200e3, 19140e3]
 inclination = [55.0, 64.8]
@@ -141,7 +147,7 @@ periapsis = [7.0, 1.0]
 
 if N_sat > 0 and N_sat <= 2:
     obs.addSatelliteRFI(
-        Pv=rfi_P[:N_sat],
+        Pv=rfi_P[:N_sat, None, :] * np.ones((N_sat, obs.n_time_fine, obs.n_freq)),
         elevation=elevation[:N_sat],
         inclination=inclination[:N_sat],
         lon_asc_node=lon_asc_node[:N_sat],
@@ -154,18 +160,20 @@ elif N_sat > 2:
 
 print('Adding "Ground" sources ...')
 
-rfi_P = [
-    RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
-    RFI_amp * 1.5e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
-    RFI_amp * 0.4e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
-]
+rfi_P = np.array(
+    [
+        RFI_amp * 6e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
+        RFI_amp * 1.5e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
+        RFI_amp * 0.4e-4 * np.exp(-0.5 * ((freqs - 1.22e9) / 3e6) ** 2),
+    ]
+)
 latitude = [-20.0, -20.0, -25.0]
 longitude = [30.0, 20.0, 20.0]
 elevation = [obs.elevation, obs.elevation, obs.elevation]
 
 if N_grd > 0 and N_grd <= 3:
     obs.addStationaryRFI(
-        Pv=rfi_P[:N_grd],
+        Pv=rfi_P[:N_grd, None, :] * np.ones((N_grd, obs.n_time_fine, obs.n_freq)),
         latitude=latitude[:N_grd],
         longitude=longitude[:N_grd],
         elevation=elevation[:N_grd],

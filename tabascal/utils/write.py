@@ -125,7 +125,10 @@ def get_astromonical_source_data(obs: Observation):
     if obs.n_ast > 0:
         ast_data = {
             # Astronomical source parameters
-            "ast_I": (["ast_src", "time", "freq"], da.concatenate(obs.ast_I, axis=0)),
+            "ast_I": (
+                ["ast_src", "time_fine", "freq"],
+                da.concatenate(obs.ast_I, axis=0),
+            ),
             "ast_lmn": (["ast_src", "lmn"], da.concatenate(obs.ast_lmn, axis=0)),
             "ast_radec": (
                 ["ast_src", "radec"],

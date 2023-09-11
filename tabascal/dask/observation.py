@@ -331,7 +331,7 @@ Number of stationary RFI : {n_stat}"""
 
         Parameters
         ----------
-        I: ndarray (n_src, n_time, n_freq) or
+        I: ndarray (n_src, n_time_fine, n_freq) or
             Intensity of the sources in Jy. If I.ndim==2, then this is assumed
             to the spectrogram (n_time, n_freq) of a single source. If
             I.ndim==1, then this is assumed to be the spectral profile of a
@@ -344,13 +344,17 @@ Number of stationary RFI : {n_stat}"""
         I = da.atleast_2d(I)
         if I.ndim == 2:
             I = da.expand_dims(I, axis=0)
+        I = I * da.ones(
+            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
+            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
+        )
         ra = da.atleast_1d(ra)
         dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
         theta = da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1))
         I_app = (
             I
-            * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, 0, 0, :])
+            * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
             ** 2
         )
         vis_ast = astro_vis(I_app, self.bl_uvw, lmn, self.freqs)
@@ -376,7 +380,10 @@ Number of stationary RFI : {n_stat}"""
         Parameters
         ----------
         Pv: ndarray (n_src, n_time_fine, n_freq)
-            Specific Emission Power in W/Hz
+            Specific Emission Power in W/Hz. If Pv.ndim==1, it is assumed to be
+            of shape (n_freq,) and is the spectrum of a single RFI source. If
+            Pv.ndim==2, it is assumed to be of shape (n_time_fine, n_freq) and
+            is the spectrogram of a single RFI source.
         elevation: ndarray (n_src,)
             Elevation/Altitude of the orbit in metres.
         inclination: ndarray (n_src,)
@@ -391,7 +398,12 @@ Number of stationary RFI : {n_stat}"""
         Pv = da.atleast_2d(Pv)
         if Pv.ndim == 2:
             Pv = da.expand_dims(Pv, axis=0)
-        Pv = Pv.rechunk((-1, self.time_fine_chunk, self.freq_chunk))
+        Pv = (
+            Pv
+            * da.ones(
+                shape=(1, self.n_time_fine, self.n_freq),
+            )
+        ).rechunk((-1, self.time_fine_chunk, self.freq_chunk))
         elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
         inclination = da.asarray(da.atleast_1d(inclination), chunks=(-1,))
         lon_asc_node = da.asarray(da.atleast_1d(lon_asc_node), chunks=(-1,))
@@ -449,7 +461,10 @@ Number of stationary RFI : {n_stat}"""
         Parameters
         ----------
         Pv: ndarray (n_src, n_time_fine, n_freq)
-            Specific Emission Power in W/Hz
+            Specific Emission Power in W/Hz. If Pv.ndim==1, it is assumed to be
+            of shape (n_freq,) and is the spectrum of a single RFI source. If
+            Pv.ndim==2, it is assumed to be of shape (n_time_fine, n_freq) and
+            is the spectrogram of a single RFI source.
         latitude: ndarray (n_src,)
             Geopgraphic latitude of the source in degrees.
         longitude: ndarray (n_src,)
@@ -460,7 +475,12 @@ Number of stationary RFI : {n_stat}"""
         Pv = da.atleast_2d(Pv)
         if Pv.ndim == 2:
             Pv = da.expand_dims(Pv, axis=0)
-        Pv = Pv.rechunk((-1, self.time_fine_chunk, self.freq_chunk))
+        Pv = (
+            Pv
+            * da.ones(
+                shape=(1, self.n_time_fine, self.n_freq),
+            )
+        ).rechunk((-1, self.time_fine_chunk, self.freq_chunk))
         latitude = da.asarray(da.atleast_1d(latitude), chunks=(-1,))
         longitude = da.asarray(da.atleast_1d(longitude), chunks=(-1,))
         elevation = da.asarray(da.atleast_1d(elevation), chunks=(-1,))
