@@ -21,8 +21,8 @@ git clone https://github.com/chrisfinlay/tabascal.git
 ### Conda Environment (Recommended)
 
 ```bash
-conda env create -f tabascal/env.yaml
-conda develop ./tabascal/
+conda env create -n tab_env -f tabascal/env.yaml
+pip install -e tabascal/
 ```
 
 ### GPU 
@@ -36,13 +36,13 @@ conda install jaxlib=*=*cuda* jax cuda-nvcc -c conda-forge -c nvidia
 ## Simulate a contaminated MeerKAT observation
 
 ```bash
-python tabascal/examples/sim.py
+python tabascal/examples/target_observation.py
 ```
 
 ### Help function
 
 ```bash
-python tabascal/examples/sim.py --help
+python tabascal/examples/target_observation.py --help
 ```
 
 ## Documentation
@@ -52,10 +52,17 @@ python tabascal/examples/sim.py --help
 ## Citing tabascal
 
 ```
-@article{finlay2023trajectory,
-  title={Trajectory Based RFI Subtraction and Calibration for Radio Interferometry},
-  author={Finlay, Chris and Bassett, Bruce A and Kunz, Martin and Oozeer, Nadeem},
-  journal={arXiv preprint arXiv:2301.04188},
-  year={2023}
+@ARTICLE{Finlay2023,
+       author = {{Finlay}, Chris and {Bassett}, Bruce A. and {Kunz}, Martin and {Oozeer}, Nadeem},
+        title = "{Trajectory-based RFI subtraction and calibration for radio interferometry}",
+      journal = {\mnras},
+         year = 2023,
+        month = sep,
+       volume = {524},
+       number = {3},
+        pages = {3231-3251},
+          doi = {10.1093/mnras/stad1979},
+archivePrefix = {arXiv},
+       eprint = {2301.04188},
 }
 ```
