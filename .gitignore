@@ -3,6 +3,7 @@ tabascal.egg-info
 docs/build
 build
 examples/data/*
+tabascal/examples/data/*
 *.DS_Store
 *.h5
 *.ipynb

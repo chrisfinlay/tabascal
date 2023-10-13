@@ -168,7 +168,7 @@ def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     phase = phase_from_distances(c_distances, a1, a2, freqs)
     intensity = amp_to_intensity(app_amplitude, a1, a2)
 
-    vis = jnp.sum(intensity * jnp.exp(1.0j * phase), axis=0)
+    vis = jnp.sum(intensity * jnp.exp(-1.0j * phase), axis=0)
 
     return vis
 
@@ -185,7 +185,7 @@ def _astro_vis(sources, uvw, lmn, freqs):
 
     phase = minus_two_pi_over_lamda(freqs) * jnp.sum(uvw * (lmn - s0), axis=-1)
 
-    vis = jnp.sum(sources * jnp.exp(1.0j * phase), axis=0)
+    vis = jnp.sum(sources * jnp.exp(-1.0j * phase), axis=0)
 
     return vis
 
