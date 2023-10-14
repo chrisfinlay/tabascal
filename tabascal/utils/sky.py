@@ -76,6 +76,7 @@ def generate_random_sky(
     fov: float = 1.0,
     beam_width: float = 0.0,
     random_seed: int = None,
+    n_beam: int = 3,
 ):
     """
     Generate uniformly distributed point sources inside the field of view with
@@ -101,6 +102,8 @@ def generate_random_sky(
         separated by >5*`beam_width`. Same units as fov.
     random_seed: int
         Random number generator seed/key.
+    n_beam: int
+        Number of beam_widths apart sources should be separated.
 
     Returns:
     --------
@@ -121,7 +124,7 @@ def generate_random_sky(
         positions = np.concatenate([positions, new_positions], axis=1)
         s1, s2 = np.triu_indices(positions.shape[1], 1)
         d = np.linalg.norm(positions[:, s1] - positions[:, s2], axis=0)
-        idx = np.where(d < 5 * beam_width)[0]
+        idx = np.where(d < n_beam * beam_width)[0]
         remove_source_idx = np.unique(jnp.concatenate([s1[idx], s2[idx]]))
         positions = np.delete(positions, remove_source_idx, axis=1)
 
