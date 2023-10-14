@@ -7,6 +7,7 @@ import numpy as np
 
 from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.tools import load_antennas, str2bool
+from tabascal.dask.observation import Observation
 
 parser = argparse.ArgumentParser(
     description="Simulate a target observation contaminated by RFI."
@@ -42,7 +43,7 @@ parser.add_argument(
     "--N_grd", default=3, type=int, help="Number of ground-based RFI sources."
 )
 parser.add_argument(
-    "--backend", default="dask", type=str, help="Use pure JAX or Dask backend."
+    "--N_ast", default=100, type=int, help="Number of astronomical sources."
 )
 parser.add_argument(
     "--overwrite", default="no", type=str2bool, help="Overwrite existing observation."
@@ -68,23 +69,12 @@ RFI_amp = args.RFIamp
 seed = args.seed
 N_sat = args.N_sat
 N_grd = args.N_grd
+N_ast = args.N_ast
 overwrite = args.overwrite
 chunksize = args.chunksize
 freq_start = args.freq_start
 freq_end = args.freq_end
 
-if args.backend.lower() == "jax":
-    from tabascal.jax.observation import Observation
-
-    print()
-    print("Using JAX backend")
-    print()
-else:
-    from tabascal.dask.observation import Observation
-
-    print()
-    print("Using Dask backend")
-    print()
 
 rng = np.random.default_rng(12345)
 ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
@@ -107,18 +97,24 @@ obs = Observation(
 )
 
 beam_width = obs.syn_bw if obs.syn_bw < 1e-2 else 1e-2
+n_beam = 3
+min_I = np.mean(obs.noise_std) / np.sqrt(N_t * N_ant * (N_ant - 1) / 2)
 
-print(f'Generating "Astro" sources with >{3600*5*beam_width:.0f}" separation ...')
+print(f'Generating "Astro" sources with >{3600*n_beam*beam_width:.0f}" separation ...')
+print(
+    f"Sources lie within {obs.fov/2:.2f} degrees with minimum flux of {min_I.compute()*1e3:.1f} mJy"
+)
 
 
 I, d_ra, d_dec = generate_random_sky(
-    n_src=100,
-    min_I=np.mean(obs.noise_std) / 5.0,
+    n_src=N_ast,
+    min_I=min_I,
     max_I=1.0,
     freqs=obs.freqs,
     fov=obs.fov,
     beam_width=beam_width,
     random_seed=seed,
+    n_beam=n_beam,
 )
 
 print('Adding "Astro" sources ...')
@@ -192,7 +188,7 @@ obs.calculate_vis()
 f_name = (
     f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T-{int(obs.times[0]):0>4}-{int(obs.times[-1]):0>4}"
     + f"_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F-{float(obs.freqs[0]):.3e}-{float(obs.freqs[-1]):.3e}"
-    + f"_{obs.n_ast:0>3}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
+    + f"_{obs.n_ast:0>5}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
 )
 
 save_path = os.path.join(output_path, f_name)
