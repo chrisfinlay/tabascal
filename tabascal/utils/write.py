@@ -13,6 +13,7 @@ import dask.array as da
 import numpy as np
 import xarray as xr
 from daskms import Dataset, xds_to_table
+import numpy as np
 
 
 def construct_observation_ds(obs: Observation):
@@ -43,9 +44,12 @@ def construct_observation_ds(obs: Observation):
 
 def get_visibility_data(obs: Observation):
     vis_data = {
-        "vis_obs": (["time", "bl", "freq"], obs.vis_obs),
         "vis_ast": (["time_fine", "bl", "freq"], obs.vis_ast),
         "vis_rfi": (["time_fine", "bl", "freq"], obs.vis_rfi),
+        "vis_obs": (["time", "bl", "freq"], obs.vis_obs),
+        "vis_model": (["time", "bl", "freq"], obs.vis_model),
+        "vis_calibrated": (["time", "bl", "freq"], obs.vis_cal),
+        "flags": (["time", "bl", "freq"], obs.flags),
     }
     if obs.backend == "jax":
         vis_data = {k: (v[0], da.asarray(v[1])) for k, v in vis_data.items()}
@@ -232,14 +236,15 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr=None, flags=None
     centroid_idx = int((n_int_samples) / 2) + n_int_samples * np.arange(n_time)
 
     vis_obs = ds.vis_obs.data.reshape(-1, n_freq, n_corr)
+    vis_model = ds.vis_model.data.reshape(-1, n_freq, n_corr)
 
     if vis_corr is None:
-        vis_corr = ds.vis_ast.data[centroid_idx].reshape(-1, n_freq, n_corr)
+        vis_corr = ds.vis_calibrated.data.reshape(-1, n_freq, n_corr)
     else:
         vis_corr = da.asarray(vis_corr).reshape(-1, n_freq, n_corr)
 
     if flags is None:
-        flags = da.zeros(shape=(n_row, n_freq, n_corr)).astype(bool)
+        flags = ds.flags.data.reshape(-1, n_freq, n_corr)
     else:
         flags = da.asarray(flags).reshape(-1, n_freq, n_corr)
 
@@ -271,6 +276,7 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr=None, flags=None
         "TIME_CENTROID": (("row"), row_times),
         "UVW": (("row", "uvw"), uvw),
         "CORRECTED_DATA": (("row", "chan", "corr"), vis_corr),
+        "MODEL_DATA": (("row", "chan", "corr"), vis_model),
         "SIGMA": (("row", "corr"), noise),
         "WEIGHT": (("row", "corr"), weight),
         "ARRAY_ID": (("row"), a_id),

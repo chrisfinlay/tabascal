@@ -3,6 +3,7 @@ from jax.config import config
 
 import dask.array as da
 import numpy as np
+import xarray as xr
 
 from tabascal.dask.coordinates import (
     ENU_to_UVW,
@@ -584,6 +585,17 @@ Number of stationary RFI : {n_stat}"""
             self.noise_std,
             random_seed if random_seed else self.random_seed,
         )
+        gains_bl = time_avg(
+            self.gains_ants[:, self.a1] * np.conjugate(self.gains_ants[:, self.a2]),
+            self.n_int_samples,
+        ).rechunk((self.time_chunk, self.bl_chunk, self.freq_chunk))
+        self.vis_model = time_avg(self.vis_ast, self.n_int_samples).rechunk(
+            (self.time_chunk, self.bl_chunk, self.freq_chunk)
+        )
+        self.vis_cal = self.vis_obs / gains_bl
+        self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * self.noise_std[
+            None, None, :
+        ] * np.sqrt(2)
         self.dataset = construct_observation_ds(self)
         return self.dataset
 
@@ -593,9 +605,18 @@ Number of stationary RFI : {n_stat}"""
         """
         mode = "w" if overwrite else "w-"
         self.dataset.to_zarr(path, mode=mode)
+        self.dataset = xr.open_zarr(path)
+        return self.dataset
 
-    def write_to_ms(self, path: str = "Observation.ms", overwrite: bool = False):
+    def write_to_ms(
+        self,
+        path: str = "Observation.ms",
+        overwrite: bool = False,
+        ds: xr.Dataset = None,
+    ):
         """
         Write the visibilities to disk using Measurement Set format.
         """
-        write_ms(self.dataset, path, overwrite=overwrite)
+        if ds is None:
+            ds = self.dataset
+        write_ms(ds, path, overwrite=overwrite)
