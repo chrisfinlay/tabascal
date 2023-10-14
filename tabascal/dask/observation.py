@@ -24,6 +24,7 @@ from tabascal.dask.interferometry import (
     int_sample_times,
     generate_gains,
     apply_gains,
+    ants_to_bl,
     time_avg,
 )
 from tabascal.utils.tools import beam_size
@@ -585,17 +586,19 @@ Number of stationary RFI : {n_stat}"""
             self.noise_std,
             random_seed if random_seed else self.random_seed,
         )
-        gains_bl = time_avg(
-            self.gains_ants[:, self.a1] * np.conjugate(self.gains_ants[:, self.a2]),
-            self.n_int_samples,
-        ).rechunk((self.time_chunk, self.bl_chunk, self.freq_chunk))
         self.vis_model = time_avg(self.vis_ast, self.n_int_samples).rechunk(
             (self.time_chunk, self.bl_chunk, self.freq_chunk)
         )
-        self.vis_cal = self.vis_obs / gains_bl
+        self.vis_cal = apply_gains(
+            self.vis_obs,
+            da.zeros_like(self.vis_obs),
+            1.0 / self.gains_ants[self.n_int_samples // 2 :: self.n_int_samples],
+            self.a1,
+            self.a2,
+        )
         self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * self.noise_std[
             None, None, :
-        ] * np.sqrt(2)
+        ] * da.sqrt(2)
         self.dataset = construct_observation_ds(self)
         return self.dataset
 
