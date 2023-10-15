@@ -97,8 +97,8 @@ obs = Observation(
 )
 
 beam_width = obs.syn_bw if obs.syn_bw < 1e-2 else 1e-2
-n_beam = 3
-min_I = np.mean(obs.noise_std) / np.sqrt(N_t * N_ant * (N_ant - 1) / 2)
+n_beam = 5
+min_I = 0.5 * np.mean(obs.noise_std) / np.sqrt(N_t * N_ant * (N_ant - 1) / 2)
 
 print(f'Generating "Astro" sources with >{3600*n_beam*beam_width:.0f}" separation ...')
 print(
