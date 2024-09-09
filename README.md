@@ -27,10 +27,10 @@ pip install -e tabascal/
 
 ### GPU 
  
-To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using conda, otherwise, refer to the JAX installation [documentation](https://github.com/google/jax#installation).
+To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using pip, otherwise, refer to the JAX installation [documentation](https://jax.readthedocs.io/en/latest/installation.html).
 
 ```bash
-conda install jaxlib=*=*cuda* jax cuda-nvcc -c conda-forge -c nvidia
+pip install -U "jax[cuda12]"
 ```
 
 ## Simulate a contaminated MeerKAT observation
