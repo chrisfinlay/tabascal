@@ -18,6 +18,6 @@ setup(
         [console_scripts]
         sim-vis=tabascal.examples.target_observation:cli
     """,
-    install_requires=["jax", "dask", "xarray", "dask-ms"],
+    install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy"],
     zip_safe=False,
 )
