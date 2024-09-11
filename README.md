@@ -39,7 +39,7 @@ pip install -e tabascal/
 
 ### Pure `pip` install
 
-Alternatively, you can install `tabascal` with pip alone inside enivironment of your choice again with optional GPU support.
+Alternatively, you can install `tabascal` with pip alone inside an enivironment of your choice, again, with optional GPU support.
 
 #### GPU Enabled
 ```bash
