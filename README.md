@@ -37,6 +37,20 @@ conda activate tab_env
 pip install -e tabascal/
 ```
 
+### Pure `pip` install
+
+Alternatively, you can install `tabascal` with pip alone inside enivironment of your choice again with optional GPU support.
+
+#### GPU Enabled
+```bash
+pip install -e ./tabascal/[gpu]
+```
+or
+#### CPU Only
+```bash
+pip install -e ./tabascal/
+```
+
 ### GPU 
  
 To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using pip, as is done using the `env_gpu.yaml`, otherwise, refer to the JAX installation [documentation](https://jax.readthedocs.io/en/latest/installation.html).
