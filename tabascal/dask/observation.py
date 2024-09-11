@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax.config import config
+from jax import config
 
 import dask.array as da
 import numpy as np

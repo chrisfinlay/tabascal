@@ -1,8 +1,7 @@
 import sys
 
 import jax.numpy as jnp
-from jax import jit, random
-from jax.config import config
+from jax import jit, random, config
 from jax.lax import scan
 from scipy.special import jv
 
@@ -237,12 +236,7 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
 def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
     """
     Convert emission power to received intensity in Jy. Assumes constant
-    power across the bandwidth. Calculated from
-
-    .. math::
-        Jy = \frac{P G_a}{FSPL \Delta\nu A_e}
-            = \frac{P G_a \lambda^2 4\pi}{(4\pi d)^2 \Delta\nu \lambda^2}
-            = \frac{P G_a}{4\pi d^2 \Delta \nu}
+    power across the bandwidth.
 
     Parameters
     ----------

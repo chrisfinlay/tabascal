@@ -1,6 +1,5 @@
 import jax.numpy as jnp
-from jax import random
-from jax.config import config
+from jax import random, config
 import jax
 
 import numpy as np
