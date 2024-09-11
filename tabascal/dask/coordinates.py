@@ -281,6 +281,7 @@ def ENU_to_UVW(
     enu: da.Array,
     latitude: da.Array,
     longitude: da.Array,
+    elevation: da.Array,
     ra: da.Array,
     dec: da.Array,
     times: da.Array,
@@ -296,6 +297,7 @@ def ENU_to_UVW(
             "enu": (["ant", "space"], enu),
             "latitude": (["geo_space_0"], da.from_array([latitude])),
             "longitude": (["geo_space_1"], da.from_array([longitude])),
+            "elevation": (["geo_space_1"], da.from_array([elevation])),
             "ra": (["cel_space_0"], da.from_array([ra])),
             "dec": (["cel_space_1"], da.from_array([dec])),
             "times": (["time"], times),
@@ -316,10 +318,11 @@ def ENU_to_UVW(
     )
 
     def _ENU_to_UVW(ds):
-        uvw = delayed(coord.ENU_to_UVW, pure=True)(
+        uvw = delayed(coord.enu_to_uvw, pure=True)(
             ds.enu.data,
             ds.latitude.data,
             ds.longitude.data,
+            ds.elevation.data,
             ds.ra.data,
             ds.dec.data,
             ds.times.data,

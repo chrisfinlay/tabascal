@@ -217,6 +217,7 @@ class Observation(Telescope):
             self.ENU,
             self.latitude,
             self.longitude,
+            self.elevation,
             self.ra,
             self.dec,
             self.times_fine,

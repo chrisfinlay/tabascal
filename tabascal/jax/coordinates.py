@@ -80,6 +80,7 @@ def radec_to_XYZ(ra: Array, dec: Array) -> Array:
 @jit
 def radec_to_altaz(ra: float, dec: float, latitude: float, longitude: float, times: Array) -> Array:
     """
+    !! Do not use this function - Needs to be checked !!
     Convert Right ascension and Declination to unit vector in ECI coordinates.
 
     Parameters
@@ -247,139 +248,6 @@ def GEO_to_XYZ_vmap1(geo: Array, times: Array) -> Array:
 
 
 @jit
-def ENU_to_ITRF(enu: Array, lat: float, lon: float) -> Array:
-    """
-    Calculate ITRF coordinates from ENU coordinates of antennas given the
-    latitude and longitude of the antenna array centre.
-
-    Paramters
-    ---------
-    enu: ndarray (n_ant, 3)
-        The East, North, Up coordinates of each antenna.
-    lat: float
-        The latitude of the observer/telescope.
-    lon: float
-        The longitude of the observer/telescope.
-
-    Returns
-    -------
-    itrf: jnp.array (n_ant, 3)
-        The ITRF coordinates of the antennas.
-    """
-    enu = jnp.asarray(enu)
-    lat = jnp.asarray(lat)
-    lon = jnp.asarray(lon)
-    E, L = jnp.deg2rad(jnp.array([lon, lat]))
-    sL, cL = jnp.sin(L), jnp.cos(L)
-    sE, cE = jnp.sin(E), jnp.cos(E)
-
-    R = jnp.array([[-sL, -cL * sE, cL * cE], [cL, -sL * sE, sL * cE], [0.0, cE, sE]])
-
-    itrf = jnp.dot(R, enu.T).T
-
-    return itrf
-
-
-@jit
-def ITRF_to_UVW(
-    ITRF: Array, ra: float, dec: float, lon: float, time: float
-) -> Array:
-    """
-    Calculate uvw coordinates from ITRF/ECEF coordinates,
-    longitude and Greenwich Mean Sidereal Time.
-
-    Parameters
-    ----------
-    ITRF: jnp.array (n_ant, 3)
-        Antenna positions in the ITRF frame in units of metres.
-    ra: float
-        The right ascension of the target in decimal degrees.
-    dec: float
-        The declination of the target in decimal degrees.
-    lon: float
-        The longitude at the observation location in decimal degrees.
-    time: float
-        Time of day in seconds past 12am.
-
-    Returns
-    -------
-    uvw: jnp.array (n_ant, 3)
-        The uvw coordinates of the antennas for a given observer
-        location, time and target (ra,dec).
-    """
-    ITRF = jnp.asarray(ITRF)
-    ra = jnp.asarray(ra).flatten()[0]
-    dec = jnp.asarray(dec).flatten()[0]
-    lon = jnp.asarray(lon).flatten()[0]
-    time = jnp.asarray(time)
-    gmst = 360.0 * (time / T_s)
-
-    H0 = gmst + lon - ra
-    d0 = dec
-
-    H0, d0 = jnp.deg2rad(jnp.array([H0, d0]))
-    sH0, cH0 = jnp.sin(H0), jnp.cos(H0)
-    sd0, cd0 = jnp.sin(d0), jnp.cos(d0)
-
-    R = jnp.array(
-        [[sH0, cH0, 0.0], [-sd0 * cH0, sd0 * sH0, cd0], [cd0 * cH0, -cd0 * sH0, sd0]]
-    )
-
-    uvw = jnp.dot(R, ITRF.T).T
-
-    return uvw
-
-
-@jit
-def ENU_to_UVW(
-    enu: Array,
-    latitude: float,
-    longitude: float,
-    ra: float,
-    dec: float,
-    times: Array,
-) -> Array:
-    """
-    Convert antenna coordinates in the ENU frame to the UVW coordinates, where
-    w points at the phase centre defined by (ra,dec), at specific times for a
-    telescope at a specifc latitude and longitude.
-
-    Parameters
-    ----------
-    enu: ndarray (n_ant, 3)
-        The East, North, Up coordindates of each antenna relative to the
-        position defined by the latitude and longitude.
-    latitude: float
-        Latitude of the telescope.
-    longitude: float
-        Longitude of the telescope.
-    ra: float
-        Right Ascension of the phase centre.
-    dec: float
-        Declination of the phase centre.
-    times: ndarray (n_time,)
-        Times, in seconds, at which to calculate the UVW coordinates.
-
-    Returns
-    -------
-    uvw: ndarray (n_time, n_ant, 3)
-        UVW coordinates, in metres, of the individual antennas at each time.
-    """
-    enu = jnp.asarray(enu)
-    latitude = jnp.asarray(latitude).flatten()[0]
-    longitude = jnp.asarray(longitude).flatten()[0]
-    ra = jnp.asarray(ra).flatten()[0]
-    dec = jnp.asarray(dec).flatten()[0]
-    times = jnp.asarray(times)
-    times = jnp.array([times]) if times.ndim < 1 else times
-    itrf = ENU_to_ITRF(enu, latitude, longitude)
-    UVW = vmap(ITRF_to_UVW, in_axes=(None, None, None, None, 0))
-    uvw = UVW(itrf, ra, dec, longitude, times)
-
-    return uvw
-
-
-@jit
 def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
     """
     https://astronomy.stackexchange.com/questions/14492/need-simple-equation-for-rise-transit-and-set-time
@@ -387,7 +255,7 @@ def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
 
     h0 = ra - jnp.atleast_1d(lst)
     ones = jnp.ones_like(h0)
-    lat, h0, dec = jnp.deg2rad([lat*ones, h0, dec*ones])
+    lat, h0, dec = jnp.deg2rad(jnp.array([lat*ones, h0, dec*ones]))
 
     a = jnp.cos(lat)*jnp.sin(dec) - jnp.cos(dec)*jnp.sin(lat)*jnp.cos(h0)
     b = jnp.cos(dec)*jnp.sin(h0)
@@ -402,7 +270,7 @@ def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
 @jit
 def rise_and_set_of_source(lat: float, ra: float, dec: float) -> Array:
 
-    lat, dec = jnp.deg2rad([lat, dec])
+    lat, dec = jnp.deg2rad(jnp.array([lat, dec]))
     
     a = jnp.rad2deg(jnp.arccos(-jnp.tan(dec)*jnp.tan(lat)))
 
@@ -411,18 +279,41 @@ def rise_and_set_of_source(lat: float, ra: float, dec: float) -> Array:
 
 @jit
 def lst_deg2sec(lst: Array) -> Array:
-    
-    sidereal_day = 86164.0905 
-    
-    return lst / 360 * sidereal_day
+    """Convert sidereal time in degrees to seconds.
 
+    Parameters
+    ----------
+    lst : Array
+        Sidereal time in degrees.
+
+    Returns
+    -------
+    Array
+        Sidereal time in seconds.
+    """
+    
+    return lst / 360 * T_s
+
+
+@jit
+def lst_sec2deg(lst: Array) -> Array:
+
+    return lst / T_s * 360
+
+
+@jit
+def gmst_to_lst(gmst: Array, lon: float) -> Array:
+
+    lst = gmst + lst_deg2sec(lon)
+
+    return lst
 
 def time_above_horizon(lat: float, dec: float) -> Array:
     """
     The number of degrees an object is above the horizon in a given day.
     """
     
-    lat, dec = jnp.deg2rad([lat, dec])
+    lat, dec = jnp.deg2rad(jnp.array([lat, dec]))
     
     if jnp.cos(dec)==0 or jnp.cos(lat)==0:
         return jnp.inf
@@ -454,10 +345,30 @@ def earth_radius(lat: float) -> float:
 
 @jit
 def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
+    """
+    Calculate ITRF coordinates from ENU coordinates of antennas given the
+    latitude and longitude of the antenna array centre.
+
+    Paramters
+    ---------
+    enu: ndarray (n_ant, 3)
+        The East, North, Up coordinates of each antenna.
+    lat: float
+        The latitude of the observer/telescope.
+    lon: float
+        The longitude of the observer/telescope.
+    el: float
+        The elevation of the observer/telescope.
+
+    Returns
+    -------
+    itrf: jnp.array (n_ant, 3)
+        The ITRF coordinates of the antennas.
+    """
 
     enu = jnp.atleast_2d(enu)
     R_e = earth_radius(lat)
-    lat, lon = jnp.deg2rad([lat, lon])
+    lat, lon = jnp.deg2rad(jnp.array([lat, lon]))
     
     r0 = (R_e+el)*jnp.array([
         jnp.cos(lat)*jnp.cos(lon),
@@ -476,6 +387,25 @@ def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
 
 @jit
 def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
+    """
+    Calculate uvw coordinates from ITRF/ECEF coordinates,
+    source local hour angle and declination.
+
+    Parameters
+    ----------
+    ITRF: Array (n_ant, 3)
+        Antenna positions in the ITRF frame in units of metres.
+    h0: float
+        The hour angle of the target in decimal degrees.
+    dec: float
+        The declination of the target in decimal degrees.
+
+    Returns
+    -------
+    uvw: Array (n_ant, 3)
+        The uvw coordinates of the antennas for a given observer
+        location, time and target (ra,dec).
+    """
 
     itrf = jnp.atleast_2d(itrf)
     itrf = itrf - itrf[0,None,:]
@@ -491,6 +421,56 @@ def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
     ])
     
     uvw = jnp.einsum("ijt,aj->tai", R, itrf)
+
+    return uvw
+
+@jit
+def enu_to_uvw(enu: Array,
+    latitude: float,
+    longitude: float,
+    elevation: float,
+    ra: float,
+    dec: float,
+    times: Array,
+) -> Array:
+    """
+    Convert antenna coordinates in the ENU frame to the UVW coordinates, where
+    w points at the phase centre defined by (ra,dec), at specific times for a
+    telescope at a specifc latitude and longitude.
+
+    Parameters
+    ----------
+    enu: ndarray (n_ant, 3)
+        The East, North, Up coordindates of each antenna relative to the
+        position defined by the latitude and longitude.
+    latitude: float
+        Latitude of the telescope.
+    longitude: float
+        Longitude of the telescope.
+    ra: float
+        Right Ascension of the phase centre.
+    dec: float
+        Declination of the phase centre.
+    times: ndarray (n_time,)
+        Times, in seconds, at which to calculate the UVW coordinates.
+
+    Returns
+    -------
+    uvw: ndarray (n_time, n_ant, 3)
+        UVW coordinates, in metres, of the individual antennas at each time.
+    """
+
+    enu = jnp.atleast_2d(jnp.asarray(enu))
+    latitude = jnp.asarray(latitude).flatten()[0]
+    longitude = jnp.asarray(longitude).flatten()[0]
+    elevation = jnp.asarray(elevation).flatten()[0]
+    ra = jnp.asarray(ra).flatten()[0]
+    dec = jnp.asarray(dec).flatten()[0]
+    times = jnp.atleast_1d(times)
+
+    itrf = enu_to_itrf(enu, latitude, longitude, elevation)
+    h0 = lst_sec2deg(times) + longitude - ra
+    uvw = itrf_to_uvw(itrf, h0, dec)
 
     return uvw
 
