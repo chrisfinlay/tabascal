@@ -20,18 +20,26 @@ git clone https://github.com/chrisfinlay/tabascal.git
 
 ### Conda Environment (Recommended)
 
+Create a conda environment with all the dependencies including JAX with optional GPU support.
+
+#### GPU Enabled
 ```bash
-conda env create -n tab_env -f tabascal/env.yaml
+conda env create -n tab_env -f tabascal/env_gpu.yaml
+```
+or
+#### CPU Only
+```bash
+conda env create -n tab_env -f tabascal/env_cpu.yaml
+```
+Then proceed to activate the conda environment and install `tabascal`
+```bash
+conda activate tab_env
 pip install -e tabascal/
 ```
 
 ### GPU 
  
-To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using pip, otherwise, refer to the JAX installation [documentation](https://jax.readthedocs.io/en/latest/installation.html).
-
-```bash
-pip install -U "jax[cuda12]"
-```
+To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using pip, as is done using the `env_gpu.yaml`, otherwise, refer to the JAX installation [documentation](https://jax.readthedocs.io/en/latest/installation.html).
 
 ## Simulate a contaminated MeerKAT observation
 
