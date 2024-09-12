@@ -385,8 +385,11 @@ def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
     return r0[None,:] + jnp.dot(enu, R)
 
 def enu_to_xyz_local(enu, lat):
+    """
+    https://web.njit.edu/~gary/728/Lecture6.html
+    """
     enu = jnp.atleast_2d(enu)
-    lat= jnp.deg2rad(lat)
+    lat = jnp.deg2rad(lat)
 
     R = jnp.array([
         [0, -jnp.sin(lat), jnp.cos(lat)],
