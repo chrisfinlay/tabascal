@@ -237,44 +237,44 @@ def GEO_to_XYZ_vmap1(geo: da.Array, times: da.Array) -> da.Array:
 GEO_to_XYZ_vmap1.__doc__ = coord.GEO_to_XYZ_vmap1.__doc__
 
 
-def ENU_to_ITRF(ENU: da.Array, lat: da.Array, lon: da.Array) -> da.Array:
-    n_ant = ENU.shape[0]
+# def ENU_to_ITRF(ENU: da.Array, lat: da.Array, lon: da.Array) -> da.Array:
+#     n_ant = ENU.shape[0]
 
-    ant_chunk = ENU.chunksize[0]
+#     ant_chunk = ENU.chunksize[0]
 
-    input = xr.Dataset(
-        {
-            "ENU": (["ant", "space"], ENU),
-            "lat": lat,
-            "lon": lon,
-        }
-    )
-    output = xr.Dataset(
-        {
-            "ITRF": (
-                ["ant", "space"],
-                da.zeros(
-                    shape=(n_ant, 3),
-                    chunks=(ant_chunk, 3),
-                    dtype=float,
-                ),
-            )
-        }
-    )
+#     input = xr.Dataset(
+#         {
+#             "ENU": (["ant", "space"], ENU),
+#             "lat": lat,
+#             "lon": lon,
+#         }
+#     )
+#     output = xr.Dataset(
+#         {
+#             "ITRF": (
+#                 ["ant", "space"],
+#                 da.zeros(
+#                     shape=(n_ant, 3),
+#                     chunks=(ant_chunk, 3),
+#                     dtype=float,
+#                 ),
+#             )
+#         }
+#     )
 
-    def _ENU_to_ITRF(ds):
-        ITRF = delayed(coord.ENU_to_ITRF, pure=True)(
-            ds.ENU.data, ds.lat.data, ds.lon.data
-        ).compute()
-        ds_out = xr.Dataset({"ITRF": (["ant", "space"], ITRF)})
-        return ds_out
+#     def _ENU_to_ITRF(ds):
+#         ITRF = delayed(coord.ENU_to_ITRF, pure=True)(
+#             ds.ENU.data, ds.lat.data, ds.lon.data
+#         ).compute()
+#         ds_out = xr.Dataset({"ITRF": (["ant", "space"], ITRF)})
+#         return ds_out
 
-    ds = xr.map_blocks(_ENU_to_ITRF, input, template=output)
+#     ds = xr.map_blocks(_ENU_to_ITRF, input, template=output)
 
-    return ds.ITRF.data
+#     return ds.ITRF.data
 
 
-ENU_to_ITRF.__doc__ = coord.ENU_to_ITRF.__doc__
+# ENU_to_ITRF.__doc__ = coord.ENU_to_ITRF.__doc__
 
 
 def ENU_to_UVW(
@@ -335,7 +335,7 @@ def ENU_to_UVW(
     return ds.uvw.data
 
 
-ENU_to_UVW.__doc__ = coord.ENU_to_UVW.__doc__
+ENU_to_UVW.__doc__ = coord.enu_to_uvw.__doc__
 
 
 def angular_separation(

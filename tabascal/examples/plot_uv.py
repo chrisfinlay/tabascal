@@ -102,7 +102,7 @@ obs = Observation(
     longitude=21.0,
     elevation=1050.0,
     ra=21.0,
-    dec=-30.0,
+    dec=30.0,
     times=times,
     freqs=freqs,
     SEFD=SEFD,
@@ -111,10 +111,10 @@ obs = Observation(
     max_chunk_MB=chunksize,
 )
 
-from tabascal.jax.coordinates import alt_az_of_source, gmst_to_lst, lst_sec2deg
+from tabascal.jax.coordinates import alt_az_of_source, gmst_to_lst
 
 lst = gmst_to_lst(obs.times.compute(), obs.longitude.compute())
-alt = alt_az_of_source(lst_sec2deg(lst), *[x.compute() for x in [obs.latitude, obs.ra, obs.dec]])[:,0]
+alt = alt_az_of_source(lst, *[x.compute() for x in [obs.latitude, obs.ra, obs.dec]])[:,0]
 
 plt.rcParams["font.size"] = 18
 
@@ -129,7 +129,7 @@ else:
     scale = "sec"
 
 plt.figure(figsize=(10,7))
-plt.plot(times/60, alt, '.-')
+plt.plot(times, alt, '.-')
 plt.xlabel(f"Time [{scale}]")
 plt.ylabel("Source Altitude [deg]")
 plt.savefig("SourceAltitude.png", format="png", dpi=200)
@@ -139,6 +139,7 @@ u = obs.bl_uvw[:,:,0].compute().flatten()
 v = obs.bl_uvw[:,:,1].compute().flatten()
 plt.plot(u, v, 'k.', ms=1, alpha=0.3)
 plt.plot(-u, -v, 'k.', ms=1, alpha=0.3)
+plt.grid()
 plt.xlim(-8e3, 8e3)
 plt.ylim(-8e3, 8e3)
 plt.xlabel("U [m]")

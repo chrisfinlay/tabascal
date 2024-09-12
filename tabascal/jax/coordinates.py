@@ -253,7 +253,7 @@ def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
     https://astronomy.stackexchange.com/questions/14492/need-simple-equation-for-rise-transit-and-set-time
     """
 
-    h0 = ra - jnp.atleast_1d(lst)
+    h0 = jnp.atleast_1d(lst) - ra 
     ones = jnp.ones_like(h0)
     lat, h0, dec = jnp.deg2rad(jnp.array([lat*ones, h0, dec*ones]))
 
@@ -304,7 +304,7 @@ def lst_sec2deg(lst: Array) -> Array:
 @jit
 def gmst_to_lst(gmst: Array, lon: float) -> Array:
 
-    lst = gmst + lst_deg2sec(lon)
+    lst = lst_sec2deg(gmst) + lon
 
     return lst
 
@@ -384,6 +384,18 @@ def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
 
     return r0[None,:] + jnp.dot(enu, R)
 
+def enu_to_xyz_local(enu, lat):
+    enu = jnp.atleast_2d(enu)
+    lat= jnp.deg2rad(lat)
+
+    R = jnp.array([
+        [0, -jnp.sin(lat), jnp.cos(lat)],
+        [1, 0, 0],
+        [0, jnp.cos(lat), jnp.sin(lat)],
+    ])
+
+    return jnp.dot(enu, R.T)
+
 
 @jit
 def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
@@ -395,14 +407,14 @@ def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
     ----------
     ITRF: Array (n_ant, 3)
         Antenna positions in the ITRF frame in units of metres.
-    h0: float
+    h0: Array (n_time,)
         The hour angle of the target in decimal degrees.
     dec: float
         The declination of the target in decimal degrees.
 
     Returns
     -------
-    uvw: Array (n_ant, 3)
+    uvw: Array (n_time, n_ant, 3)
         The uvw coordinates of the antennas for a given observer
         location, time and target (ra,dec).
     """
@@ -468,9 +480,13 @@ def enu_to_uvw(enu: Array,
     dec = jnp.asarray(dec).flatten()[0]
     times = jnp.atleast_1d(times)
 
+    # xyz = enu_to_xyz_local(enu, latitude)
+    # lh0 = lst_sec2deg(times) + longitude - ra # local hour angle
+    # uvw = itrf_to_uvw(xyz, lh0, dec)
+
     itrf = enu_to_itrf(enu, latitude, longitude, elevation)
-    h0 = lst_sec2deg(times) + longitude - ra
-    uvw = itrf_to_uvw(itrf, h0, dec)
+    gh0 = lst_sec2deg(times) - ra # Greenwich hour angle
+    uvw = itrf_to_uvw(itrf, gh0, dec)
 
     return uvw
 
