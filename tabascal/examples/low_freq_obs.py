@@ -127,26 +127,28 @@ if N_sat > 0 and N_sat <= 2:
 elif N_sat > 2:
     raise ValueError("Maximum number of satellite-based RFI sources is 2.")
 
-if N_sat>0:
-    import matplotlib.pyplot as plt
-    ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0)
-    plt.figure(figsize=(10,7))
-    plt.plot(obs.times, ang_seps[0])
-    plt.xlabel("Time [s]")
-    plt.ylabel("Angular Separation [deg]")
-    plt.savefig("AngularSeps.png", format="png", dpi=200)
-
 print('Adding "Gains" ...')
 
 if gains:
     obs.addGains(G0_mean=1.0, G0_std=0.05, Gt_std_amp=1e-5, Gt_std_phase=np.deg2rad(1e-3))
 
+obs_name = mk_obs_name(f_name, obs)
+save_path, zarr_path, ms_path = mk_obs_dir(output_path, obs_name, overwrite)
+
+if N_sat>0:
+    import matplotlib.pyplot as plt
+    import os
+    ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0)
+    plt.figure(figsize=(10,7))
+    plt.plot(obs.times, ang_seps.T[0])
+    plt.xlabel("Time [s]")
+    plt.ylabel("Angular Separation [deg]")
+    plt.savefig(os.path.join(save_path, "AngularSeps.png"), format="png", dpi=200)
+
 print("Calculating visibilities ...")
 
 obs.calculate_vis(flags=False)
 
-obs_name = mk_obs_name(f_name, obs)
-save_path, zarr_path, ms_path = mk_obs_dir(output_path, obs_name, overwrite)
 
 print(obs)
 

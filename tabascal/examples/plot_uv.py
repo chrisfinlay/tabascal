@@ -6,6 +6,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 
+from tabascal.dask.observation import Observation
 from tabascal.utils.tools import (
     load_antennas,
     str2bool,
@@ -78,21 +79,9 @@ chunksize = args.chunksize
 freq_start = args.freq_start
 freq_end = args.freq_end
 
-if args.backend.lower() == "jax":
-    from tabascal.jax.observation import Observation
-
-    print()
-    print("Using JAX backend")
-    print()
-else:
-    from tabascal.dask.observation import Observation
-
-    print()
-    print("Using Dask backend")
-    print()
-
 rng = np.random.default_rng(12345)
-ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
+# ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
+ants_enu = load_antennas("MeerKAT")[:N_ant]
 
 times = np.arange(t_0, t_0 + N_t * dT, dT)
 freqs = np.linspace(freq_start, freq_end, N_freq)
@@ -102,7 +91,7 @@ obs = Observation(
     longitude=21.0,
     elevation=1050.0,
     ra=21.0,
-    dec=30.0,
+    dec=-30.0,
     times=times,
     freqs=freqs,
     SEFD=SEFD,
