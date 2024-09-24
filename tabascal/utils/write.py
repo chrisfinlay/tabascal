@@ -35,7 +35,7 @@ def rm_dir(path: str, overwrite: bool=True):
         if overwrite:
             shutil.rmtree(path)
         else:
-            raise FileExistsError(f"File {path} already exists.")
+            raise FileExistsError(f"File {path} already exists.\n\nConsider using the 'overwrite' flag.")
 
 def mk_obs_dir(output_path: str, obs_name: str, overwrite: bool=True) -> tuple:
     """Construct an observation simulation directory and return save paths for MS and zarr files.
