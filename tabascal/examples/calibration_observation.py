@@ -181,6 +181,9 @@ print("Saving observation zarr file ...")
 obs.write_to_zarr(zarr_path, overwrite)
 
 print()
+print(f"Flag Rate      : {100*obs.flags.mean().compute(): .1f} %")
+
+print()
 print("Saving observation MS file ...")
 xds = xr.open_zarr(zarr_path)
 write_ms(xds, ms_path, overwrite=overwrite)

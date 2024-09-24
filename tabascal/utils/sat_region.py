@@ -57,7 +57,7 @@ c0 = SkyCoord(xds.target_ra, xds.target_dec, unit='deg', frame='fk5')
 c = SkyCoord(radec[:,:,0], radec[:,:,1], unit='deg', frame='fk5')
 
 min_sep = c0.separation(c).min(axis=1).deg
-print(min_sep)
+print(f"Minimum angular separation from target : {[round(x, 1) for x in min_sep]} deg.")
 idx = np.where(min_sep<max_d)[0]
 
 min_idx = np.argmin(c0.separation(c)[:,:-1], axis=1)
