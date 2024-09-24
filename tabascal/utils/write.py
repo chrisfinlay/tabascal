@@ -62,7 +62,8 @@ def get_optional_data(obs: Observation):
         "antenna1": (["bl"], obs.a1),
         "antenna2": (["bl"], obs.a2),
         # Antenna positions
-        "ants_enu": (["ant", "enu"], obs.ENU),
+        # "ants_enu": (["ant", "enu"], obs.ENU),
+        "ants_itrf": (["ant", "itrf"], obs.ITRF),
         "ants_xyz": (["time_fine", "ant", "xyz"], obs.ants_xyz),
         "ants_uvw": (["time_fine", "ant", "uvw"], obs.ants_uvw),
         "bl_uvw": (["time_fine", "bl", "uvw"], obs.bl_uvw),
@@ -115,6 +116,7 @@ def get_coordinates(obs: Observation):
         "ant": np.arange(obs.n_ant),
         "uvw": np.array(["u", "v", "w"]),
         "lmn": np.array(["l", "m", "n"]),
+        "itrf": np.array(["x0", "y0", "z0"]),
         "xyz": np.array(["x", "y", "z"]),
         "enu": np.array(["east", "north", "up"]),
         "radec": np.array(["ra", "dec"]),

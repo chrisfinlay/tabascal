@@ -76,8 +76,9 @@ freq_start = args.freq_start
 freq_end = args.freq_end
 
 
-rng = np.random.default_rng(12345)
-ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
+# rng = np.random.default_rng(12345)
+# ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
+itrf_path = "../data/Meerkat.itrf.txt"
 
 times = np.arange(t_0, t_0 + N_t * dT, dT)
 freqs = np.linspace(freq_start, freq_end, N_freq)
@@ -91,7 +92,8 @@ obs = Observation(
     times=times,
     freqs=freqs,
     SEFD=SEFD,
-    ENU_array=ants_enu,
+    # ENU_array=ants_enu,
+    ITRF_path=itrf_path, 
     n_int_samples=N_int,
     max_chunk_MB=chunksize,
 )
@@ -100,6 +102,7 @@ beam_width = obs.syn_bw if obs.syn_bw < 1e-2 else 1e-2
 n_beam = 5
 min_I = 0.5 * np.mean(obs.noise_std) / np.sqrt(N_t * N_ant * (N_ant - 1) / 2)
 
+print()
 print(f'Generating "Astro" sources with >{3600*n_beam*beam_width:.0f}" separation ...')
 print(
     f"Sources lie within {obs.fov/2:.2f} degrees with minimum flux of {min_I.compute()*1e3:.1f} mJy"

@@ -1,10 +1,18 @@
 # Progress bar for JAX scan
 # Credit to https://www.jeremiecoullon.com/2021/01/29/jax_progress_bar/
 
-from jax import lax
+from jax import lax, jit
 from jax.experimental import host_callback
 from tqdm import tqdm
+from collections.abc import Callable
 
+
+def jit_with_doc(func: Callable) -> Callable:
+    jit_func = jit(func)
+    jit_func.__doc__ = func.__doc__
+    return jit_func
+
+jit_with_doc.__doc__ = jit.__doc__
 
 def progress_bar_scan(num_samples: int, message=None):
     "Progress bar for a JAX scan"

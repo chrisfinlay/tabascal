@@ -1,5 +1,5 @@
 import jax.numpy as jnp
-from jax import config
+from jax import config, Array
 
 import dask.array as da
 import numpy as np
@@ -7,6 +7,8 @@ import xarray as xr
 
 from tabascal.dask.coordinates import (
     ENU_to_UVW,
+    ENU_to_ITRF,
+    ITRF_to_UVW, 
     ENU_to_GEO,
     GEO_to_XYZ_vmap0,
     GEO_to_XYZ_vmap1,
@@ -26,6 +28,8 @@ from tabascal.dask.interferometry import (
     apply_gains,
     time_avg,
 )
+
+from tabascal.jax.coordinates import lst_sec2deg, gmst_to_lst, itrf_to_geo, alt_az_of_source
 from tabascal.utils.tools import beam_size
 from tabascal.utils.write import construct_observation_ds, write_ms
 from tabascal.utils.dask_extras import get_chunksizes
@@ -58,19 +62,28 @@ class Telescope(object):
         self,
         latitude: float,
         longitude: float,
-        elevation: float,
-        ENU_array=None,
-        ENU_path=None,
-        name=None,
+        elevation: float=0.0,
+        ENU_array: Array=None,
+        ENU_path: str=None,
+        ITRF_array: Array=None,
+        ITRF_path: str=None,
+        name: str=None,
     ):
         self.name = name
         self.latitude = da.asarray(latitude)
         self.longitude = da.asarray(longitude)
         self.elevation = da.asarray(elevation)
         self.GEO = da.asarray([latitude, longitude, elevation])
-        self.ENU_path = None
-        self.createArrayENU(ENU_array=ENU_array, ENU_path=ENU_path)
-        self.n_ant = len(self.ENU)
+        self.ITRF = None
+        self.ENU = None
+        
+        if ENU_array is not None or ENU_path is not None:
+            self.createArrayENU(ENU_array, ENU_path)
+        if ITRF_array is not None or ITRF_path is not None:
+            self.createArrayITRF(ITRF_array, ITRF_path)
+        if self.ITRF is None and self.ENU is None:
+            raise ValueError("One of ('ENU_array', 'ENU_path', 'ITRF_array', 'ITRF_path') must be provided to create a Telescope object.")
+        self.n_ant = len(self.ITRF)
 
     def __str__(self):
         msg = """\nTelescope Location
@@ -90,7 +103,7 @@ Elevation : {elevation}\n"""
         if ENU_array is not None:
             self.ENU = ENU_array
         elif ENU_path is not None:
-            self.ENU = np.loadtxt(ENU_path)
+            self.ENU = np.loadtxt(ENU_path, usecols=(0,1,2))
         else:
             self.ENU = None
             msg = """Error : East-North-Up coordinates are needed either in an 
@@ -100,6 +113,22 @@ Elevation : {elevation}\n"""
         self.ENU = da.asarray(self.ENU)
         self.ENU_path = ENU_path
         self.GEO_ants = ENU_to_GEO(self.GEO, self.ENU)
+        self.ITRF = ENU_to_ITRF(self.ENU, self.latitude, self.longitude, self.elevation)
+
+    def createArrayITRF(self, ITRF_array, ITRF_path):
+        if ITRF_array is not None:
+            self.ITRF = ITRF_array
+        elif ITRF_path is not None:
+            self.ITRF = np.loadtxt(ITRF_path, usecols=(0,1,2))
+        else:
+            self.ITRF = None
+            msg = """Error : ITRF antenna coordinates are needed either in an 
+                     array or as a csv like file."""
+            print(msg)
+            return
+        self.ITRF = da.asarray(self.ITRF)
+        self.GEO_ants = da.asarray(itrf_to_geo(self.ITRF.compute()))
+
 
 
 class Observation(Telescope):
@@ -153,8 +182,10 @@ class Observation(Telescope):
         times: jnp.ndarray,
         freqs: jnp.ndarray,
         SEFD: jnp.ndarray,
-        ENU_path: str = None,
-        ENU_array: jnp.ndarray = None,
+        ENU_array: Array=None,
+        ENU_path: str=None,
+        ITRF_array: Array=None,
+        ITRF_path: str=None,
         dish_d: float = 13.965,
         random_seed: int = 0,
         auto_corrs: bool = False,
@@ -166,9 +197,11 @@ class Observation(Telescope):
             latitude,
             longitude,
             elevation,
-            ENU_array=ENU_array,
-            ENU_path=ENU_path,
-            name=name,
+            ENU_array,
+            ENU_path,
+            ITRF_array,
+            ITRF_path,
+            name,
         )
 
         self.backend = "dask"
@@ -202,6 +235,11 @@ class Observation(Telescope):
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
 
+
+        self.altaz = da.asarray(alt_az_of_source(gmst_to_lst(self.times_fine.compute(), longitude), latitude, ra, dec))
+        self.gha = da.asarray(lst_sec2deg(self.times_fine.compute())) - self.ra
+        self.lha = da.asarray(gmst_to_lst(self.times_fine.compute(), longitude)) - self.ra
+
         self.freqs = da.asarray(freqs, chunks=(self.freq_chunk,))
         self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else 209e3
         self.n_freq = len(freqs)
@@ -212,15 +250,18 @@ class Observation(Telescope):
         self.dish_d = da.asarray(dish_d)
         self.fov = beam_size(dish_d, freqs.max())
 
-        self.ants_uvw = ENU_to_UVW(
-            self.ENU,
-            self.latitude,
-            self.longitude,
-            self.elevation,
-            self.ra,
-            self.dec,
-            self.times_fine,
-        )
+        if self.ENU is not None:
+            self.ants_uvw = ENU_to_UVW(
+                self.ENU,
+                self.latitude,
+                self.longitude,
+                self.elevation,
+                self.ra,
+                self.dec,
+                self.times_fine,
+            )
+        else:
+            self.ants_uvw = ITRF_to_UVW(self.ITRF, self.gha, self.dec)
 
         self.bl_uvw = self.ants_uvw[:, self.a1, :] - self.ants_uvw[:, self.a2, :]
         self.mag_uvw = da.linalg.norm(self.bl_uvw[0], axis=-1)
@@ -262,25 +303,27 @@ class Observation(Telescope):
 Observation Details
 -------------------
 Phase Centre (ra, dec) :  ({ra:.1f}, {dec:.1f}) deg.
-Number of antennas :       {n_ant}
-Number of baselines :      {n_bl}
-Autocorrelations :         {auto_corrs}
+Local Hour Angle range :  ({lha_min:.1f}, {lha_max:.1f}) deg.
+Source Altitude range  :  ({alt_min:.1f}, {alt_max:.1f}) deg.
+Number of antennas     :   {n_ant}
+Number of baselines    :   {n_bl}
+Autocorrelations       :   {auto_corrs}
 
-Frequency range :         ({freq_min:.0f} - {freq_max:.0f}) MHz
-Channel width :            {chan_width:.0f} kHz
-Number of channels :       {n_freq}
+Frequency range        :   ({freq_min:.0f} - {freq_max:.0f}) MHz
+Channel width          :    {chan_width:.0f} kHz
+Number of channels     :    {n_freq}
 
-Observation time :        ({time_min:.0f} - {time_max:.0f}) s
-Integration time :         {int_time:.0f} s
-Sampling rate :            {sampling_rate:.1f} Hz
-Number of time steps :     {n_time}
+Observation time       :   ({time_min:.0f} - {time_max:.0f}) s
+Integration time       :    {int_time:.0f} s
+Sampling rate          :    {sampling_rate:.1f} Hz
+Number of time steps   :    {n_time}
 
 Source Details
 --------------
-Number of ast. sources:    {n_ast}
-Number of RFI sources:     {n_rfi}
-Number of satellite RFI :  {n_sat}
-Number of stationary RFI : {n_stat}"""
+Number of ast. sources   :  {n_ast}
+Number of RFI sources    :  {n_rfi}
+Number of satellite RFI  :  {n_sat}
+Number of stationary RFI :  {n_stat}"""
 
         params = {
             "ra": self.ra,
@@ -292,6 +335,10 @@ Number of stationary RFI : {n_stat}"""
             "freq_max": self.freqs.max() / 1e6,
             "time_min": self.times.min(),
             "time_max": self.times.max(),
+            "lha_min": self.lha.min(),
+            "lha_max": self.lha.max(),
+            "alt_min": self.altaz[:,0].min(),
+            "alt_max": self.altaz[:,0].max(),
             "chan_width": self.chan_width / 1e3,
             "n_freq": self.n_freq,
             "int_time": self.int_time,

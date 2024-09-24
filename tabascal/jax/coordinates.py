@@ -1,5 +1,6 @@
 import jax.numpy as jnp
 from jax import jit, vmap, jacrev, config, Array
+from tabascal.utils.jax_extras import jit_with_doc
 
 config.update("jax_enable_x64", True)
 
@@ -10,7 +11,7 @@ R_e = 6.371e6  # Average radius of the Earth
 T_s = 86164.0905  # Sidereal day in seconds
 
 
-@jit
+@jit_with_doc
 def radec_to_lmn(
     ra: Array, dec: Array, phase_centre: Array
 ) -> Array:
@@ -50,7 +51,7 @@ def radec_to_lmn(
     return jnp.array([l, m, n]).T
 
 
-@jit
+@jit_with_doc
 def radec_to_XYZ(ra: Array, dec: Array) -> Array:
     """
     Convert Right ascension and Declination to unit vector in ECI coordinates.
@@ -77,56 +78,56 @@ def radec_to_XYZ(ra: Array, dec: Array) -> Array:
     return jnp.array([x, y, z]).T
 
 
-@jit
-def radec_to_altaz(ra: float, dec: float, latitude: float, longitude: float, times: Array) -> Array:
-    """
-    !! Do not use this function - Needs to be checked !!
-    Convert Right ascension and Declination to unit vector in ECI coordinates.
+# @jit_with_doc
+# def radec_to_altaz(ra: float, dec: float, latitude: float, longitude: float, times: Array) -> Array:
+#     """
+#     !! Do not use this function - Needs to be checked !!
+#     Convert Right ascension and Declination to unit vector in ECI coordinates.
 
-    Parameters
-    ----------
-    ra : float
-        Right-ascension in degrees.
-    dec : float
-        Declination in degrees.
-    latitude: float
-        The latitude of the observer in degrees.
-    times: ndarray (n_time,)
-        The time of each position in seconds.
+#     Parameters
+#     ----------
+#     ra : float
+#         Right-ascension in degrees.
+#     dec : float
+#         Declination in degrees.
+#     latitude: float
+#         The latitude of the observer in degrees.
+#     times: ndarray (n_time,)
+#         The time of each position in seconds.
 
-    Returns
-    -------
-    altaz: ndarray (n_time, 2)
-        The altiude and azimuth of the source at each time.
-    """
-    ra, dec = jnp.deg2rad(jnp.asarray([ra, dec]))
-    lat, lon = jnp.deg2rad(jnp.asarray([latitude, longitude]))
-    times = jnp.asarray(times)
-    gmst = 2.0 * jnp.pi * times / T_s
-    ha = (gmst + lon - ra) % 2 * jnp.pi
+#     Returns
+#     -------
+#     altaz: ndarray (n_time, 2)
+#         The altiude and azimuth of the source at each time.
+#     """
+#     ra, dec = jnp.deg2rad(jnp.asarray([ra, dec]))
+#     lat, lon = jnp.deg2rad(jnp.asarray([latitude, longitude]))
+#     times = jnp.asarray(times)
+#     gmst = 2.0 * jnp.pi * times / T_s
+#     ha = (gmst + lon - ra) % 2 * jnp.pi
 
-    alt = jnp.arcsin(
-        jnp.sin(dec) * jnp.sin(lat) + jnp.cos(dec) * jnp.cos(lat) * jnp.cos(ha)
-    )
+#     alt = jnp.arcsin(
+#         jnp.sin(dec) * jnp.sin(lat) + jnp.cos(dec) * jnp.cos(lat) * jnp.cos(ha)
+#     )
 
-    az = jnp.arctan2(
-        -jnp.sin(ha), jnp.cos(ha) * jnp.sin(lat) - jnp.tan(dec) * jnp.cos(lat)
-    )
+#     az = jnp.arctan2(
+#         -jnp.sin(ha), jnp.cos(ha) * jnp.sin(lat) - jnp.tan(dec) * jnp.cos(lat)
+#     )
 
-    # az = jnp.arccos(
-    #     (jnp.sin(dec) - jnp.sin(alt) * jnp.sin(lat)) / (jnp.cos(alt) * jnp.cos(lat))
-    # )
-    # az = jnp.where(ha < 0, 2 * jnp.pi - az, az)
+#     # az = jnp.arccos(
+#     #     (jnp.sin(dec) - jnp.sin(alt) * jnp.sin(lat)) / (jnp.cos(alt) * jnp.cos(lat))
+#     # )
+#     # az = jnp.where(ha < 0, 2 * jnp.pi - az, az)
 
-    # az = jnp.arcsin(
-    #     jnp.sin(dec) * jnp.sin(lat) + jnp.cos(dec) * jnp.cos(lat) * jnp.cos(ha)
-    # )
-    # az = jnp.where(ha < jnp.pi, 2 * jnp.pi - az, az)
+#     # az = jnp.arcsin(
+#     #     jnp.sin(dec) * jnp.sin(lat) + jnp.cos(dec) * jnp.cos(lat) * jnp.cos(ha)
+#     # )
+#     # az = jnp.where(ha < jnp.pi, 2 * jnp.pi - az, az)
 
-    return jnp.rad2deg(jnp.array([alt, az]).T)
+#     return jnp.rad2deg(jnp.array([alt, az]).T)
 
 
-@jit
+@jit_with_doc
 def ENU_to_GEO(geo_ref: Array, enu: Array) -> Array:
     """
     Convert a set of points in ENU co-ordinates to geographic coordinates i.e.
@@ -156,7 +157,7 @@ def ENU_to_GEO(geo_ref: Array, enu: Array) -> Array:
     return geo_ants
 
 
-@jit
+@jit_with_doc
 def GEO_to_XYZ(geo: Array, times: Array) -> Array:
     """
     Convert geographic coordinates to an Earth Centred Inertial (ECI)
@@ -195,7 +196,7 @@ def GEO_to_XYZ(geo: Array, times: Array) -> Array:
     return jnp.array([x, y, z]).T
 
 
-@jit
+@jit_with_doc
 def GEO_to_XYZ_vmap0(geo: Array, times: Array) -> Array:
     """
     Convert geographic coordinates to an Earth Centred Inertial (ECI)
@@ -221,7 +222,7 @@ def GEO_to_XYZ_vmap0(geo: Array, times: Array) -> Array:
     return vmap(GEO_to_XYZ, in_axes=(0, None), out_axes=0)(geo, times)
 
 
-@jit
+@jit_with_doc
 def GEO_to_XYZ_vmap1(geo: Array, times: Array) -> Array:
     """
     Convert geographic coordinates to an Earth Centred Inertial (ECI)
@@ -247,10 +248,26 @@ def GEO_to_XYZ_vmap1(geo: Array, times: Array) -> Array:
     return vmap(GEO_to_XYZ, in_axes=(1, None), out_axes=1)(geo, times)
 
 
-@jit
+@jit_with_doc
 def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
-    """
-    https://astronomy.stackexchange.com/questions/14492/need-simple-equation-for-rise-transit-and-set-time
+    """Calculate the altitude and azimuth of a given source direction over time. 
+    Taken from https://astronomy.stackexchange.com/questions/14492/need-simple-equation-for-rise-transit-and-set-time
+
+    Parameters
+    ----------
+    lst : Array (n_time,)
+        Local sidereal time in degrees.
+    lat : float
+        Latitude of the observer in degrees.
+    ra : float
+        Right ascension of the source in degrees.
+    dec : float
+        DEclination of the source in degrees.
+
+    Returns
+    -------
+    Array (n_time, 2)
+        Altitude and azimuth of the source in degrees relative to the observer.
     """
 
     h0 = jnp.atleast_1d(lst) - ra 
@@ -267,7 +284,7 @@ def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
     return jnp.array([alt, az]).T
 
 
-@jit
+@jit_with_doc
 def rise_and_set_of_source(lat: float, ra: float, dec: float) -> Array:
 
     lat, dec = jnp.deg2rad(jnp.array([lat, dec]))
@@ -277,14 +294,14 @@ def rise_and_set_of_source(lat: float, ra: float, dec: float) -> Array:
     return jnp.array([ra-a, ra+a])
 
 
-@jit
+@jit_with_doc
 def lst_deg2sec(lst: Array) -> Array:
-    """Convert sidereal time in degrees to seconds.
+    """Convert a sidereal time in degrees to seconds.
 
     Parameters
     ----------
     lst : Array
-        Sidereal time in degrees.
+        Sidereal time in degrees to convert.
 
     Returns
     -------
@@ -295,14 +312,43 @@ def lst_deg2sec(lst: Array) -> Array:
     return lst / 360 * T_s
 
 
-@jit
+@jit_with_doc
 def lst_sec2deg(lst: Array) -> Array:
+    """Convert a sidereal time from seconds to degrees.
+
+    Parameters
+    ----------
+    lst : Array
+        Sidereal time in seconds to convert.
+
+    Returns
+    -------
+    Array
+        Sidereal time in degrees.
+    """
 
     return lst / T_s * 360
 
 
-@jit
+@jit_with_doc
 def gmst_to_lst(gmst: Array, lon: float) -> Array:
+    """Calculate the local sidereal time at a given longitude in degrees.
+
+    Parameters
+    ----------
+    gmst : Array
+        Greenwich Mean Sidereal Time in seconds.
+    lon : float
+        Longitude of the location in degrees
+
+    Returns
+    -------
+    Array
+        Local Sidereal Time at the location.
+    """
+
+    gmst = jnp.asarray(gmst)
+    lon = jnp.asarray(lon)
 
     lst = lst_sec2deg(gmst) + lon
 
@@ -323,16 +369,42 @@ def time_above_horizon(lat: float, dec: float) -> Array:
     return H
 
 
-@jit
+@jit_with_doc
 def transit_altitude(lat: float, dec: float) -> float:
+    """Calculate the altitude of a source at transit given an observer's latitude.
+
+    Parameters
+    ----------
+    lat : float
+        Latitude of the observer in degrees.
+    dec : float
+        Declination of the source in degrees.
+
+    Returns
+    -------
+    float
+        Altitude of the source at transit in degrees.
+    """
 
     alt = 90 - jnp.abs(dec-lat)
 
     return alt
 
 
-@jit
+@jit_with_doc
 def earth_radius(lat: float) -> float:
+    """Calculate the earth radius according to the ellipsoidal model at a given latitude.
+
+    Parameters
+    ----------
+    lat : float
+        Latitude of the location in degrees.
+
+    Returns
+    -------
+    float
+        Earth radius in metres at the given latitude.
+    """
     a = 6378137.0 # equitorial radius
     b = 6356752.3 # polar radius
     lat = jnp.deg2rad(lat)
@@ -343,7 +415,7 @@ def earth_radius(lat: float) -> float:
     return r
 
 
-@jit
+@jit_with_doc
 def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
     """
     Calculate ITRF coordinates from ENU coordinates of antennas given the
@@ -351,7 +423,7 @@ def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
 
     Paramters
     ---------
-    enu: ndarray (n_ant, 3)
+    enu: Array (n_ant, 3)
         The East, North, Up coordinates of each antenna.
     lat: float
         The latitude of the observer/telescope.
@@ -362,15 +434,15 @@ def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
 
     Returns
     -------
-    itrf: jnp.array (n_ant, 3)
+    itrf: Array (n_ant, 3)
         The ITRF coordinates of the antennas.
     """
 
     enu = jnp.atleast_2d(enu)
-    R_e = earth_radius(lat)
+    R = earth_radius(lat) + el
     lat, lon = jnp.deg2rad(jnp.array([lat, lon]))
     
-    r0 = (R_e+el)*jnp.array([
+    r0 = R*jnp.array([
         jnp.cos(lat)*jnp.cos(lon),
         jnp.cos(lat)*jnp.sin(lon),
         jnp.sin(lat)
@@ -400,11 +472,38 @@ def enu_to_xyz_local(enu, lat):
     return jnp.dot(enu, R.T)
 
 
-@jit
+@jit_with_doc
+def itrf_to_geo(itrf: Array) ->  Array:
+    """Convert ITRF coordinates to geodetic coordinates.
+
+    Parameters
+    ----------
+    itrf : Array (n_ant, 3)
+        ITRF coordinates.
+
+    Returns
+    -------
+    Array (n_ant, 3)
+        Geodetic coordinates (latitude, longitude, elevation)
+    """
+    x, y, z = jnp.atleast_2d(itrf).T
+    xy = jnp.sqrt(x**2 + y**2)
+
+    lat = jnp.rad2deg(jnp.arcsin(z/xy))
+    lon = jnp.rad2deg(jnp.arctan2(y, x))
+    el = jnp.linalg.norm(itrf, axis=-1) - earth_radius(lat)
+
+    return jnp.array([lat, lon, el]).T
+
+@jit_with_doc
 def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
     """
     Calculate uvw coordinates from ITRF/ECEF coordinates,
-    source local hour angle and declination.
+    source hour angle and declination. Use the Greenwich hour 
+    angle when using true ITRF coordinates such as those produced 
+    with 'enu_to_itrf'. Use local hour angle when using local 'xyz' 
+    coordinates as defined in most radio interferometry textbooks 
+    or those produced with 'enu_to_xyz_local'.
 
     Parameters
     ----------
@@ -439,7 +538,7 @@ def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
 
     return uvw
 
-@jit
+@jit_with_doc
 def enu_to_uvw(enu: Array,
     latitude: float,
     longitude: float,
@@ -493,7 +592,7 @@ def enu_to_uvw(enu: Array,
 
     return uvw
 
-@jit
+@jit_with_doc
 def angular_separation(
     rfi_xyz: Array, ants_xyz: Array, ra: float, dec: float
 ) -> Array:
@@ -531,7 +630,7 @@ def angular_separation(
     return angles
 
 
-@jit
+@jit_with_doc
 def Rotx(theta: float) -> Array:
     """
     Define a rotation matrix about the 'x-axis' by an angle theta, in degrees.
@@ -554,7 +653,7 @@ def Rotx(theta: float) -> Array:
     return Rx
 
 
-@jit
+@jit_with_doc
 def Rotz(theta: float) -> Array:
     """
     Define a rotation matrix about the 'z-axis' by an angle theta, in degrees.
@@ -577,7 +676,7 @@ def Rotz(theta: float) -> Array:
     return Rz
 
 
-@jit
+@jit_with_doc
 def orbit(
     times: Array,
     elevation: float,
@@ -660,7 +759,7 @@ def orbit_vmap(
     )
 
 
-@jit
+@jit_with_doc
 def orbit_velocity(
     times: Array,
     elevation: float,
@@ -704,7 +803,7 @@ def orbit_velocity(
     return velocity
 
 
-@jit
+@jit_with_doc
 def R_uvw(
     times: Array,
     elevation: float,
@@ -754,7 +853,7 @@ def R_uvw(
     return R
 
 
-@jit
+@jit_with_doc
 def RIC_dev(
     times: Array,
     true_orbit_params: Array,
@@ -793,7 +892,7 @@ def RIC_dev(
     return est_uvw - true_uvw
 
 
-@jit
+@jit_with_doc
 def orbit_fisher(
     times: Array, orbit_params: Array, RIC_std: Array
 ) -> Array:

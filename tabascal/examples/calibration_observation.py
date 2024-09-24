@@ -78,7 +78,8 @@ freq_end = args.freq_end
 
 # rng = np.random.default_rng(12345)
 # ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
-ants_enu = load_antennas("MeerKAT")[:N_ant]
+# ants_enu = load_antennas("MeerKAT")[:N_ant]
+itrf_path = "../data/Meerkat.itrf.txt"
 
 times = np.arange(t_0, t_0 + N_t * dT, dT)
 freqs = np.linspace(freq_start, freq_end, N_freq)
@@ -92,11 +93,14 @@ obs = Observation(
     times=times,
     freqs=freqs,
     SEFD=SEFD,
-    ENU_array=ants_enu,
+    # ENU_array=ants_enu,
+    ITRF_path=itrf_path, 
     n_int_samples=N_int,
     max_chunk_MB=chunksize,
 )
 
+print()
+print('Adding "Calibrator" source ...')
 obs.addAstro(I=CAL_amp * np.ones((len(freqs),)), ra=obs.ra, dec=obs.dec)
 
 #### Satellite-based RFI ####

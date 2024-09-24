@@ -18,7 +18,7 @@ setup(
         [console_scripts]
         sim-vis=tabascal.examples.target_observation:cli
     """,
-    install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy"],
+    install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy", "tqdm"],
     extras_require = {
         "gpu": ["jax[cuda12]"],
         "sat": ["astropy", "regions"],
