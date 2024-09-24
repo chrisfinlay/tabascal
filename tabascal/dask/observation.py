@@ -67,9 +67,9 @@ class Telescope(object):
         ENU_path: str=None,
         ITRF_array: Array=None,
         ITRF_path: str=None,
-        name: str=None,
+        tel_name: str=None,
     ):
-        self.name = name
+        self.tel_name = tel_name
         self.latitude = da.asarray(latitude)
         self.longitude = da.asarray(longitude)
         self.elevation = da.asarray(elevation)
@@ -168,8 +168,10 @@ class Observation(Telescope):
         Number of samples per time step which are then averaged. Must be
         large enough to capture time-smearing of RFI sources on longest
         baseline.
-    name: str
+    tel_name: str
         Name of the telescope.
+    target_name: str
+        Name fo the target field.
     """
 
     def __init__(
@@ -187,11 +189,12 @@ class Observation(Telescope):
         ITRF_array: Array=None,
         ITRF_path: str=None,
         dish_d: float = 13.965,
-        random_seed: int = 0,
-        auto_corrs: bool = False,
-        n_int_samples: int = 4,
-        name: str = "MeerKAT",
-        max_chunk_MB: float = 100.0,
+        random_seed: int=0,
+        auto_corrs: bool=False,
+        n_int_samples: int=4,
+        tel_name: str="MeerKAT",
+        target_name: str="",
+        max_chunk_MB: float=100.0,
     ):
         super().__init__(
             latitude,
@@ -201,10 +204,10 @@ class Observation(Telescope):
             ENU_path,
             ITRF_array,
             ITRF_path,
-            name,
+            tel_name,
         )
 
-        self.backend = "dask"
+        self.target_name = target_name
         self.auto_corrs = auto_corrs
 
         a1, a2 = jnp.triu_indices(self.n_ant, 0 if auto_corrs else 1)

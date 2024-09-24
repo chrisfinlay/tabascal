@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from tabascal.jax.observation import Observation
+    from tabascal.dask.observation import Observation
 
 import os
 import shutil
@@ -14,6 +14,85 @@ import numpy as np
 import xarray as xr
 from daskms import Dataset, xds_to_table
 import numpy as np
+
+def rm_dir(path: str, overwrite: bool=True):
+    """Remove a directory but check for existence and overwrite flag before.
+
+    Parameters
+    ----------
+    path : str
+        Directory path to remove.
+    overwrite : bool, optional
+        Whether to remove the directory, by default True
+
+    Raises
+    ------
+    FileExistsError
+        If the directory exists and the overwrite flag is not enabled.
+    """
+
+    if os.path.exists(path):
+        if overwrite:
+            shutil.rmtree(path)
+        else:
+            raise FileExistsError(f"File {path} already exists.")
+
+def mk_obs_dir(output_path: str, obs_name: str, overwrite: bool=True) -> tuple:
+    """Construct an observation simulation directory and return save paths for MS and zarr files.
+
+    Parameters
+    ----------
+    output_path : str
+        Path to where to make simulation directory.
+    obs_name : str
+        Simulation observation name.
+    overwrite : bool, optional
+        Whether to overwrite a previous simulation directory, by default True.
+
+    Returns
+    -------
+    tuple
+        Path to the simulation directory and and the save paths for the zarr and MS files.
+
+    Raises
+    ------
+    FileExistsError
+        If the simulation directory already exists and the overwrite flag is not True.
+    """
+
+    save_path = os.path.join(output_path, obs_name)
+    rm_dir(save_path, overwrite)
+    os.mkdir(save_path)
+    zarr_path = os.path.join(save_path, obs_name + ".zarr") 
+    ms_path = os.path.join(save_path, obs_name + ".ms")
+
+    return save_path, zarr_path, ms_path 
+
+def mk_obs_name(prefix: str, obs: Observation, suffix: str=None) -> str:
+    """Construct an observation name based on the parameters of the observation and an additional prefix.
+
+    Parameters
+    ----------
+    prefix : str
+        Prefix for the observation name.
+    obs : Observation
+        Observation class instance.
+
+    Returns
+    -------
+    str
+        Observation name
+    """
+
+    obs_name = (
+        f"{prefix}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T-{int(obs.times[0]):0>4}-{int(obs.times[-1]):0>4}"
+        + f"_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F-{float(obs.freqs[0]):.3e}-{float(obs.freqs[-1]):.3e}"
+        + f"_{obs.n_ast:0>3}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
+    )
+    if suffix is not None:
+        obs_name = obs_name + "_" + suffix 
+
+    return obs_name
 
 
 def construct_observation_ds(obs: Observation):
@@ -51,8 +130,7 @@ def get_visibility_data(obs: Observation):
         "vis_calibrated": (["time", "bl", "freq"], obs.vis_cal),
         "flags": (["time", "bl", "freq"], obs.flags),
     }
-    if obs.backend == "jax":
-        vis_data = {k: (v[0], da.asarray(v[1])) for k, v in vis_data.items()}
+
     return vis_data
 
 
@@ -74,17 +152,17 @@ def get_optional_data(obs: Observation):
         # Gain parameters
         "gains_ants": (["time_fine", "ant", "freq"], obs.gains_ants),
     }
-    if obs.backend == "jax":
-        opt_data = {k: (v[0], da.asarray(v[1])) for k, v in opt_data.items()}
+    
     return opt_data
 
 
 def get_observation_attributes(obs: Observation):
     attrs = {
-        "tel_name": obs.name,
+        "tel_name": obs.tel_name,
         "tel_latitude": obs.latitude,
         "tel_longitude": obs.longitude,
         "tel_elevation": obs.elevation,
+        "target_name": obs.target_name,
         "target_ra": obs.ra,
         "target_dec": obs.dec,
         "int_time": obs.int_time,
@@ -99,11 +177,15 @@ def get_observation_attributes(obs: Observation):
         "n_sat_src": obs.n_rfi_satellite,
         "n_stat_src": obs.n_rfi_stationary,
         "n_ast_src": obs.n_ast,
+        # "n_ast_p_src": obs.n_p_ast,
+        # "n_ast_g_src": obs.n_g_ast,
+        # "n_ast_e_src": obs.n_e_ast,
     }
-    if obs.backend == "dask":
-        attrs = {
-            k: v.compute() if isinstance(v, da.Array) else v for k, v in attrs.items()
-        }
+    
+    attrs = {
+        k: v.compute() if isinstance(v, da.Array) else v for k, v in attrs.items()
+    }
+
     return attrs
 
 
@@ -122,8 +204,7 @@ def get_coordinates(obs: Observation):
         "radec": np.array(["ra", "dec"]),
         "geo": np.array(["latitude", "longitude", "elevation"]),
     }
-    if obs.backend == "jax":
-        coords = {k: da.asarray(v) for k, v in coords.items()}
+    
     return coords
 
 
@@ -144,6 +225,64 @@ def get_astromonical_source_data(obs: Observation):
     else:
         ast_data = {}
     return ast_data
+
+# def get_astromonical_source_data(obs: Observation):
+#     if obs.n_p_ast > 0:
+#         ast_p_data = {
+#             # Astronomical point source parameters
+#             "ast_p_I": (
+#                 ["ast_p_src", "time_fine", "freq"],
+#                 da.concatenate(obs.ast_p_I, axis=0),
+#             ),
+#             "ast_p_lmn": (["ast_p_src", "lmn"], da.concatenate(obs.ast_p_lmn, axis=0)),
+#             "ast_p_radec": (
+#                 ["ast_p_src", "radec"],
+#                 da.concatenate(obs.ast_p_radec, axis=0).T,
+#             ),
+#         }
+#     else:
+#         ast_p_data = {}
+
+#     if obs.n_g_ast>0:
+#         ast_g_data = {
+#             # Astronomical point source parameters
+#             "ast_g_I": (
+#                 ["ast_g_src", "time_fine", "freq"],
+#                 da.concatenate(obs.ast_g_I, axis=0),
+#             ),
+#             "ast_g_lmn": (["ast_g_src", "lmn"], da.concatenate(obs.ast_g_lmn, axis=0)),
+#             "ast_g_radec": (
+#                 ["ast_g_src", "radec"],
+#                 da.concatenate(obs.ast_g_radec, axis=0).T,
+#             ),
+#             "ast_g_major": (["ast_g_src"], da.concatenate(obs.ast_g_major, axis=0)),
+#             "ast_g_minor": (["ast_g_src"], da.concatenate(obs.ast_g_minor, axis=0)),
+#             "ast_g_pos_angle": (["ast_g_src"], da.concatenate(obs.ast_g_pos_angle, axis=0)),
+#         }
+#     else:
+#         ast_g_data = {}
+
+#     if obs.n_e_ast>0:
+#         ast_e_data = {
+#             # Astronomical point source parameters
+#             "ast_e_I": (
+#                 ["ast_e_src", "time_fine", "freq"],
+#                 da.concatenate(obs.ast_e_I, axis=0),
+#             ),
+#             "ast_e_lmn": (["ast_e_src", "lmn"], da.concatenate(obs.ast_e_lmn, axis=0)),
+#             "ast_e_radec": (
+#                 ["ast_e_src", "radec"],
+#                 da.concatenate(obs.ast_e_radec, axis=0).T,
+#             ),
+#             "ast_e_major": (["ast_e_src"], da.concatenate(obs.ast_e_major, axis=0)),
+#         }
+#     else:
+#         ast_e_data = {}
+
+
+#     ast_data = {**ast_p_data, **ast_g_data, **ast_e_data}
+
+#     return ast_data
 
 
 def get_satellite_rfi_data(obs: Observation):
@@ -206,11 +345,8 @@ def write_ms(
     flags: dask.Array = None,
 ):
     """Write a dataset to a Measurement Set."""
-    if os.path.exists(ms_path):
-        if overwrite:
-            shutil.rmtree(ms_path)
-        else:
-            raise FileExistsError(f"File {ms_path} already exists.")
+    rm_dir(ms_path, overwrite)
+
     tables = [
         construct_ms_data_table(ds, ms_path, vis_corr=vis_corr, flags=flags),
         construct_ms_antenna_table(ds, ms_path),
@@ -226,7 +362,26 @@ def write_ms(
         dask.compute(table)
 
 
-def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr=None, flags=None):
+def time_avg(x: dask.Array, n_avg: int) -> dask.Array:
+    """Running average in chunks of size, and stride of 'n_avg' along the first dimension.
+
+    Parameters
+    ----------
+    x : dask.Array
+        Array to do averaging on over the first dimension
+    n_avg : int
+        The stride and size of averaging chunks.
+
+    Returns
+    -------
+    dask.Array
+        Averaged data.
+    """
+    shape = x.shape[1:]
+    x_avg = x.reshape(-1, n_avg, *shape).mean(axis=1)
+    return x_avg
+
+def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Arrayr=None, flags: dask.Array=None, extras: bool=True):
     """Get the data table for a Measurement Set."""
     n_time = ds.attrs["n_time"]
     n_int_samples = ds.attrs["n_int_samples"]
@@ -237,18 +392,26 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr=None, flags=None
 
     centroid_idx = int((n_int_samples) / 2) + n_int_samples * np.arange(n_time)
 
-    vis_obs = ds.vis_obs.data.reshape(-1, n_freq, n_corr)
-    vis_model = ds.vis_model.data.reshape(-1, n_freq, n_corr)
+    noise_std = ds.noise_std.data.mean() * da.ones(shape=(n_row, 1))
+
+    vis_obs = ds.vis_obs.data.reshape(n_row, n_freq, n_corr)
+    vis_model = ds.vis_model.data.reshape(n_row, n_freq, n_corr)
+
+    vis_cal = ds.vis_calibrated.data.reshape(n_row, n_freq, n_corr) 
+    vis_rfi = time_avg(ds.vis_rfi.data, ds.n_int_samples).reshape(n_row, n_freq, n_corr)#.rechunk(vis_obs.chunksize) 
+    noise_data = ds.noise_data.data.reshape(n_row, n_freq, n_corr) 
+    rfi_resid = vis_rfi + noise_data
+    no_rfi = vis_model + noise_data
 
     if vis_corr is None:
-        vis_corr = ds.vis_calibrated.data.reshape(-1, n_freq, n_corr)
+        vis_corr = da.zeros((n_row, n_freq, n_corr), dtype=np.complex64) 
     else:
-        vis_corr = da.asarray(vis_corr).reshape(-1, n_freq, n_corr)
+        vis_corr = da.asarray(vis_corr).reshape(n_row, n_freq, n_corr)
 
     if flags is None:
-        flags = ds.flags.data.reshape(-1, n_freq, n_corr)
+        flags = ds.flags.data.reshape(n_row, n_freq, n_corr)
     else:
-        flags = da.asarray(flags).reshape(-1, n_freq, n_corr)
+        flags = da.asarray(flags).reshape(n_row, n_freq, n_corr)
 
     row_times = da.asarray(
         (ds.coords["time"].data[:, None] * da.ones(shape=(1, n_bl))).flatten()
@@ -266,7 +429,6 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr=None, flags=None
 
     uvw = ds.bl_uvw.data[centroid_idx].reshape(-1, 3)
 
-    noise = ds.noise_std.data.mean() * da.ones(shape=(n_row, 1))
     weight = da.ones(shape=(n_row, 1))
     a_id = da.zeros(n_row, dtype=np.int32)
 
@@ -278,16 +440,36 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr=None, flags=None
         "TIME_CENTROID": (("row"), row_times),
         "UVW": (("row", "uvw"), uvw),
         "CORRECTED_DATA": (("row", "chan", "corr"), vis_corr),
-        "MODEL_DATA": (("row", "chan", "corr"), vis_model),
-        "SIGMA": (("row", "corr"), noise),
+        "MODEL_DATA": (("row", "chan", "corr"), da.zeros((n_row, n_freq, n_corr), dtype=np.complex64)),
+        "SIGMA": (("row", "corr"), noise_std),
         "WEIGHT": (("row", "corr"), weight),
         "ARRAY_ID": (("row"), a_id),
         "FLAG": (("row", "chan", "corr"), flags),
     }
+
+    if extras:
+        data_vars = {
+            **data_vars,
+            "CAL_DATA": (("row", "chan", "corr"), vis_cal.astype(np.complex64)),
+            "RFI_MODEL_DATA": (("row", "chan", "corr"), vis_rfi.astype(np.complex64)),
+            "AST_MODEL_DATA": (("row", "chan", "corr"), vis_model.astype(np.complex64)),
+            "NOISE_DATA": (("row", "chan", "corr"), noise_data.astype(np.complex64)),
+            "RFI_DATA": (("row", "chan", "corr"), rfi_resid.astype(np.complex64)),
+            "AST_DATA": (("row", "chan", "corr"), no_rfi.astype(np.complex64)),
+        }
+
     dims = ("row", "chan", "corr")
     chunks = {k: v for k, v in zip(dims, vis_obs.chunksize)}
 
-    return xds_to_table([Dataset(data_vars).chunk(chunks)], ms_path, columns="ALL")
+    col_kw = {
+        "CAL_DATA": {"UNIT": "Jy"},
+        "RFI_MODEL_DATA": {"UNIT": "Jy"},
+        "NOISE_DATA": {"UNIT": "Jy"},
+        "RFI_DATA": {"UNIT": "Jy"},
+        "AST_DATA": {"UNIT": "Jy"},
+    }
+
+    return xds_to_table([Dataset(data_vars).chunk(chunks)], ms_path, columns="ALL", column_keywords=col_kw)
 
     #####################
 
@@ -295,7 +477,8 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr=None, flags=None
 def construct_ms_antenna_table(ds: Dataset, ms_path: str):
     n_ant = ds.attrs["n_ant"]
 
-    ants_xyz = ds.ants_xyz.data[0]
+    # ants_xyz = ds.ants_xyz.data[0]
+    ants_itrf = ds.ants_itrf.data
     dish_d = ds.attrs["dish_diameter"] * da.ones(n_ant)
     mount = da.asarray(["ALT-AZ" for _ in range(n_ant)])
     dish_type = da.asarray(["GROUND-BASED" for _ in range(n_ant)])
@@ -304,7 +487,7 @@ def construct_ms_antenna_table(ds: Dataset, ms_path: str):
     flag = da.zeros(n_ant)
 
     data_vars = {
-        "POSITION": (("row", "xyz"), ants_xyz),
+        "POSITION": (("row", "xyz"), ants_itrf),
         "DISH_DIAMETER": (("row"), dish_d),
         "MOUNT": (("row"), mount),
         "TYPE": (("row"), dish_type),
@@ -334,7 +517,7 @@ def construct_ms_direction_table(ds: Dataset, ms_path: str):
 def construct_ms_observation_table(ds: Dataset, ms_path: str):
     flag = da.zeros(1)
     # log = da.zeros(1,1)
-    observer = da.array(["Chris"])
+    observer = da.array(["Chris Finlay"])
     project = da.array(["tabascal"])
     release = da.zeros(1)
     tel_name = da.array([ds.attrs["tel_name"]])
@@ -366,7 +549,7 @@ def construct_ms_field_table(ds: Dataset, ms_path: str):
     num_poly = da.zeros(1)
     source_id = da.zeros(1)
     time = da.asarray(ds.coords["time"].data[:1])
-    name = da.array(["tabascal_sim"])
+    name = da.array([ds.target_name])
 
     data_vars = {
         "CODE": (("row"), code),
@@ -468,10 +651,13 @@ def construct_ms_feed_table(ds: Dataset, ms_path: str):
 
 
 def construct_ms_polarization_table(ds: Dataset, ms_path: str):
-    corr_prod = da.zeros(shape=(1, 1, 2))
-    corr_type = 9 * da.ones(shape=(1, 1))
-    flag_row = da.zeros(1)
+    # corr_prod = da.zeros(shape=(1, 2, 2))
+    # corr_type = da.array([[9, 12]]) # XX, YY
+    # num_corr = 2 * da.ones(1)
+    corr_prod = da.zeros(shape=(1, 1, 1))
+    corr_type = da.array([[9,]]) # XX
     num_corr = da.ones(1)
+    flag_row = da.zeros(1)
 
     data_vars = {
         "CORR_PRODUCT": (("row", "corr", "corrprod_idx"), corr_prod),

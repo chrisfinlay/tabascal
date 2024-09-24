@@ -4,9 +4,11 @@ import argparse
 import os
 
 import numpy as np
+import xarray as xr
 
 from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.tools import load_antennas, str2bool
+from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
 from tabascal.dask.observation import Observation
 
 parser = argparse.ArgumentParser(
@@ -188,26 +190,21 @@ print("Calculating visibilities ...")
 
 obs.calculate_vis()
 
-f_name = (
-    f"{f_name}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T-{int(obs.times[0]):0>4}-{int(obs.times[-1]):0>4}"
-    + f"_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F-{float(obs.freqs[0]):.3e}-{float(obs.freqs[-1]):.3e}"
-    + f"_{obs.n_ast:0>5}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
-)
-
-save_path = os.path.join(output_path, f_name)
+obs_name = mk_obs_name(f_name, obs)
+save_path, zarr_path, ms_path = mk_obs_dir(output_path, obs_name, overwrite)
 
 print(obs)
 
 print()
-print("Saving observation zarr file to:")
+print("Saving observation simulation files to:")
 print("----------------------")
 print(save_path)
 
-obs.write_to_zarr(save_path, overwrite)
+print()
+print("Saving observation zarr file ...")
+obs.write_to_zarr(zarr_path, overwrite)
 
 print()
-print("Saving observation MS file to:")
-print("----------------------")
-print(save_path + ".ms")
-
-obs.write_to_ms(save_path + ".ms", overwrite)
+print("Saving observation MS file ...")
+xds = xr.open_zarr(zarr_path)
+write_ms(xds, ms_path, overwrite=overwrite)
