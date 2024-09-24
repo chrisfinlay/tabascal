@@ -24,12 +24,11 @@ from tabascal.dask.interferometry import (
     int_sample_times,
     generate_gains,
     apply_gains,
-    ants_to_bl,
     time_avg,
 )
 from tabascal.utils.tools import beam_size
 from tabascal.utils.write import construct_observation_ds, write_ms
-from tabascal.utils.dask import get_chunksizes
+from tabascal.utils.dask_extras import get_chunksizes
 
 config.update("jax_enable_x64", True)
 
@@ -571,7 +570,7 @@ Number of stationary RFI : {n_stat}"""
             random_seed if random_seed else self.random_seed,
         ).rechunk((self.time_fine_chunk, self.ant_chunk, self.freq_chunk))
 
-    def calculate_vis(self, random_seed=None):
+    def calculate_vis(self, flags: bool=True, random_seed=None):
         """
         Calculate the total gain amplified visibilities,  average down to the
         originally defined sampling rate and add noise.
@@ -597,9 +596,13 @@ Number of stationary RFI : {n_stat}"""
             self.a1,
             self.a2,
         )
-        self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * self.noise_std[
-            None, None, :
-        ] * da.sqrt(2)
+        if flags:
+            self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * self.noise_std[
+                None, None, :
+            ] * da.sqrt(2)
+        else:
+            self.flags = da.zeros(shape=self.vis_cal.shape, dtype=bool)
+
         self.dataset = construct_observation_ds(self)
         return self.dataset
 

@@ -87,7 +87,7 @@ obs = Observation(
     longitude=21.0,
     elevation=1050.0,
     ra=27.0,
-    dec=15.0,
+    dec=-30.0,
     times=times,
     freqs=freqs,
     SEFD=SEFD,
@@ -138,8 +138,8 @@ rfi_P = np.array(
 
 elevation = [20200e3, 19140e3]
 inclination = [55.0, 64.8]
-lon_asc_node = [21.0, 17.0]
-periapsis = [7.0, 1.0]
+lon_asc_node = [41.0, 17.0]
+periapsis = [-45., -31.]
 
 if N_sat > 0 and N_sat <= 2:
     obs.addSatelliteRFI(

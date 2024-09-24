@@ -9,6 +9,7 @@ from tabascal.utils.tools import (
     load_antennas,
     str2bool,
 )
+from tabascal.dask.observation import Observation
 
 parser = argparse.ArgumentParser(
     description="Simulate a calibrator observation contaminated by RFI."
@@ -45,9 +46,6 @@ parser.add_argument(
     "--N_grd", default=3, type=int, help="Number of ground-based RFI sources."
 )
 parser.add_argument(
-    "--backend", default="dask", type=str, help="Use pure JAX or Dask backend."
-)
-parser.add_argument(
     "--overwrite", default="no", type=str2bool, help="Overwrite existing observation."
 )
 parser.add_argument(
@@ -76,22 +74,11 @@ overwrite = args.overwrite
 chunksize = args.chunksize
 freq_start = args.freq_start
 freq_end = args.freq_end
+    
 
-if args.backend.lower() == "jax":
-    from tabascal.jax.observation import Observation
-
-    print()
-    print("Using JAX backend")
-    print()
-else:
-    from tabascal.dask.observation import Observation
-
-    print()
-    print("Using Dask backend")
-    print()
-
-rng = np.random.default_rng(12345)
-ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
+# rng = np.random.default_rng(12345)
+# ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
+ants_enu = load_antennas("MeerKAT")[:N_ant]
 
 times = np.arange(t_0, t_0 + N_t * dT, dT)
 freqs = np.linspace(freq_start, freq_end, N_freq)
@@ -126,8 +113,8 @@ rfi_P = np.array(
 
 elevation = [20200e3, 19140e3]
 inclination = [55.0, 64.8]
-lon_asc_node = [21.0, 17.0]
-periapsis = [5.0, 1.0]
+lon_asc_node = [41.0, 17.0]
+periapsis = [-45., -31.]
 
 if N_sat > 0 and N_sat <= 2:
     obs.addSatelliteRFI(

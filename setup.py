@@ -21,6 +21,7 @@ setup(
     install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy"],
     extras_require = {
         "gpu": ["jax[cuda12]"],
+        "sat": ["astropy", "regions"],
     },
     zip_safe=False,
 )

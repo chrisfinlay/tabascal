@@ -12,6 +12,7 @@ tabascal/examples/data/*
 *.ipynb_checkpoints
 *.tle
 *.zarr
+*.png
 tabascal/optimize/mcmc.py
 tabascal/utils/ms.py
 tabascal/data/MeerKAT_real.ENU.txt

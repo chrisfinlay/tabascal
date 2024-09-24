@@ -182,7 +182,7 @@ def GEO_to_XYZ(geo: Array, times: Array) -> Array:
     times = jnp.asarray(times)
     geo = jnp.asarray(geo) * jnp.ones((len(times), 3))
     lat, lon, elevation = geo.T
-    # r = dist_centre(lat) + elevation
+    R_e = earth_radius(lat)
     r = R_e + elevation
     lat = jnp.deg2rad(lat)
     lon = jnp.deg2rad(lon)
