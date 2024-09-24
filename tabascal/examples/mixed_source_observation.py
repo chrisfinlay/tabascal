@@ -15,7 +15,7 @@ parser = argparse.ArgumentParser(
     description="Simulate a target observation contaminated by RFI."
 )
 parser.add_argument(
-    "--f_name", default="target", help="File name to save the observations."
+    "--f_name", default="mixed_sources", help="File name to save the observations."
 )
 parser.add_argument(
     "--o_path", default="./data/", help="Path to save the observations."
@@ -45,7 +45,16 @@ parser.add_argument(
     "--N_grd", default=3, type=int, help="Number of ground-based RFI sources."
 )
 parser.add_argument(
-    "--N_ast", default=100, type=int, help="Number of astronomical sources."
+    "--N_p_ast", default=10, type=int, help="Number of astronomical point sources."
+)
+parser.add_argument(
+    "--N_g_ast", default=10, type=int, help="Number of astronomical Gaussian sources."
+)
+parser.add_argument(
+    "--N_e_ast", default=10, type=int, help="Number of astronomical exponential sources."
+)
+parser.add_argument(
+    "--src_size", default=50.0, type=int, help="Characterisitic source size."
 )
 parser.add_argument(
     "--overwrite", default="no", type=str2bool, help="Overwrite existing observation."
@@ -71,12 +80,16 @@ RFI_amp = args.RFIamp
 seed = args.seed
 N_sat = args.N_sat
 N_grd = args.N_grd
-N_ast = args.N_ast
+N_p_ast = args.N_p_ast
+N_g_ast = args.N_g_ast
+N_e_ast = args.N_e_ast
+src_size = args.src_size
 overwrite = args.overwrite
 chunksize = args.chunksize
 freq_start = args.freq_start
 freq_end = args.freq_end
 
+N_ast = N_p_ast + N_g_ast + N_e_ast
 
 rng = np.random.default_rng(12345)
 ants_enu = rng.permutation(load_antennas("MeerKAT"))[:N_ant]
@@ -111,6 +124,7 @@ print(
     f"Sources lie within {obs.fov/2:.2f} degrees with minimum flux of {min_I.compute()*1e3:.1f} mJy"
 )
 
+
 I, d_ra, d_dec = generate_random_sky(
     n_src=N_ast,
     min_I=min_I,
@@ -122,14 +136,38 @@ I, d_ra, d_dec = generate_random_sky(
     n_beam=n_beam,
 )
 
-print('Adding "Astro" sources ...')
+print('Adding "Astro point sources ...')
 
-if N_ast>0:
+if N_p_ast>0:
     obs.addAstro(
-        I=I[:, None, :] * np.ones((1, obs.n_time_fine, 1)),
-        ra=obs.ra + d_ra,
-        dec=obs.dec + d_dec,
+        I=I[:N_p_ast, None, :] * np.ones((1, obs.n_time_fine, 1)),
+        ra=obs.ra + d_ra[:N_p_ast],
+        dec=obs.dec + d_dec[:N_p_ast],
     )
+
+print('Adding "Astro Gauss" sources ...')
+
+if N_g_ast>0:
+    sizes = np.abs(rng.normal(scale=src_size, size=(N_g_ast,2)))
+    obs.addAstroGauss(
+        I=I[N_p_ast:N_p_ast+N_g_ast, None, :] * np.ones((1, obs.n_time_fine, 1)),
+        major=sizes.max(axis=1),
+        minor=sizes.min(axis=1),
+        pos_angle=rng.uniform(low=0.0, high=360.0, size=(N_g_ast)),
+        ra=obs.ra + d_ra[N_p_ast:N_p_ast+N_g_ast],
+        dec=obs.dec + d_dec[N_p_ast:N_p_ast+N_g_ast],
+    )
+
+print('Adding "Astro exponential" sources ...')
+
+if N_e_ast>0:
+    obs.addAstroExp(
+        I=I[N_p_ast+N_g_ast:, None, :] * np.ones((1, obs.n_time_fine, 1)),
+        shape=rng.normal(scale=src_size, size=(N_e_ast,)),
+        ra=obs.ra + d_ra[N_p_ast+N_g_ast:],
+        dec=obs.dec + d_dec[N_p_ast+N_g_ast:],
+    )
+
 
 #### Satellite-based RFI ####
 

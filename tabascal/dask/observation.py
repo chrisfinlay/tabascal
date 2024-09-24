@@ -18,6 +18,8 @@ from tabascal.dask.coordinates import (
 )
 from tabascal.dask.interferometry import (
     astro_vis,
+    astro_vis_gauss,
+    astro_vis_exp,
     rfi_vis,
     add_noise,
     airy_beam,
@@ -164,6 +166,8 @@ class Observation(Telescope):
         Random seed to use for random number generator.
     auto_corrs: bool
         Flag to include autocorrelations in simulation.
+    no_w: bool
+        Whether to zero out the w-component of the baselines.
     n_int_samples: int
         Number of samples per time step which are then averaged. Must be
         large enough to capture time-smearing of RFI sources on longest
@@ -181,19 +185,20 @@ class Observation(Telescope):
         elevation: float,
         ra: float,
         dec: float,
-        times: jnp.ndarray,
-        freqs: jnp.ndarray,
-        SEFD: jnp.ndarray,
+        times: Array,
+        freqs: Array,
+        SEFD: Array,
         ENU_array: Array=None,
         ENU_path: str=None,
         ITRF_array: Array=None,
         ITRF_path: str=None,
-        dish_d: float = 13.965,
+        dish_d: float=13.5,
         random_seed: int=0,
         auto_corrs: bool=False,
+        no_w: bool=False,
         n_int_samples: int=4,
         tel_name: str="MeerKAT",
-        target_name: str="",
+        target_name: str="unknown",
         max_chunk_MB: float=100.0,
     ):
         super().__init__(
@@ -266,6 +271,9 @@ class Observation(Telescope):
         else:
             self.ants_uvw = ITRF_to_UVW(self.ITRF, self.gha, self.dec)
 
+        if no_w:
+            self.ants_uvw[:, :, -1] = 0.0
+
         self.bl_uvw = self.ants_uvw[:, self.a1, :] - self.ants_uvw[:, self.a2, :]
         self.mag_uvw = da.linalg.norm(self.bl_uvw[0], axis=-1)
         self.syn_bw = beam_size(self.mag_uvw.max().compute(), freqs.max())
@@ -296,6 +304,10 @@ class Observation(Telescope):
         self.random_seed = np.random.default_rng(random_seed)
 
         self.n_ast = 0
+        self.n_p_ast = 0
+        self.n_g_ast = 0
+        self.n_e_ast = 0
+        self.n_rfi = 0
         self.n_rfi_satellite = 0
         self.n_rfi_stationary = 0
 
@@ -363,9 +375,21 @@ Number of stationary RFI :  {n_stat}"""
         return super().__str__() + msg.format(**params)
 
     def create_source_dicts(self):
-        self.ast_I = []
-        self.ast_lmn = []
-        self.ast_radec = []
+        self.ast_p_I = []
+        self.ast_p_lmn = []
+        self.ast_p_radec = []
+
+        self.ast_g_I = []
+        self.ast_g_lmn = []
+        self.ast_g_radec = []
+        self.ast_g_major = []
+        self.ast_g_minor = []
+        self.ast_g_pos_angle = []
+
+        self.ast_e_I = []
+        self.ast_e_lmn = []
+        self.ast_e_radec = []
+        self.ast_e_major = []
 
         self.rfi_satellite_xyz = []
         self.rfi_satellite_orbit = []
@@ -377,7 +401,7 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_stationary_ang_sep = []
         self.rfi_stationary_A_app = []
 
-    def addAstro(self, I: jnp.ndarray, ra: jnp.ndarray, dec: jnp.ndarray):
+    def addAstro(self, I: Array, ra: Array, dec: Array):
         """
         Add a set of astronomical sources to the observation.
 
@@ -411,20 +435,125 @@ Number of stationary RFI :  {n_stat}"""
         )
         vis_ast = astro_vis(I_app, self.bl_uvw, lmn, self.freqs)
 
-        self.ast_I.append(I)
-        self.ast_lmn.append(lmn)
-        self.ast_radec.append(jnp.array([ra, dec]))
+        self.ast_p_I.append(I)
+        self.ast_p_lmn.append(lmn)
+        self.ast_p_radec.append(jnp.array([ra, dec]))
+        self.n_p_ast += len(I)
+        self.n_ast += len(I)
+
+        self.vis_ast += vis_ast
+
+    def addAstroGauss(
+        self, I: Array, major: Array, minor: Array, pos_angle: Array, ra: Array, dec: Array
+    ):
+        """
+        Add a set of astronomical sources to the observation.
+
+        Parameters
+        ----------
+        I: Array (n_src, n_time_fine, n_freq) or
+            Intensity of the sources in Jy. If I.ndim==2, then this is assumed
+            to the spectrogram (n_time, n_freq) of a single source. If
+            I.ndim==1, then this is assumed to be the spectral profile of a
+            single source.
+        major: Array (n_src,)
+            FWHM of major axis of sources in arcseconds.
+        major: Array (n_src,)
+            FWHM of minor axis of sources in arcseconds.
+        pos_angle: Array (n_src,)
+            Position angle of sources in degrees west of north for the major axis.
+        ra: Array (n_src,)
+            Right ascension of the sources in degrees.
+        dec: Array (n_src,)
+            Declination of the sources in degrees.
+        """
+        I = da.atleast_2d(I)
+        if I.ndim == 2:
+            I = da.expand_dims(I, axis=0)
+        I = I * da.ones(
+            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
+            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
+        )
+        major = da.atleast_1d(major)
+        minor = da.atleast_1d(minor)
+        pos_angle = da.atleast_1d(pos_angle)
+        ra = da.atleast_1d(ra)
+        dec = da.atleast_1d(dec)
+        lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
+        theta = da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1))
+        I_app = (
+            I
+            * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
+            ** 2
+        )
+        vis_ast = astro_vis_gauss(I_app, major, minor, pos_angle, self.bl_uvw, lmn, self.freqs)
+
+        self.ast_g_major.append(major)
+        self.ast_g_minor.append(minor)
+        self.ast_g_pos_angle.append(pos_angle)
+        self.ast_g_I.append(I)
+        self.ast_g_lmn.append(lmn)
+        self.ast_g_radec.append(jnp.array([ra, dec]))
+        self.n_g_ast += len(I)
+        self.n_ast += len(I)
+
+        self.vis_ast += vis_ast
+
+    def addAstroExp(
+        self, I: Array, shape: Array, ra: Array, dec: Array
+    ):
+        """
+        Add a set of astronomical sources to the observation.
+
+        Parameters
+        ----------
+        I: Array (n_src, n_time_fine, n_freq) or
+            Intensity of the sources in Jy. If I.ndim==2, then this is assumed
+            to the spectrogram (n_time, n_freq) of a single source. If
+            I.ndim==1, then this is assumed to be the spectral profile of a
+            single source.
+        shape: array (n_src,)
+            Shape of gaussian sources. Only circular gaussians accepted for now.
+        ra: array (n_src,)
+            Right ascension of the sources in degrees.
+        dec: array (n_src,)
+            Declination of the sources in degrees.
+        """
+        I = da.atleast_2d(I)
+        if I.ndim == 2:
+            I = da.expand_dims(I, axis=0)
+        I = I * da.ones(
+            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
+            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
+        )
+        shape = da.atleast_1d(shape)
+        ra = da.atleast_1d(ra)
+        dec = da.atleast_1d(dec)
+        lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
+        theta = da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1))
+        I_app = (
+            I
+            * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
+            ** 2
+        )
+        vis_ast = astro_vis_exp(I_app, shape, self.bl_uvw, lmn, self.freqs)
+
+        self.ast_e_major.append(shape)
+        self.ast_e_I.append(I)
+        self.ast_e_lmn.append(lmn)
+        self.ast_e_radec.append(jnp.array([ra, dec]))
+        self.n_e_ast += len(I)
         self.n_ast += len(I)
 
         self.vis_ast += vis_ast
 
     def addSatelliteRFI(
         self,
-        Pv: jnp.ndarray,
-        elevation: jnp.ndarray,
-        inclination: jnp.ndarray,
-        lon_asc_node: jnp.ndarray,
-        periapsis: jnp.ndarray,
+        Pv: Array,
+        elevation: Array,
+        inclination: Array,
+        lon_asc_node: Array,
+        periapsis: Array,
     ):
         """
         Add a satellite-based source of RFI to the observation.
@@ -499,13 +628,14 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_satellite_ang_sep.append(angular_seps)
         self.rfi_satellite_A_app.append(rfi_A_app)
         self.n_rfi_satellite += len(I)
+        self.n_rfi += len(I)
 
     def addStationaryRFI(
         self,
-        Pv: jnp.ndarray,
-        latitude: jnp.ndarray,
-        longitude: jnp.ndarray,
-        elevation: jnp.ndarray,
+        Pv: Array,
+        latitude: Array,
+        longitude: Array,
+        elevation: Array,
     ):
         """
         Add a stationary source of RFI to the observation.
@@ -579,6 +709,7 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_stationary_ang_sep.append(angular_seps)
         self.rfi_stationary_A_app.append(rfi_A_app)
         self.n_rfi_stationary += len(I)
+        self.n_rfi += len(I)
 
     def addGains(
         self,
@@ -647,9 +778,12 @@ Number of stationary RFI :  {n_stat}"""
             self.a2,
         )
         if flags:
-            self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * self.noise_std[
-                None, None, :
-            ] * da.sqrt(2)
+            if self.noise_std.mean() > 0:
+                self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * self.noise_std[
+                    None, None, :
+                ] * da.sqrt(2)
+            else:
+                self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * da.std(self.vis_model, axis=0)[None,...]
         else:
             self.flags = da.zeros(shape=self.vis_cal.shape, dtype=bool)
 

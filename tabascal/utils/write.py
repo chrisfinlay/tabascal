@@ -87,7 +87,7 @@ def mk_obs_name(prefix: str, obs: Observation, suffix: str=None) -> str:
     obs_name = (
         f"{prefix}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T-{int(obs.times[0]):0>4}-{int(obs.times[-1]):0>4}"
         + f"_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F-{float(obs.freqs[0]):.3e}-{float(obs.freqs[-1]):.3e}"
-        + f"_{obs.n_ast:0>3}AST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
+        + f"_{obs.n_p_ast:0>3}PAST_{obs.n_g_ast:0>3}GAST_{obs.n_e_ast:0>3}EAST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
     )
     if suffix is not None:
         obs_name = obs_name + "_" + suffix 
@@ -209,80 +209,62 @@ def get_coordinates(obs: Observation):
 
 
 def get_astromonical_source_data(obs: Observation):
-    if obs.n_ast > 0:
-        ast_data = {
-            # Astronomical source parameters
-            "ast_I": (
-                ["ast_src", "time_fine", "freq"],
-                da.concatenate(obs.ast_I, axis=0),
+    if obs.n_p_ast > 0:
+        ast_p_data = {
+            # Astronomical point source parameters
+            "ast_p_I": (
+                ["ast_p_src", "time_fine", "freq"],
+                da.concatenate(obs.ast_p_I, axis=0),
             ),
-            "ast_lmn": (["ast_src", "lmn"], da.concatenate(obs.ast_lmn, axis=0)),
-            "ast_radec": (
-                ["ast_src", "radec"],
-                da.concatenate(obs.ast_radec, axis=0).T,
+            "ast_p_lmn": (["ast_p_src", "lmn"], da.concatenate(obs.ast_p_lmn, axis=0)),
+            "ast_p_radec": (
+                ["ast_p_src", "radec"],
+                da.concatenate(obs.ast_p_radec, axis=0).T,
             ),
         }
     else:
-        ast_data = {}
+        ast_p_data = {}
+
+    if obs.n_g_ast>0:
+        ast_g_data = {
+            # Astronomical point source parameters
+            "ast_g_I": (
+                ["ast_g_src", "time_fine", "freq"],
+                da.concatenate(obs.ast_g_I, axis=0),
+            ),
+            "ast_g_lmn": (["ast_g_src", "lmn"], da.concatenate(obs.ast_g_lmn, axis=0)),
+            "ast_g_radec": (
+                ["ast_g_src", "radec"],
+                da.concatenate(obs.ast_g_radec, axis=0).T,
+            ),
+            "ast_g_major": (["ast_g_src"], da.concatenate(obs.ast_g_major, axis=0)),
+            "ast_g_minor": (["ast_g_src"], da.concatenate(obs.ast_g_minor, axis=0)),
+            "ast_g_pos_angle": (["ast_g_src"], da.concatenate(obs.ast_g_pos_angle, axis=0)),
+        }
+    else:
+        ast_g_data = {}
+
+    if obs.n_e_ast>0:
+        ast_e_data = {
+            # Astronomical point source parameters
+            "ast_e_I": (
+                ["ast_e_src", "time_fine", "freq"],
+                da.concatenate(obs.ast_e_I, axis=0),
+            ),
+            "ast_e_lmn": (["ast_e_src", "lmn"], da.concatenate(obs.ast_e_lmn, axis=0)),
+            "ast_e_radec": (
+                ["ast_e_src", "radec"],
+                da.concatenate(obs.ast_e_radec, axis=0).T,
+            ),
+            "ast_e_major": (["ast_e_src"], da.concatenate(obs.ast_e_major, axis=0)),
+        }
+    else:
+        ast_e_data = {}
+
+
+    ast_data = {**ast_p_data, **ast_g_data, **ast_e_data}
+
     return ast_data
-
-# def get_astromonical_source_data(obs: Observation):
-#     if obs.n_p_ast > 0:
-#         ast_p_data = {
-#             # Astronomical point source parameters
-#             "ast_p_I": (
-#                 ["ast_p_src", "time_fine", "freq"],
-#                 da.concatenate(obs.ast_p_I, axis=0),
-#             ),
-#             "ast_p_lmn": (["ast_p_src", "lmn"], da.concatenate(obs.ast_p_lmn, axis=0)),
-#             "ast_p_radec": (
-#                 ["ast_p_src", "radec"],
-#                 da.concatenate(obs.ast_p_radec, axis=0).T,
-#             ),
-#         }
-#     else:
-#         ast_p_data = {}
-
-#     if obs.n_g_ast>0:
-#         ast_g_data = {
-#             # Astronomical point source parameters
-#             "ast_g_I": (
-#                 ["ast_g_src", "time_fine", "freq"],
-#                 da.concatenate(obs.ast_g_I, axis=0),
-#             ),
-#             "ast_g_lmn": (["ast_g_src", "lmn"], da.concatenate(obs.ast_g_lmn, axis=0)),
-#             "ast_g_radec": (
-#                 ["ast_g_src", "radec"],
-#                 da.concatenate(obs.ast_g_radec, axis=0).T,
-#             ),
-#             "ast_g_major": (["ast_g_src"], da.concatenate(obs.ast_g_major, axis=0)),
-#             "ast_g_minor": (["ast_g_src"], da.concatenate(obs.ast_g_minor, axis=0)),
-#             "ast_g_pos_angle": (["ast_g_src"], da.concatenate(obs.ast_g_pos_angle, axis=0)),
-#         }
-#     else:
-#         ast_g_data = {}
-
-#     if obs.n_e_ast>0:
-#         ast_e_data = {
-#             # Astronomical point source parameters
-#             "ast_e_I": (
-#                 ["ast_e_src", "time_fine", "freq"],
-#                 da.concatenate(obs.ast_e_I, axis=0),
-#             ),
-#             "ast_e_lmn": (["ast_e_src", "lmn"], da.concatenate(obs.ast_e_lmn, axis=0)),
-#             "ast_e_radec": (
-#                 ["ast_e_src", "radec"],
-#                 da.concatenate(obs.ast_e_radec, axis=0).T,
-#             ),
-#             "ast_e_major": (["ast_e_src"], da.concatenate(obs.ast_e_major, axis=0)),
-#         }
-#     else:
-#         ast_e_data = {}
-
-
-#     ast_data = {**ast_p_data, **ast_g_data, **ast_e_data}
-
-#     return ast_data
 
 
 def get_satellite_rfi_data(obs: Observation):

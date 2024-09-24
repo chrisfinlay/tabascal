@@ -65,6 +65,134 @@ def astro_vis(
     return ds.vis.data
 
 
+def astro_vis_gauss(
+    sources: da.Array, major: da.Array, minor: da.Array, pos_angle: da.Array, uvw: da.Array, lmn: da.Array, freqs: da.Array
+) -> da.Array:
+    """Calculate visibilities from sources, uvw, lmn, and freqs.
+
+    Parameters:
+    -----------
+    sources: da.Array (n_src, n_time, n_freq)
+        Array of point source intensities in Jy.
+    shapes: array_like (n_src,)
+        Array of standard deviations of the gaussian shape sources. These are
+        assumed to be circular gaussians for now.
+    uvw: da.Array (ntime, n_bl, 3)
+        (u,v,w) coordinates of each baseline.
+    lmn: da.Array (n_src, 3)
+        (l,m,n) coordinate of each source.
+    freqs: da.Array (n_freq,)
+        Frequencies in Hz.
+
+    Returns:
+    --------
+    vis: da.Array (n_time, n_bl, n_freq)
+    """
+    n_time, n_bl = uvw.shape[:2]
+    n_freq = freqs.shape[0]
+
+    time_chunk, bl_chunk = uvw.chunksize[:2]
+    freq_chunk = freqs.chunksize[0]
+
+    input = xr.Dataset(
+        {
+            "I": (["src", "time", "freq"], sources),
+            "major": (["src"], major),
+            "minor": (["src"], minor),
+            "pos_angle": (["src"], pos_angle),
+            "uvw": (["time", "bl", "space"], uvw),
+            "lmn": (["src", "space"], lmn),
+            "freqs": (["freq"], freqs),
+        }
+    )
+    output = xr.Dataset(
+        {
+            "vis": (
+                ["time", "bl", "freq"],
+                da.zeros(
+                    shape=(n_time, n_bl, n_freq),
+                    chunks=(time_chunk, bl_chunk, freq_chunk),
+                    dtype=complex,
+                ),
+            )
+        }
+    )
+
+    def _astro_vis_gauss(ds):
+        vis = delayed(itf.astro_vis_gauss)(
+            ds.I.data, ds.major.data, ds.minor.data, ds.pos_angle.data, ds.uvw.data, ds.lmn.data, ds.freqs.data
+        ).compute()
+        ds_out = xr.Dataset({"vis": (["time", "bl", "freq"], vis)})
+        return ds_out
+
+    ds = xr.map_blocks(_astro_vis_gauss, input, template=output)
+
+    return ds.vis.data
+
+
+def astro_vis_exp(
+    sources: da.Array, shapes: da.Array, uvw: da.Array, lmn: da.Array, freqs: da.Array
+) -> da.Array:
+    """Calculate visibilities from sources, uvw, lmn, and freqs.
+
+    Parameters:
+    -----------
+    sources: da.Array (n_src, n_time, n_freq)
+        Array of point source intensities in Jy.
+    shapes: array_like (n_src,)
+        Array of shape parameters for the exp sources. These are
+        assumed to be circular.
+    uvw: da.Array (ntime, n_bl, 3)
+        (u,v,w) coordinates of each baseline.
+    lmn: da.Array (n_src, 3)
+        (l,m,n) coordinate of each source.
+    freqs: da.Array (n_freq,)
+        Frequencies in Hz.
+
+    Returns:
+    --------
+    vis: da.Array (n_time, n_bl, n_freq)
+    """
+    n_time, n_bl = uvw.shape[:2]
+    n_freq = freqs.shape[0]
+
+    time_chunk, bl_chunk = uvw.chunksize[:2]
+    freq_chunk = freqs.chunksize[0]
+
+    input = xr.Dataset(
+        {
+            "I": (["src", "time", "freq"], sources),
+            "sigmas": (["src"], shapes),
+            "uvw": (["time", "bl", "space"], uvw),
+            "lmn": (["src", "space"], lmn),
+            "freqs": (["freq"], freqs),
+        }
+    )
+    output = xr.Dataset(
+        {
+            "vis": (
+                ["time", "bl", "freq"],
+                da.zeros(
+                    shape=(n_time, n_bl, n_freq),
+                    chunks=(time_chunk, bl_chunk, freq_chunk),
+                    dtype=complex,
+                ),
+            )
+        }
+    )
+
+    def _astro_vis_exp(ds):
+        vis = delayed(itf.astro_vis_exp)(
+            ds.I.data, ds.sigmas.data, ds.uvw.data, ds.lmn.data, ds.freqs.data
+        ).compute()
+        ds_out = xr.Dataset({"vis": (["time", "bl", "freq"], vis)})
+        return ds_out
+
+    ds = xr.map_blocks(_astro_vis_exp, input, template=output)
+
+    return ds.vis.data
+
+
 def rfi_vis(
     app_amplitude: da.Array,
     c_distances: da.Array,

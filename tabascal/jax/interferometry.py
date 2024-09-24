@@ -7,12 +7,14 @@ from scipy.special import jv
 
 from functools import partial
 
+from tabascal.utils.jax_extras import jit_with_doc
+
 config.update("jax_enable_x64", True)
 
 c = 2.99792458e8
 
 
-@jit
+@jit_with_doc
 def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     """
     Calculate visibilities from distances to rfi sources.
@@ -49,7 +51,7 @@ def rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     # return _rfi_vis(app_amplitude, c_distances, freqs, a1, a2)
 
 
-@jit
+@jit_with_doc
 def astro_vis(sources, uvw, lmn, freqs):
     """
     Calculate visibilities from a set of point sources using DFT.
@@ -80,6 +82,86 @@ def astro_vis(sources, uvw, lmn, freqs):
     return scan(_add_vis, vis, jnp.arange(1, n_src))[0]
 
 
+@jit_with_doc
+def astro_vis_gauss(sources, major, minor, pos_angle, uvw, lmn, freqs):
+    """
+    Calculate visibilities from a set of point sources using DFT.
+
+    Parameters
+    ----------
+    sources: array_like (n_src, n_time, n_freq)
+        Array of point source intensities in Jy.
+    shapes: array_like (n_src,)
+        Array of standard deviations of the gaussian shape sources. These are
+        assumed to be circular gaussians for now.
+    uvw: array_like (ntime, n_bl, 3)
+        (u,v,w) coordinates of each baseline.
+    lmn: array_like (n_src, 3)
+        (l,m,n) coordinate of each source.
+    freqs: array_like (n_freq,)
+        Frequencies in Hz.
+
+    Returns
+    -------
+    vis: array_like (n_time, n_bl, n_freq)
+        Visibilities of the given set of sources and baselines.
+    """
+    n_src = sources.shape[0]
+    vis = _astro_vis_gauss(sources[0, None], major[0, None], minor[0, None], pos_angle[0, None], uvw, lmn[0, None], freqs)
+
+    # This is a scan over the sources, but we can't use scan it unless we jit decorate this function
+    def _add_vis(vis, i):
+        return (
+            vis
+            + _astro_vis_gauss(
+                sources[i, None], major[i, None], minor[i, None], pos_angle[i, None], uvw, lmn[i, None], freqs
+            ),
+            i,
+        )
+
+    return scan(_add_vis, vis, jnp.arange(1, n_src))[0]
+
+@jit_with_doc
+def astro_vis_exp(sources, shapes, uvw, lmn, freqs):
+    """
+    Calculate visibilities from a set of point sources using DFT.
+
+    Parameters
+    ----------
+    sources: array_like (n_src, n_time, n_freq)
+        Array of point source intensities in Jy.
+    shapes: array_like (n_src,)
+        Array of standard deviations of the gaussian shape sources. These are
+        assumed to be circular gaussians for now.
+    uvw: array_like (ntime, n_bl, 3)
+        (u,v,w) coordinates of each baseline.
+    lmn: array_like (n_src, 3)
+        (l,m,n) coordinate of each source.
+    freqs: array_like (n_freq,)
+        Frequencies in Hz.
+
+    Returns
+    -------
+    vis: array_like (n_time, n_bl, n_freq)
+        Visibilities of the given set of sources and baselines.
+    """
+    n_src = sources.shape[0]
+    vis = _astro_vis_exp(sources[0, None], shapes[0, None], uvw, lmn[0, None], freqs)
+
+    # This is a scan over the sources, but we can't use scan it unless we jit decorate this function
+    def _add_vis(vis, i):
+        return (
+            vis
+            + _astro_vis_exp(
+                sources[i, None], shapes[i, None], uvw, lmn[i, None], freqs
+            ),
+            i,
+        )
+
+    return scan(_add_vis, vis, jnp.arange(1, n_src))[0]
+
+
+
 def ants_to_bl(G, a1, a2):
     """
     Calculate the complex gains for each baseline given the per antenna gains.
@@ -102,7 +184,7 @@ def ants_to_bl(G, a1, a2):
     return _ants_to_bl(G, a1, a2)
 
 
-@jit
+@jit_with_doc
 def minus_two_pi_over_lamda(freqs):
     """Calculate -2pi/lambda for each frequency.
 
@@ -115,7 +197,7 @@ def minus_two_pi_over_lamda(freqs):
     return -2.0 * jnp.pi * freqs / c
 
 
-@jit
+@jit_with_doc
 def amp_to_intensity(amps, a1, a2):
     """Calculate intensity on a baseline ffrom the amplitudes at each antenna.
 
@@ -130,7 +212,7 @@ def amp_to_intensity(amps, a1, a2):
     return amps[:, :, a1] * jnp.conjugate(amps[:, :, a2])
 
 
-@jit
+@jit_with_doc
 def phase_from_distances(distances, a1, a2, freqs):
     """Calculate phase differences between antennas from distances.
 
@@ -154,7 +236,7 @@ def phase_from_distances(distances, a1, a2, freqs):
     return phases
 
 
-@jit
+@jit_with_doc
 def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     # Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
 
@@ -172,7 +254,7 @@ def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     return vis
 
 
-@jit
+@jit_with_doc
 def _astro_vis(sources, uvw, lmn, freqs):
     #     Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
 
@@ -188,8 +270,97 @@ def _astro_vis(sources, uvw, lmn, freqs):
 
     return vis
 
+@jit_with_doc
+def gauss(uvw, shapes, freqs):
+    uv_mag = jnp.linalg.norm(uvw[..., :-1], axis=-1) / (c / freqs)
 
-@jit
+    sigmas = shapes / (2.0 * jnp.sqrt(2.0 * jnp.log(2)))
+
+    sigmas_uv = 1.0 / (2.0 * jnp.pi * sigmas)
+
+    return jnp.exp(-((uv_mag / sigmas_uv) ** 2))
+
+
+@jit_with_doc
+def source_to_abc(major, minor, pa):
+    """ Calculate the coefficients of the quadratic for a Gaussian source.
+    """
+    sigma_factor = 2 * jnp.sqrt(2 * jnp.log(2))
+    sigma_x = jnp.deg2rad(minor/3600) / sigma_factor
+    sigma_y = jnp.deg2rad(major/3600) / sigma_factor
+    theta = jnp.deg2rad(pa)
+
+    a = jnp.cos(theta)**2 / (2*sigma_x**2) + jnp.sin(theta)**2 / (2*sigma_y**2)
+    b = jnp.sin(2*theta)  / (4*sigma_x**2) - jnp.sin(2*theta)  / (4*sigma_y**2)
+    c = jnp.sin(theta)**2 / (2*sigma_x**2) + jnp.cos(theta)**2 / (2*sigma_y**2)
+
+    return a, b, c
+
+
+@jit_with_doc
+def gauss_uv(uvw, major, minor, pos_a, freqs):
+
+    cc = 2.99792458e8
+    lamda = cc / freqs
+    u = uvw[...,0] / lamda
+    v = uvw[...,1] / lamda
+    a, b, c = source_to_abc(major, minor, pos_a)
+    det = (a*c - b**2) / (4 * jnp.pi**2)
+
+    return jnp.exp( - (c*u**2 - 2*b*u*v  + a*v**2) / (4*det) )
+
+@jit_with_doc
+def gauss_lm(l, m, a, b, c):
+    return jnp.exp( - (a*l**2 + 2*b*l*m + c*m**2) )
+
+
+@jit_with_doc
+def _astro_vis_gauss(sources, major, minor, pos_angle, uvw, lmn, freqs):
+    #     Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
+
+    sources = jnp.asarray(sources[:, :, None, :])  #     (n_src, n_time, 1, n_freq)
+    major = jnp.asarray(major[:, None, None, None])  #     (n_src, 1, 1, 1)
+    minor = jnp.asarray(minor[:, None, None, None])  #     (n_src, 1, 1, 1)
+    pos_angle = jnp.asarray(pos_angle[:, None, None, None])  #     (n_src, 1, 1, 1)
+    freqs = jnp.asarray(freqs[None, None, None, :])  #      (1, 1, 1, n_freq)
+    uvw = jnp.asarray(uvw[None, :, :, None, :])  #          (1, n_time, n_bl, 1, 3)
+    lmn = jnp.asarray(lmn[:, None, None, None, :])  #       (n_src, 1, 1, 1, 3)
+    s0 = jnp.array([0, 0, 1])[None, None, None, None, :]  # (1, 1, 1, 1, 3)
+
+    phase = minus_two_pi_over_lamda(freqs) * jnp.sum(uvw * (lmn - s0), axis=-1)
+
+    uv_filter = gauss_uv(uvw, major, minor, pos_angle, freqs)
+
+    vis = jnp.sum(uv_filter * sources * jnp.exp(-1.0j * phase), axis=0)
+
+    return vis
+
+@jit_with_doc
+def exp_uv(uvw, shapes, freqs):
+    U = jnp.linalg.norm(uvw[..., :-1], axis=-1) / (c / freqs)
+
+    return 1. / (1. + (2*jnp.pi * shapes * U)**2 )** 1.5
+
+
+@jit_with_doc
+def _astro_vis_exp(sources, shapes, uvw, lmn, freqs):
+    #     Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
+
+    sources = jnp.asarray(sources[:, :, None, :])  #     (n_src, n_time, 1, n_freq)
+    shapes = jnp.asarray(shapes[:, None, None, None])  #     (n_src, 1, 1, 1)
+    freqs = jnp.asarray(freqs[None, None, None, :])  #      (1, 1, 1, n_freq)
+    uvw = jnp.asarray(uvw[None, :, :, None, :])  #          (1, n_time, n_bl, 1, 3)
+    lmn = jnp.asarray(lmn[:, None, None, None, :])  #       (n_src, 1, 1, 1, 3)
+    s0 = jnp.array([0, 0, 1])[None, None, None, None, :]  # (1, 1, 1, 1, 3)
+
+    phase = minus_two_pi_over_lamda(freqs) * jnp.sum(uvw * (lmn - s0), axis=-1)
+
+    vis = jnp.sum(exp_uv(uvw, shapes, freqs) * sources * jnp.exp(-1.0j * phase), axis=0)
+
+    return vis
+
+
+@jit_with_doc
 def _ants_to_bl(G, a1, a2):
     G_bl = G[:, a1, :] * jnp.conjugate(G[:, a2, :])
 
@@ -232,7 +403,7 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
     # return (2 * jv(1, x) / x) * mask
 
 
-# @jit
+# @jit_with_doc
 def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
     """
     Convert emission power to received intensity in Jy. Assumes constant
@@ -255,7 +426,7 @@ def Pv_to_Sv(Pv: jnp.ndarray, d: jnp.ndarray) -> jnp.ndarray:
     return Pv[:, :, None, :] / (4 * jnp.pi * d[:, :, :, None] ** 2) * 1e26
 
 
-# @jit
+# @jit_with_doc
 def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):
     """
     Add complex gaussian noise to the integrated visibilities. The real and
@@ -280,7 +451,7 @@ def add_noise(vis: jnp.ndarray, noise_std: jnp.ndarray, key: jnp.ndarray):
     return vis + noise, noise
 
 
-# @jit
+# @jit_with_doc
 def SEFD_to_noise_std(
     SEFD: jnp.ndarray, chan_width: jnp.ndarray, int_time: jnp.ndarray
 ):
@@ -307,7 +478,7 @@ def SEFD_to_noise_std(
     return SEFD / jnp.sqrt(2 * chan_width * int_time)
 
 
-# @jit
+# @jit_with_doc
 def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
     """Calculate the times at which to sample the visibilities given the time centroids.
     This shoudl produce `n_int_samples` times per integration time that are evenly
@@ -339,7 +510,7 @@ def int_sample_times(times: jnp.ndarray, n_int_samples: int = 1):
     return times_fine
 
 
-# @jit
+# @jit_with_doc
 def generate_gains(
     G0_mean: complex,
     G0_std: float,
@@ -398,7 +569,7 @@ def generate_gains(
     return gains_ants
 
 
-# @jit
+# @jit_with_doc
 def apply_gains(
     vis_ast: jnp.ndarray,
     vis_rfi: jnp.ndarray,
@@ -460,7 +631,7 @@ def time_avg(vis: jnp.ndarray, n_int_samples: int = 1):
     return vis_avg
 
 
-# @jit
+# @jit_with_doc
 def db_to_lin(dB: float):
     """
     Convert deciBels to linear units.
