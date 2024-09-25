@@ -26,7 +26,7 @@ def time_units(times: ArrayLike) -> tuple:
     if time_range>3600:
         scale = "hr"
         times = times / 3600
-    elif time_range>5*60:
+    elif time_range>60:
         scale = "min"
         times = times / 60
     else:
@@ -45,13 +45,13 @@ def plot_angular_seps(obs: Observation, save_path: str) -> None:
         Path to where to save the plots.
     """
     
-    times, scale = time_units(obs.times)
+    times, scale = time_units(obs.times_fine)
     plt.figure(figsize=(10,7))
     if obs.n_rfi_satellite>0:
         ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0).mean(axis=-1).T
         plt.plot(times, ang_seps, label="Satellite")
-    if obs.n_rfi_stationary:
-        ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0).mean(axis=-1).T
+    if obs.n_rfi_stationary>0:
+        ang_seps = np.concatenate(obs.rfi_stationary_ang_sep, axis=0).mean(axis=-1).T
         plt.plot(times, ang_seps, label="Stationary")
     plt.xlabel(f"Time [{scale}]")
     plt.ylabel("Angular Separation [deg]")

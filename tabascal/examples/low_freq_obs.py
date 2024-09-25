@@ -144,7 +144,6 @@ print("Calculating visibilities ...")
 
 obs.calculate_vis(flags=False)
 
-
 print(obs)
 
 print()
