@@ -92,8 +92,9 @@ def plot_uv(obs: Observation, save_path: str) -> None:
     """   
 
     plt.figure(figsize=(10,10))
-    u = obs.bl_uvw[:,:,0].compute().flatten()
-    v = obs.bl_uvw[:,:,1].compute().flatten()
+    time_step = int(obs.n_time_fine/100)
+    u = obs.bl_uvw[::time_step,:,0].compute().flatten()
+    v = obs.bl_uvw[::time_step,:,1].compute().flatten()
     max_U = np.max(np.sqrt(u**2 + v**2))
     exp = float(np.floor(np.log10(max_U)))
     mantissa = np.ceil(10**(np.log10(max_U)-exp))
