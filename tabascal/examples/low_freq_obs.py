@@ -6,6 +6,7 @@ import numpy as np
 import xarray as xr
 
 from tabascal.utils.tools import str2bool
+from tabascal.utils import plot
 from tabascal.dask.observation import Observation
 from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
 
@@ -25,7 +26,7 @@ parser.add_argument(
     help="System Equivalent flux density in Jy. Same across frequency and antennas.",
 )
 parser.add_argument("--t_0", default=0.0, type=float, help="Start time in seconds.")
-parser.add_argument("--delta_t", default=2.0, type=float, help="Time step in seconds.")
+parser.add_argument("--delta_t", default=8.0, type=float, help="Time step in seconds.")
 parser.add_argument("--N_t", default=150, type=int, help="Number of time steps.")
 parser.add_argument(
     "--N_int", default=1, type=int, help="Number of integration samples."
@@ -135,15 +136,9 @@ if gains:
 obs_name = mk_obs_name(f_name, obs)
 save_path, zarr_path, ms_path = mk_obs_dir(output_path, obs_name, overwrite)
 
-if N_sat>0:
-    import matplotlib.pyplot as plt
-    import os
-    ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0)
-    plt.figure(figsize=(10,7))
-    plt.plot(obs.times, ang_seps.T[0])
-    plt.xlabel("Time [s]")
-    plt.ylabel("Angular Separation [deg]")
-    plt.savefig(os.path.join(save_path, "AngularSeps.png"), format="png", dpi=200)
+plot.plot_src_alt(obs, save_path)
+plot.plot_uv(obs, save_path)
+plot.plot_angular_seps(obs, save_path)
 
 print("Calculating visibilities ...")
 

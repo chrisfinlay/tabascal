@@ -7,10 +7,8 @@ import numpy as np
 import xarray as xr
 
 from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
-from tabascal.utils.tools import (
-    load_antennas,
-    str2bool,
-)
+from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
+from tabascal.utils.tools import str2bool
 from tabascal.dask.observation import Observation
 
 parser = argparse.ArgumentParser(
@@ -168,6 +166,10 @@ obs.calculate_vis()
 
 obs_name = mk_obs_name(f_name, obs)
 save_path, zarr_path, ms_path = mk_obs_dir(output_path, obs_name, overwrite)
+
+plot_src_alt(obs, save_path)
+plot_uv(obs, save_path)
+plot_angular_seps(obs, save_path)
 
 print(obs)
 
