@@ -22,10 +22,10 @@ def write_flags(ms_path: str, n_sigma: float = 3.0):
 
     return flags
 
-if __name__ == "__main__":
+def main():
 
     parser = argparse.ArgumentParser(
-        description="Flag DATA lying a certain threshold away from the MODEL_DATA "
+        description="Flag CAL_DATA lying a certain threshold away from the AST_MODEL_DATA. Requires tabascal simulated MS files."
     )
     parser.add_argument(
         "--ms_path", required=True, help="File path to the Measurement Set."

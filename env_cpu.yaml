@@ -7,6 +7,7 @@ dependencies:
   - zarr
   - xarray
   - dask-ms
+  - matplotlib
   - pip:
     - jax
   # - pip:

@@ -62,7 +62,7 @@ def mk_obs_dir(output_path: str, obs_name: str, overwrite: bool=True) -> tuple:
 
     save_path = os.path.join(output_path, obs_name)
     rm_dir(save_path, overwrite)
-    os.mkdir(save_path)
+    os.makedirs(save_path, exist_ok=True)
     zarr_path = os.path.join(save_path, obs_name + ".zarr") 
     ms_path = os.path.join(save_path, obs_name + ".ms")
 

@@ -14,11 +14,16 @@ setup(
     license="MIT",
     packages=find_packages(),
     package_data={"tabascal": ["tabascal/data/*"]},
-    entry_points="""
-        [console_scripts]
-        sim-vis=tabascal.examples.target_observation:cli
-    """,
-    install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy", "tqdm"],
+    entry_points={"console_scripts": [
+            "sim-target=tabascal.examples.target_observation:main",
+            "sim-calib=tabascal.examples.calibration_observation:main",
+            "sim-mixed=tabascal.examples.mixed_source_observation:main",
+            "sim-low=tabascal.examples.low_freq_obs:main",
+            "flag-data=tabascal.utils.flag_data:main",
+            "sat-region=tabascal.utils.sat_region:main",
+            ]
+        },
+    install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy", "tqdm", "matplotlib"],
     extras_require = {
         "gpu": ["jax[cuda12]"],
         "sat": ["astropy", "regions"],
