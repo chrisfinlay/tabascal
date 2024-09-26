@@ -21,6 +21,8 @@ setup(
             "sim-low=tabascal.examples.low_freq_obs:main",
             "flag-data=tabascal.utils.flag_data:main",
             "sat-region=tabascal.utils.sat_region:main",
+            "ast-region=tabascal.utils.ast_region:main",
+            "tab2MS=tabascal.utils.results_to_MS:main",
             ]
         },
     install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy", "tqdm", "matplotlib"],
