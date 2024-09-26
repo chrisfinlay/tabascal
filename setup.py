@@ -23,12 +23,14 @@ setup(
             "sat-region=tabascal.utils.sat_region:main",
             "ast-region=tabascal.utils.ast_region:main",
             "tab2MS=tabascal.utils.results_to_MS:main",
+            "extract=tabascal.utils.extract:main",
             ]
         },
     install_requires=["jax", "dask", "xarray", "zarr", "dask-ms", "scipy", "tqdm", "matplotlib"],
     extras_require = {
         "gpu": ["jax[cuda12]"],
         "sat": ["astropy", "regions"],
+        "astro": ["bdsf"],
     },
     zip_safe=False,
 )

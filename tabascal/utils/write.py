@@ -177,9 +177,9 @@ def get_observation_attributes(obs: Observation):
         "n_sat_src": obs.n_rfi_satellite,
         "n_stat_src": obs.n_rfi_stationary,
         "n_ast_src": obs.n_ast,
-        # "n_ast_p_src": obs.n_p_ast,
-        # "n_ast_g_src": obs.n_g_ast,
-        # "n_ast_e_src": obs.n_e_ast,
+        "n_ast_p_src": obs.n_p_ast,
+        "n_ast_g_src": obs.n_g_ast,
+        "n_ast_e_src": obs.n_e_ast,
     }
     
     attrs = {
