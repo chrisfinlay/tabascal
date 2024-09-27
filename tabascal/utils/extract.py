@@ -19,7 +19,7 @@ import xarray as xr
 
 import dask.array as da
 
-def construct_src_df(xds):
+def construct_src_df(xds: xr.Dataset) -> pd.DataFrame:
 
     def construct_src_subdf(radec, I):
         df = pd.DataFrame(
@@ -56,34 +56,21 @@ def construct_src_df(xds):
 
     return source_df
 
-def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=True):#, ms_path: str = None):
+def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=True) -> None:
 
     # tclean naming convention
     # img_name = os.path.splitext(img_path)[0]
     # wsclean naming convention
     img_name = img_path.removesuffix("-image.fits")
 
-
-    # if beam_corr:
-    #     img, hdr = fits.getdata(img_path, header=True)
-
-    #     lmn = radec_to_lmn(match_df["RA [deg]"].values, match_df["DEC [deg]"].values, [xds.target_ra, xds.target_dec])
-    #     theta = np.arcsin(np.linalg.norm(lmn[:, :-1], axis=-1))
-    #     beam = airy_beam(theta[:,None,None], xds.freq.data, xds.dish_diameter)**2
-
     bmaj = fits.getheader(img_path)["BMAJ"]*3600
 
     print(f"Beam Major : {bmaj:.2f} arcsec")
 
-    # if ms_path is not None:
-    #     image_ms(ms_path, img_name)
-
-    # image = process_image(img_path)#, quiet=True)
-    # image = process_image(img_path)#, quiet=True)
     # image = process_image(
-    #     img_path + ".fits", quiet=True, thresh_isl=2.0, thresh_pix=1.0
+    #     img_path, quiet=True, thresh_isl=2.0, thresh_pix=1.0
     # )
-    image = process_image(img_path, thresh_isl=1.5, thresh_pix=1.5, quiet=True)
+    image = process_image(img_path, thresh_isl=1.0, thresh_pix=1.0, quiet=True)
 
     image.export_image(outfile=img_name + ".gauss_resid.fits", img_type="gaus_resid", clobber=True)
     image.write_catalog(
@@ -125,13 +112,21 @@ def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=T
         .reset_index()[keys1]
     )
 
-
     c = SkyCoord(ra=image_df[" RA"], dec=image_df[" DEC"], unit="deg")
     catalog = SkyCoord(ra=true_df[" RA"], dec=true_df[" DEC"], unit="deg")
     idx, d2d, d3d = c.match_to_catalog_sky(catalog)
 
     true_df1 = true_df.iloc[idx].reset_index()[keys2]
     image_df1 = image_df[keys2]
+
+    if beam_corr:
+
+        lmn = radec_to_lmn(image_df1[" RA"].values, image_df1[" DEC"].values, [xds.target_ra, xds.target_dec])
+        theta = np.arcsin(np.linalg.norm(lmn[:, :-1], axis=-1))
+        beam = airy_beam(theta[:,None,None], xds.freq.data, xds.dish_diameter)[:,0,0,0]**2
+        image_df1.loc[:," Total_flux"] = beam * image_df1[" Total_flux"]
+        image_df1.loc[:," E_Total_flux"] = beam * image_df1[" E_Total_flux"]
+
     error_df = np.abs((image_df1 - true_df1))
     error_df = pd.DataFrame(
         data=np.abs((image_df1 - true_df1)[[" RA", " DEC"]] * 3600).values,
@@ -166,6 +161,7 @@ def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=T
         "Image_noise [mJy/beam]",
     ]
     error_df = error_df[keys].iloc[mask]
+
     error_df.to_csv(img_name + ".csv", index=False)
 
 
@@ -174,48 +170,21 @@ def main():
     parser = argparse.ArgumentParser(description=program_desc)
     # Output File Arguments
     parser.add_argument("--zarr_path", help="Path to zarr simulation file.")
-    parser.add_argument("--img_path", help="Path to directory of images.")
-    # parser.add_argument("--ms_path", default=None, help="Path to directory of images.")
-    # parser.add_argument("--ms_path", default=None, help="Path to directory of images.")
-    # parser.add_argument(
-    #     "--type",
-    #     default="ideal",
-    #     help="Data type to image. {'ideal', 'flag', 'tabascal'}",
-    # )
+    parser.add_argument("--img_path", help="Path to image or directory of images if '--type' is specified.")
+    parser.add_argument(
+        "--type",
+        default=None,
+        help="Data type to image. {'AST', 'CAL', 'TAB'}",
+    )
     args = parser.parse_args()
 
     zarr_path = args.zarr_path
     img_path = args.img_path
-    # ms_path = args.ms_path
-    # data_type = args.type.lower()
-    # img_path = os.path.join(zarr_path, f"{data_type}.fits")
+    if args.type is not None:
+        data_types = args.type.upper().split(",")
+        img_paths = [os.path.join(img_path, f"{d_type}_DATA-image.fits") for d_type in data_types]
+    else:
+        img_paths = [img_path]
 
-    # if data_type not in ["ideal", "flag", "tabascal"]:
-    #     print(
-    #         f"'{data_type}' not an option for 'type'."
-    #         + " Choose from  {'ideal', 'flag', 'tabascal'}."
-    #     )
-    #     sys.exit(0)
-
-    print(img_path)
-    print(zarr_path)
-    # print(ms_path)
-
-    # img_paths = glob(os.path.join(img_dir, "*.fits"))
-    # img_paths = [os.path.splitext(x)[0] for x in img_paths if x.find("resid") == -1]
-    # xds = xr.open_zarr(zarr_path)
-    # if data_type == "ideal":
-    #     corr_data = (xds.vis_model.data + xds.noise_data.data).reshape(-1, xds.n_freq)
-    #     flags = da.zeros_like(corr_data, dtype=bool)
-    # elif data_type == "flag":
-    #     corr_data = xds.vis_calibrated.data.reshape(-1, xds.n_freq)
-    #     flags = xds.flags.data.reshape(-1, xds.n_freq)
-    # elif data_type == "tabascal":
-    #     corr_data = xds.vis_corrected.data.reshape(-1, xds.n_freq)
-    #     flags = da.zeros_like(corr_data, dtype=bool)
-
-    # write_corrected_data_ms(ms_path, corr_data, flags)
-    extract(img_path, zarr_path)#, ms_path)
-
-    # for img_path in img_paths:
-    #     extract(img_path, zarr_path, ms_path)
+    for img_path in img_paths:
+        extract(img_path, zarr_path)
