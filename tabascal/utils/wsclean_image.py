@@ -44,7 +44,11 @@ def main():
 
     for data_col in data_cols:
 
-        wsclean_cmd = f"{docker_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}{suffix} {ms_file}"
-
-        subprocess.run(wsclean_cmd, shell=True, executable=bash_exec)
+        if "flag" in data_col.lower():
+            n_sigma = data_col.lower().replace("flag", "")
+            flag_cmd = f"flag-data --ms_path {ms_path} --n_sigma {n_sigma}"
+            subprocess.run(flag_cmd, shell=True, executable=bash_exec)
+        else:
+            wsclean_cmd = f"{docker_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}{suffix} {ms_file}"
+            subprocess.run(wsclean_cmd, shell=True, executable=bash_exec)
 
