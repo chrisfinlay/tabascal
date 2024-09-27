@@ -23,6 +23,7 @@ setup(
             "sat-region=tabascal.utils.sat_region:main",
             "ast-region=tabascal.utils.ast_region:main",
             "tab2MS=tabascal.utils.results_to_MS:main",
+            "image=tabascal.utils.wsclean_image:main",
             "extract=tabascal.utils.extract:main",
             ]
         },

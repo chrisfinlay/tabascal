@@ -3,7 +3,7 @@ import shutil
 import os
 
 
-def image_ms(ms_path, image_path, overwrite=False):
+def image_ms(ms_path, image_path, data_col="corrected", overwrite=False):
     if os.path.exists(image_path):
         if overwrite:
             shutil.rmtree(image_path)
@@ -24,7 +24,7 @@ def image_ms(ms_path, image_path, overwrite=False):
         scan="",
         observation="",
         intent="",
-        datacolumn="corrected",
+        datacolumn=data_col,
         imagename=image_path,
         imsize=2048,
         cell="2arcsec",
@@ -106,7 +106,7 @@ def image_ms(ms_path, image_path, overwrite=False):
 
     exportfits(
         imagename=image_path + ".image",
-        fitsimage=image_path + ".fits",
+        fitsimage=image_path + "-image.fits",
         velocity=False,
         optical=False,
         bitpix=-32,
@@ -121,7 +121,7 @@ def image_ms(ms_path, image_path, overwrite=False):
 
     exportfits(
         imagename=image_path + ".residual",
-        fitsimage=image_path + ".resid.fits",
+        fitsimage=image_path + "-residual.fits",
         velocity=False,
         optical=False,
         bitpix=-32,
@@ -133,3 +133,28 @@ def image_ms(ms_path, image_path, overwrite=False):
         history=True,
         dropdeg=False,
     )
+
+def main():
+
+    import argparse
+    parser = argparse.ArgumentParser(
+        description="Use CASA tclean to image columns of an MS file."
+    )
+    parser.add_argument(
+        "--ms_path", required=True, help="File path to the MS file."
+    )
+    parser.add_argument(
+        "--data_col", default="data", type=str, help="The names of the data columns in the MS file to image."
+    )
+
+    args = parser.parse_args()
+    ms_path = os.path.abspath(args.ms_path)
+    data_col = args.data_col
+
+    if ms_path[-1]=="/":
+        ms_path = ms_path[:-1]
+        
+    data_dir = os.path.split(ms_path)[0]
+    img_path = os.path.join(data_dir, f"{data_col}")
+
+    image_ms(ms_path, img_path, data_col, overwrite=True)

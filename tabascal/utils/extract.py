@@ -4,20 +4,13 @@ import numpy as np
 
 from astropy.coordinates import SkyCoord
 from astropy.io import fits
-from glob import glob
 import argparse
 import os
-import sys
 
 from tabascal.jax.coordinates import radec_to_lmn
 from tabascal.jax.interferometry import airy_beam
 
 import xarray as xr
-
-# from tab_opt.image import image_ms
-# from tab_opt.data import write_corrected_data_ms
-
-import dask.array as da
 
 def construct_src_df(xds: xr.Dataset) -> pd.DataFrame:
 
