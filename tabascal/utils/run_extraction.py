@@ -65,14 +65,19 @@ def main():
         thresh = config[key]["flag"]["thresh"]
         if "image" in procs:
             wsclean_opts = "".join([f" -{k} {v}" for k, v in config[key]["image"].items()])
-            img_cmd = f"image -m {ms_path} -d {data_col} -n {thresh:.1f}sigma -w '{wsclean_opts}'"
+            # wsclean_opts = "-size 2048 2048 -scale 2asec -niter 50000 -mgain 0.3 -auto-threshold 1 -pol xx -weight briggs -0.5 -auto-mask 3"
+            sing_cmd = "singularity exec --bind /home/users/f/finlay/paper/tabascal/tabascal/analysis/yaml_configs/target:/mnt wsclean.sif"
+            wsclean_cmd = f"{sing_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}_{thresh:.1f}sigma {ms_path}"
+            # img_cmd = f"image -m {ms_path} -d {data_col} -n {thresh:.1f}sigma -w '{wsclean_opts}'"
             print("\n\n================================================================================")
             print()
             print(f"Flagging {data_col} column of the MS file.")
             write_flags(ms_path, thresh)
             print()
-            print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
-            subprocess.run(img_cmd, shell=True, executable=bash)
+            # print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
+            # subprocess.run(img_cmd, shell=True, executable=bash)
+            print(f"Imaging {data_col} column of the MS file.\nUsing {wsclean_cmd}")
+            subprocess.run(wsclean_cmd, shell=True, executable=bash)
             img_paths = glob.glob(os.path.join(sim_dir, f"{data_col}_{thresh:.1f}sigma*"))
             for img_path in img_paths:
                 shutil.copy(img_path, img_dir)
