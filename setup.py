@@ -32,6 +32,7 @@ setup(
             "sim-vis=tabascal.examples.sim_vis:main",
             "tabascal=tabascal.utils.run_tabascal:main",
             "extract=tabascal.utils.run_extraction:main",
+            "end2end=tabascal.utils.end2end:main",
             ]
         },
     install_requires=["jax", "dask", "xarray", "zarr", 

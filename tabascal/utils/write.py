@@ -363,7 +363,7 @@ def time_avg(x: dask.Array, n_avg: int) -> dask.Array:
     x_avg = x.reshape(-1, n_avg, *shape).mean(axis=1)
     return x_avg
 
-def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Arrayr=None, flags: dask.Array=None, extras: bool=True):
+def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None, flags: dask.Array=None, extras: bool=True):
     """Get the data table for a Measurement Set."""
     n_time = ds.attrs["n_time"]
     n_int_samples = ds.attrs["n_int_samples"]
@@ -427,6 +427,7 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Arrayr=Non
         "WEIGHT": (("row", "corr"), weight),
         "ARRAY_ID": (("row"), a_id),
         "FLAG": (("row", "chan", "corr"), flags),
+        "FLAG_CATEGORY": (("row", "chan", "corr", "flagcat"), da.expand_dims(flags, axis=3)),
     }
 
     if extras:

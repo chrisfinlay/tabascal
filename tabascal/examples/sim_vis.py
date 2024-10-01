@@ -58,4 +58,4 @@ def main():
     if args.n_time is not None:
         obs_spec["observation"]["n_time"] = args.n_time
     
-    run_sim_config(obs_spec=obs_spec)
+    return run_sim_config(obs_spec=obs_spec)

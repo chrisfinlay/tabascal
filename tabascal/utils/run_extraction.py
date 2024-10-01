@@ -15,7 +15,7 @@ def main():
         description="Process a simulation file that has potentially had tabascal run on it."
     )
     parser.add_argument(
-        "-c", "--config_path", help="File path to the observation config file."
+        "-c", "--config_path", help="File path to the source extraction config file."
     )
     parser.add_argument(
         "-s", "--sim_dir", help="Path to the directory of the simulation."
@@ -31,9 +31,11 @@ def main():
     )
     args = parser.parse_args()
     bash = args.bash_exec
+    sim_dir = args.sim_dir
 
 
     log = open('log_extract.txt', 'w')
+    backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
 
     config = load_sim_config(args.config_path)
@@ -64,6 +66,7 @@ def main():
         if "image" in procs:
             wsclean_opts = "".join([f" -{k} {v}" for k, v in config[key]["image"].items()])
             img_cmd = f"image -m {ms_path} -d {data_col} -n {thresh:.1f}sigma -w '{wsclean_opts}'"
+            print("\n\n================================================================================")
             print()
             print(f"Flagging {data_col} column of the MS file.")
             write_flags(ms_path, thresh)
@@ -86,6 +89,7 @@ def main():
     log.close()
     shutil.copy("log_extract.txt", sim_dir)
     os.remove("log_extract.txt")
+    sys.stdout = backup
 
     with open(os.path.join(sim_dir, "extract_config.yaml"), "w") as fp:
         yaml.dump(config, fp)

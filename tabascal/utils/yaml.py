@@ -105,6 +105,8 @@ def yaml_load(path):
 
 
 class Tee(object):
+    """https://stackoverflow.com/questions/17866724/python-logging-print-statements-while-having-them-print-to-stdout
+    """
     def __init__(self, *files):
         self.files = files
     def write(self, obj):
@@ -485,6 +487,7 @@ def save_inputs(obs_spec: dict, save_path: str) -> None:
 def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
 
     log = open('log_sim.txt', 'w')
+    backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
 
     start = datetime.now()
@@ -527,5 +530,6 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
     log.close()
     shutil.copy("log_sim.txt", save_path)
     os.remove("log_sim.txt")
+    sys.stdout = backup
 
-    return obs
+    return obs, save_path

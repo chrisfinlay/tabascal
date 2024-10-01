@@ -7,9 +7,6 @@ from astropy.io import fits
 import argparse
 import os
 
-from tabascal.jax.coordinates import radec_to_lmn
-from tabascal.jax.interferometry import airy_beam
-
 import xarray as xr
 
 def construct_src_df(xds: xr.Dataset) -> pd.DataFrame:
@@ -48,6 +45,83 @@ def construct_src_df(xds: xr.Dataset) -> pd.DataFrame:
     source_df = pd.concat([p_df, g_df, e_df])
 
     return source_df
+
+def airy_beam(theta: np.ndarray, freqs: np.ndarray, dish_d: float):
+    """
+    Calculate the primary beam voltage at a given angular distance from the
+    pointing direction. The beam intensity model is the Airy disk as
+    defined by the dish diameter. This is the same a the CASA default.
+
+    Parameters
+    ----------
+    theta: (n_src, n_time, n_ant)
+        The angular separation between the pointing direction and the
+        source.
+    freqs: (n_freq,)
+        The frequencies at which to calculate the beam in Hz.
+    dish_d: float
+        The diameter of the dish in meters.
+
+    Returns
+    -------
+    E: ndarray (n_src, n_time, n_ant, n_freq)
+        The beam voltage at each frequency.
+    """
+    import sys
+    from scipy.special import jv
+    c = 2.99792458e8
+    theta = np.asarray(theta[:, :, :, None])
+    freqs = np.asarray(freqs)
+    dish_d = np.asarray(dish_d).flatten()[0]
+    # mask = np.where(theta > 90.0, 0, 1)
+    theta = np.deg2rad(theta)
+    x = np.where(
+        theta == 0.0,
+        sys.float_info.epsilon,
+        np.pi * freqs[None, None, None, :] * dish_d * np.sin(theta) / c,
+    )
+
+    return 2 * jv(1, x) / x
+    # return (2 * jv(1, x) / x) * mask
+
+def radec_to_lmn(
+    ra: np.ndarray, dec: np.ndarray, phase_centre: np.ndarray
+) -> np.ndarray:
+    """
+    Convert right-ascension and declination positions of a set of sources to
+    direction cosines.
+
+    Parameters
+    ----------
+    ra : ndarray (n_src,)
+        Right-ascension in degrees.
+    dec : ndarray (n_src,)
+        Declination in degrees.
+    phase_centre : ndarray (2,)
+        The ra and dec coordinates of the phase centre in degrees.
+
+    Returns
+    -------
+    lmn : ndarray (n_src, 3)
+        The direction cosines, (l,m,n), coordinates of each source.
+    """
+    ra = np.asarray(ra)
+    dec = np.asarray(dec)
+    phase_centre = np.asarray(phase_centre)
+    ra, dec = np.deg2rad(np.array([ra, dec]))
+    phase_centre = np.deg2rad(phase_centre)
+
+    delta_ra = ra - phase_centre[0]
+    dec_0 = phase_centre[1]
+
+    l = np.cos(dec) * np.sin(delta_ra)
+    m = np.sin(dec) * np.cos(dec_0) - np.cos(dec) * np.sin(dec_0) * np.cos(
+        delta_ra
+    )
+    n = np.sqrt(1 - l**2 - m**2)
+
+    return np.array([l, m, n]).T
+
 
 def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float=1.0, thresh_isl: float=1.0, thresh_pix: float=1.0, beam_corr: bool=True) -> None:
 

@@ -42,24 +42,10 @@ from tab_opt.models import (
 )
 from tab_opt.transform import affine_transform_full_inv, affine_transform_diag_inv
 
-def main():
-
-    import argparse
-
-    parser = argparse.ArgumentParser(
-        description="Apply tabascal to a simulation."
-    )
-    parser.add_argument(
-        "-s", "--sim_dir", help="Path to the directory of the simulation."
-    )
-    parser.add_argument(
-        "-c", "--config", required=True, help="Path to the config file."
-    )
-    args = parser.parse_args()
-    sim_dir = args.sim_dir
-    conf_path = args.config
+def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     log = open('log_tab.txt', 'w')
+    backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
 
     print()
@@ -225,8 +211,8 @@ def main():
     bl = jnp.arange(N_bl)
 
     print()
+    print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")
     print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast_true)):.1f} Jy")
-    print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.0f} Jy")
     # print(f"Flag Rate :     {flag_rate:.2f} %")
     print()
     print(f"Number of Antennas   : {N_ant: 4}")
@@ -740,11 +726,29 @@ def main():
     log.close()
     shutil.copy("log_tab.txt", sim_dir)
     os.remove("log_tab.txt")
+    sys.stdout = backup
 
     with open(os.path.join(sim_dir, "tab_config.yaml"), "w") as fp:
         yaml.dump(config, fp)
 
     
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Apply tabascal to a simulation."
+    )
+    parser.add_argument(
+        "-s", "--sim_dir", help="Path to the directory of the simulation."
+    )
+    parser.add_argument(
+        "-c", "--config", required=True, help="Path to the config file."
+    )
+    args = parser.parse_args()
+    sim_dir = args.sim_dir
+    conf_path = args.config   
+
+    tabascal_subtraction(conf_path, sim_dir) 
 
 if __name__=="__main__":
     main()
