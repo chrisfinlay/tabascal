@@ -1,6 +1,7 @@
 import argparse
 import subprocess
 import os
+from tabascal.utils.tools import str2bool
 
 def main():
 
@@ -22,6 +23,9 @@ def main():
     parser.add_argument(
         "-b", "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker. Default is /bin/bash."
     )
+    parser.add_argument(
+        "-s", "--sing", default="n", type=str2bool, help="Whether to use singularity or not."
+    )
 
     args = parser.parse_args()
     ms_path = os.path.abspath(args.ms_path)
@@ -31,6 +35,8 @@ def main():
 
     if suffix is not None:
         suffix = "_" + suffix
+    else:
+        suffix = ""
 
     data_cols = args.data_col.upper().split(",")
 
@@ -41,7 +47,11 @@ def main():
 
     docker_opts = "--rm -v /etc/group:/etc/group -v /etc/passwd:/etc/passwd -v /etc/shadow:/etc/shadow -v/etc/sudoers.d:/etc/sudoers.d -e HOME=${HOME} --user=`id -ur`"
     docker_cmd = f"docker run {docker_opts} -v {data_dir}:/data --workdir /data chrisjfinlay/wsclean:kern8"
-
+    
+    if args.sing:
+        docker_cmd = "singularity exec --bind /home/users/f/finlay/paper/tabascal/tabascal/analysis/yaml_configs/target:/mnt /home/users/f/finlay/paper/tabascal/tabascal/analysis/yaml_configs/target/wsclean.sif"
+    # wsclean_cmd = f"{sing_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}_{thresh:.1f}sigma {ms_path}"
+            
     for data_col in data_cols:
 
         if "flag" in data_col.lower():
