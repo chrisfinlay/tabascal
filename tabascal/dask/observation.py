@@ -248,7 +248,7 @@ class Observation(Telescope):
         self.gha = da.asarray(lst_sec2deg(self.times_fine.compute())) - self.ra
         self.lha = da.asarray(gmst_to_lst(self.times_fine.compute(), longitude)) - self.ra
 
-        self.freqs = da.asarray(freqs, chunks=(self.freq_chunk,))
+        self.freqs = da.asarray(freqs).rechunk((self.freq_chunk,))
         self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else 209e3
         self.n_freq = len(freqs)
 

@@ -4,6 +4,7 @@ import argparse
 
 import numpy as np
 import xarray as xr
+import dask.array as da
 
 from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
 from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
@@ -36,7 +37,7 @@ def main():
     )
     parser.add_argument("--N_f", default=1, type=int, help="Number of frequency channels.")
     parser.add_argument("--freq_start", default=1227e6, type=float, help="Start frequency.")
-    parser.add_argument("--freq_end", default=1227.209e6, type=float, help="End frequency.")
+    parser.add_argument("--chan_width", default=209e3, type=float, help="End frequency.")
     parser.add_argument("--N_a", default=64, type=int, help="Number of antennas.")
     parser.add_argument("--RFIamp", default=1.0, type=float, help="RFI amplitude.")
     parser.add_argument("--CALamp", default=1.0, type=float, help="Calibrator amplitude.")
@@ -75,7 +76,7 @@ def main():
     overwrite = args.overwrite
     chunksize = args.chunksize
     freq_start = args.freq_start
-    freq_end = args.freq_end
+    chan_width = args.chan_width
         
 
     rng = np.random.default_rng(12345)
@@ -83,8 +84,8 @@ def main():
     # ants_enu = load_antennas("MeerKAT")[:N_ant]
     # itrf_path = "../data/Meerkat.itrf.txt"
 
-    times = np.arange(t_0, t_0 + N_t * dT, dT)
-    freqs = np.linspace(freq_start, freq_end, N_freq)
+    times = da.arange(t_0, t_0 + N_t * dT, dT)
+    freqs = da.arange(freq_start, freq_start + N_freq * chan_width, chan_width)
 
     obs = Observation(
         latitude=-30.0,
@@ -124,7 +125,7 @@ def main():
 
     if N_sat > 0 and N_sat <= 2:
         obs.addSatelliteRFI(
-            Pv=rfi_P[:N_sat, None, :] * np.ones((N_sat, obs.n_time_fine, obs.n_freq)),
+            Pv=rfi_P[:N_sat, None, :] * da.ones((N_sat, obs.n_time_fine, obs.n_freq)),
             elevation=elevation[:N_sat],
             inclination=inclination[:N_sat],
             lon_asc_node=lon_asc_node[:N_sat],

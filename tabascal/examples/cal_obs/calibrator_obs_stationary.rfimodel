@@ -1,0 +1,4 @@
+loc_id,loc_name,sig_type,power,freq,band_width
+1,town1,gauss,0.0006,1220000000.0,6000000.0
+2,tower1,gauss,0.00015,1220000000.0,6000000.0
+3,tower2,gauss,4e-05,1220000000.0,6000000.0

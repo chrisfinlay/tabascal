@@ -1,5 +1,6 @@
 import numpy as np
 import jax.numpy as jnp
+import dask.array as da
 
 
 def uniform_points_disk(radius: float, n_src: int, random_seed: int = None):
@@ -77,7 +78,7 @@ def generate_random_sky(
     beam_width: float = 0.0,
     random_seed: int = None,
     n_beam: int = 3,
-):
+) -> tuple:
     """
     Generate uniformly distributed point sources inside the field of view with
     an exponential intensity distribution. Setting the beam width will make
@@ -116,7 +117,7 @@ def generate_random_sky(
     """
     rng = np.random.default_rng(random_seed)
 
-    I = random_power_law(n_src, min_I, max_I, I_power_law, rng)
+    I = da.atleast_1d(random_power_law(n_src, min_I, max_I, I_power_law, rng))
     positions = uniform_points_disk(fov / 2.0, 1, rng)
     while positions.shape[1] < n_src:
         n_sample = 2 * (n_src - positions.shape[1])
