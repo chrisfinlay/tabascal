@@ -1,0 +1,50 @@
+data:
+  sim_dir:
+ 
+ideal:
+  data_col: AST_DATA 
+  flag: 
+    thresh: 0
+  image: 
+    size: 2048 2048 
+    scale: 2asec 
+    niter: 50000
+    mgain: 0.3
+    auto-threshold: 1
+    pol: xx
+    weight: briggs -0.5
+    auto-mask: 3
+
+tab:
+  data_col: TAB_DATA 
+  flag: 
+    thresh: 0
+  image: 
+    size: 2048 2048 
+    scale: 2asec 
+    niter: 50000
+    mgain: 0.3
+    auto-threshold: 1
+    pol: xx
+    weight: briggs -0.5
+    auto-mask: 3
+
+flag:
+  data_col: CAL_DATA 
+  flag: 
+    thresh: 3
+  image: 
+    size: 2048 2048 
+    scale: 2asec 
+    niter: 50000
+    mgain: 0.3
+    auto-threshold: 1
+    pol: xx
+    weight: briggs -0.5
+    auto-mask: 3
+  
+extract: 
+  sigma_cut: 3.0
+  beam_cut: 1.0
+  thresh_isl: 1.5
+  thresh_pix: 1.5

@@ -1,0 +1,4 @@
+loc_id,loc_name,latitude,longitude,elevation
+1,town1,-20.0,30.0,1050.0
+2,tower1,-20.0,20.0,1050.0
+3,tower2,-25.0,20.0,1050.0

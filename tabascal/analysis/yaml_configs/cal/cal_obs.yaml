@@ -1,0 +1,64 @@
+telescope:
+  name: MeerKAT
+  latitude: -30.0
+  longitude: 21.0
+  elevation: 1050.0
+  dish_d: 13.5
+  enu_path: ../../data/Meerkat.enu.txt
+  itrf_path:
+  n_ant: 64
+
+observation:
+  target_name: calibrator1
+  ra: 21.0
+  dec: -30.0
+  start_time: 0.0
+  int_time: 2.0
+  n_time: 150
+  n_int: 8
+  start_freq: 1.227e9
+  chan_width: 209e3
+  n_freq: 1
+  SEFD: 420
+  auto_corrs: False
+  no_w: False
+  random_seed: 12345
+
+ast_sources:
+  point:
+    path: calibrator.skymodel
+
+rfi_sources:
+  satellite:
+    sat_ids: [1]
+    tle_path: 
+    circ_path: satellite.ole
+    power_scale: 1
+    spec_model: satellite.rfimodel
+  stationary:
+    loc_ids: 
+    geo_path: stationary.loc
+    power_scale: 1
+    spec_model: stationary.rfimodel
+    
+gains:
+  G0_mean: 1.0
+  G0_std: 0.05
+  Gt_std_amp: 1e-5
+  Gt_std_phase: 1e-3
+  random_seed: 
+
+output:
+  path: ../data/
+  prefix: calibrator1
+  overwrite: True
+  zarr: True
+  ms: True
+
+diagnostics:
+  uv_cov: True
+  src_alt: True
+  rfi_seps: True
+
+dask:
+  max_chunk_MB: 100.0
