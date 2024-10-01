@@ -101,7 +101,7 @@ def yaml_load(path):
     return config
 
 def load_sim_config(path):
-    obs_spec = yaml_load("cal_obs.yaml")
+    obs_spec = yaml_load(path)
     base_config = get_base_sim_config()
     
     return deep_update(base_config, obs_spec)
@@ -272,13 +272,13 @@ def gauss(A: float, mean: float, sigma: float, x: da.Array) -> da.Array:
     return A * da.exp( -0.5 * ((x-mean)/sigma)**2 )
 
 
-def generate_spectra(spec_df: pd.DataFrame, freqs: da.Array) -> tuple:
+def generate_spectra(spec_df: pd.DataFrame, freqs: da.Array, id_key: str) -> tuple:
 
     spectra = []
     ids = []
     for i, spec in spec_df.iterrows():
         if spec["sig_type"].lower()=="gauss":
-            ids.append(spec["sat_id"])
+            ids.append(spec[id_key])
             spectra.append(gauss(spec["power"], spec["freq"], spec["band_width"]/2, freqs))
         else:
             print(f"sig_type : {spec['sig_type']} not supported.")
@@ -310,14 +310,14 @@ def add_satellite_sources(obs: Observation, obs_spec: dict) -> None:
         sat_spec = sat_spec[sat_spec["sat_id"].isin(path_ids)]
 
         if len(sat_spec) > 0:
-            ids, spectra = generate_spectra(sat_spec, obs.freqs)
+            ids, spectra = generate_spectra(sat_spec, obs.freqs, "sat_id")
             uids = np.unique(ids)
             for uid in uids:
                 Pv = da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
                 ole = oles[oles["sat_id"]==uid]
                 if len(ole)==1:
                     print()
-                    print("Adding RFI satellite source ...")
+                    print("Adding satellite RFI source ...")
                     obs.addSatelliteRFI(Pv, ole["elevation"].values, ole["inclination"].values, ole["lon_asc_node"].values, ole["periapsis"].values)
                 # tle = tles[tles["sat_id"]==uid]
                 # elif len(tle)==1:
@@ -326,6 +326,39 @@ def add_satellite_sources(obs: Observation, obs_spec: dict) -> None:
                     print()
                     print(f"sat_id: {uid} multiply-defined.")
 
+
+def add_stationary_sources(obs: Observation, obs_spec: dict) -> None:
+
+    stat_ = obs_spec["rfi_sources"]["stationary"]
+    if stat_["loc_ids"] is not None:
+        ids = stat_["loc_ids"]
+        path_ids = []
+        if stat_["geo_path"] is not None:
+            geos = pd.read_csv(stat_["geo_path"])
+            geos = geos[geos["loc_id"].isin(ids)]
+            path_ids.append(geos["loc_id"].values)
+
+        path_ids = np.concatenate(path_ids)
+
+        stat_spec = pd.read_csv(stat_["spec_model"])
+        stat_spec = stat_spec[stat_spec["loc_id"].isin(ids)]
+
+        if len(stat_spec) > 0:
+            ids, spectra = generate_spectra(stat_spec, obs.freqs, "loc_id")
+            uids = np.unique(ids)
+            for uid in uids:
+                Pv = da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
+                geo = geos[geos["loc_id"]==uid]
+                if len(geo)==1:
+                    print()
+                    print("Adding stationary RFI source ...")
+                    obs.addStationaryRFI(Pv, geo["latitude"].values, geo["longitude"].values, geo["elevation"].values)
+                else:
+                    print()
+                    print(f"loc_id: {uid} multiply-defined.")
+
+
+        
                     
 def add_gains(obs: Observation, obs_spec: dict) -> None:
 
@@ -425,6 +458,7 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
     obs = load_obs(obs_spec)
     add_astro_sources(obs, obs_spec)
     add_satellite_sources(obs, obs_spec)
+    add_stationary_sources(obs, obs_spec)
     add_gains(obs, obs_spec)
 
     print(obs)
