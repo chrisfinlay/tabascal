@@ -70,6 +70,7 @@ class Telescope(object):
         ITRF_array: Array=None,
         ITRF_path: str=None,
         tel_name: str=None,
+        n_ant: int=None,
     ):
         self.tel_name = tel_name
         self.latitude = da.asarray(latitude)
@@ -78,6 +79,7 @@ class Telescope(object):
         self.GEO = da.asarray([latitude, longitude, elevation])
         self.ITRF = None
         self.ENU = None
+        self.n_ant = n_ant
         
         if ENU_array is not None or ENU_path is not None:
             self.createArrayENU(ENU_array, ENU_path)
@@ -105,7 +107,7 @@ Elevation : {elevation}\n"""
         if ENU_array is not None:
             self.ENU = ENU_array
         elif ENU_path is not None:
-            self.ENU = np.loadtxt(ENU_path, usecols=(0,1,2))
+            self.ENU = np.loadtxt(ENU_path, usecols=(0,1,2), max_rows=self.n_ant)
         else:
             self.ENU = None
             msg = """Error : East-North-Up coordinates are needed either in an 
@@ -121,7 +123,7 @@ Elevation : {elevation}\n"""
         if ITRF_array is not None:
             self.ITRF = ITRF_array
         elif ITRF_path is not None:
-            self.ITRF = np.loadtxt(ITRF_path, usecols=(0,1,2))
+            self.ITRF = np.loadtxt(ITRF_path, usecols=(0,1,2), max_rows=self.n_ant)
         else:
             self.ITRF = None
             msg = """Error : ITRF antenna coordinates are needed either in an 
@@ -192,6 +194,7 @@ class Observation(Telescope):
         ENU_path: str=None,
         ITRF_array: Array=None,
         ITRF_path: str=None,
+        n_ant: int=None,
         dish_d: float=13.5,
         random_seed: int=0,
         auto_corrs: bool=False,
@@ -210,6 +213,7 @@ class Observation(Telescope):
             ITRF_array,
             ITRF_path,
             tel_name,
+            n_ant,
         )
 
         self.target_name = target_name
