@@ -68,7 +68,7 @@ sim-target --help
 ```
 
 ### Configuration file based simulations and analysis
-`tabascal` now includes the facility to define a simulation using a YaML configuration file. There is a general command line interface to run these simulations allowing one to change certain parameters on the file as well as in the configuration file. All input data is copied into the output simulation directory to allow one to run an identical simulation with ease. Inside `tabascal/examples/yaml_obs` are a set of config files to get you started. There are also example data files which are used for including predefined astronomical and rfi models. They are all `csv` files with file extensions to help distinguish them. To run a simulation of a target field with 100 randomly distributed point sources (just like is shown above) simply run 
+`tabascal` now includes the facility to define a simulation using a YaML configuration file. There is a general command line interface to run these simulations allowing one to change certain parameters on the file as well as in the configuration file. All input data is copied into the output simulation directory to allow one to run an identical simulation with ease. Inside [tabascal/examples/yaml_obs](tabascal/examples/yaml_obs) are a set of config files to get you started. There are also example data files which are used for including predefined astronomical and rfi models. They are all `csv` files with file extensions to help distinguish them. To run a simulation of a target field with 100 randomly distributed point sources (just like is shown above) simply run 
 
 ```bash
 sim-vis -c target_obs.yaml
@@ -80,7 +80,7 @@ Again, as before, you can run the help function to see what other command line o
 sim-vis -h
 ```
 
-Downstream analysis such as flagging, RFI subtraction, imaging, and soource extraction can be performed through such configuration files as well. This is currently still in development where the `tabascal` RFI subtraction algorithm itself is not yet publically available. However, a full end to end analysis pipeline is available. Individual portions can be accessed through the command line scripts: `flag-data`, `image`, and  `src-extract`. All three of these can be perfomed in a single command line script by using `extract`. See the help documentation of these scripts for further details.  
+Downstream analysis such as flagging, RFI subtraction, imaging, and source extraction can be performed through such configuration files as well. This is currently still in development where the `tabascal` RFI subtraction algorithm itself is not yet publically available. However, a full end to end analysis pipeline is available. Individual portions can be accessed through the command line scripts: `flag-data`, `image`, and  `src-extract`, with example configs in [tabascal/analysis/yaml_configs/target](tabascal/analysis/yaml_configs/target). All three of these can be perfomed in a single command line script by using `extract`. See the help documentation of these scripts for further details.  
 
 ## Documentation
 
