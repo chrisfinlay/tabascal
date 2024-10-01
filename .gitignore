@@ -4,6 +4,7 @@ docs/build
 build
 examples/data/*
 tabascal/examples/data/*
+tabascal/examples/cal_obs/data/
 *.DS_Store
 *.h5
 *.ipynb

@@ -1,6 +1,7 @@
 import yaml
 import re
 import os
+import shutil
 
 import collections.abc
 
@@ -389,6 +390,30 @@ def save_data(obs: Observation, obs_spec: dict, zarr_path: str, ms_path: str) ->
         print(f"Writing visibilities to MS ...")
         write_ms(obs.dataset, ms_path, overwrite)
 
+
+def save_inputs(obs_spec: dict, save_path: str) -> None:
+
+    for key in ["enu_path", "itrf_path"]:
+        path = obs_spec["telescope"][key]
+        if path is not None:
+            shutil.copy(path, save_path)
+
+    for key in obs_spec["ast_sources"].keys():
+        path = obs_spec["ast_sources"][key]["path"]
+        if path is not None:
+            shutil.copy(path, save_path)
+
+    key = 3*["satellite",] + 2*["stationary",]
+    subkey = ["tle_path", "circ_path", "spec_model", "geo_path", "spec_model"]
+    for key1, key2 in zip(key, subkey):
+        path = obs_spec["rfi_sources"][key1][key2]
+        if path is not None:
+            shutil.copy(path, save_path)
+
+    with open(os.path.join(save_path, "sim_config.yaml"), "w") as fp:
+        yaml.dump(obs_spec, fp)
+
+
 def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
 
     if path is not None:
@@ -406,6 +431,11 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
 
     obs_name = mk_obs_name(obs_spec["output"]["prefix"], obs, obs_spec["output"]["suffix"])
     save_path, zarr_path, ms_path = mk_obs_dir(obs_spec["output"]["path"], obs_name, obs_spec["output"]["overwrite"])
+
+    input_path = os.path.join(save_path, "input_data")
+
+    os.makedirs(input_path, exist_ok=True)
+    save_inputs(obs_spec, input_path)
 
     print()
     print(f"Writing data to : {save_path}")
