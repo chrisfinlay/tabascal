@@ -1,9 +1,11 @@
 import yaml
 import re
 import os
+import sys
 import shutil
 
 import collections.abc
+from datetime import datetime
 
 import dask.array as da
 import xarray as xr
@@ -13,12 +15,12 @@ import pandas as pd
 from tabascal.dask.observation import Observation
 from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
-from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
+from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir, time_avg
 
 
 # Define normalized yaml simulation config
 def get_base_sim_config():
-    tel_keys = ["name", "latitude", "longitude", "elevation", "dish_d", "enu_path", "itrf_path"]
+    tel_keys = ["name", "latitude", "longitude", "elevation", "dish_d", "enu_path", "itrf_path", "n_ant"]
     norm_tel = {key: None for key in tel_keys}
 
     obs_keys = ["target_name", "ra", "dec", "start_time", "int_time", "n_time", 
@@ -27,7 +29,7 @@ def get_base_sim_config():
     norm_obs = {key: None for key in obs_keys}
 
     src_rand_dict = {"n_src": 0, "min_I": "3sigma", "max_I": 1.0, "I_pow_law": 1.6, 
-                    "si_mean": 0.7, "si_std": 0.2, "n_beam": 5, "max_sep": 200.0, 
+                    "si_mean": 0.7, "si_std": 0.2, "n_beam": 5, "max_sep": 50.0, 
                     "random_seed": 123456}
     rand_extras = [{}, {"major_mean": 30.0, "major_std": 5.0, "minor_mean": 30.0, "minor_std": 5.0}, {"size_mean": 30.0, "size_std": 5.0}]
     src_rands = [{"random": {**src_rand_dict, **extras}} for extras in rand_extras]
@@ -84,6 +86,7 @@ def deep_update(d: dict, u: dict) -> dict:
             d[k] = v
     return d
 
+
 loader = yaml.SafeLoader
 loader.add_implicit_resolver(
     u'tag:yaml.org,2002:float',
@@ -99,6 +102,16 @@ loader.add_implicit_resolver(
 def yaml_load(path):
     config = yaml.load(open(path), Loader=loader)
     return config
+
+
+class Tee(object):
+    def __init__(self, *files):
+        self.files = files
+    def write(self, obj):
+        for f in self.files:
+            f.write(obj)
+    def flush(self):
+        pass
 
 def load_sim_config(path):
     obs_spec = yaml_load(path)
@@ -196,6 +209,7 @@ def load_obs(obs_spec: dict) -> Observation:
         SEFD=obs_["SEFD"],
         ENU_path=tel_["enu_path"],
         ITRF_path=tel_["itrf_path"], 
+        n_ant=tel_["n_ant"],
         dish_d=tel_["dish_d"],
         random_seed=obs_["random_seed"],
         auto_corrs=obs_["auto_corrs"],
@@ -233,7 +247,12 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
 
         if ast_[key]["random"]["n_src"] > 0:
             rand_ = ast_[key]["random"]
-            beam_width = np.min([obs.syn_bw, rand_["max_sep"]/rand_["n_beam"]])
+            n_beam = rand_["n_beam"]
+            max_beam = rand_["max_sep"]/3600/n_beam
+            beam_width = np.min([obs.syn_bw, max_beam])
+            print()
+            print(f"Generating {rand_['n_src']} sources within {obs.fov:.2f} deg FoV ...") 
+            print(f"Minimum {n_beam*beam_width*3600:.1f} arcsec separation ...")
             
             I, d_ra, d_dec = generate_random_sky(
                     n_src=rand_["n_src"],
@@ -243,7 +262,7 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
                     fov=obs.fov,
                     beam_width=beam_width,
                     random_seed=rand_["random_seed"],
-                    n_beam=rand_["n_beam"],
+                    n_beam=n_beam,
                 )
             
             if key=="point":
@@ -313,7 +332,7 @@ def add_satellite_sources(obs: Observation, obs_spec: dict) -> None:
             ids, spectra = generate_spectra(sat_spec, obs.freqs, "sat_id")
             uids = np.unique(ids)
             for uid in uids:
-                Pv = da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
+                Pv = sat_["power_scale"] * da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
                 ole = oles[oles["sat_id"]==uid]
                 if len(ole)==1:
                     print()
@@ -347,7 +366,7 @@ def add_stationary_sources(obs: Observation, obs_spec: dict) -> None:
             ids, spectra = generate_spectra(stat_spec, obs.freqs, "loc_id")
             uids = np.unique(ids)
             for uid in uids:
-                Pv = da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
+                Pv = stat_["power_scale"] * da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
                 geo = geos[geos["loc_id"]==uid]
                 if len(geo)==1:
                     print()
@@ -399,30 +418,46 @@ def plot_diagnostics(obs: Observation, obs_spec: dict, save_path: str):
 
 def save_data(obs: Observation, obs_spec: dict, zarr_path: str, ms_path: str) -> None:
 
+    
     if obs_spec["output"]["zarr"] or obs_spec["output"]["ms"]:
         print()
         print("Calculating visibilities ...")
         obs.calculate_vis()
+        rfi_amp = da.mean(da.abs(time_avg(obs.vis_rfi, obs.n_int_samples))).compute()
+        ast_amp = da.mean(da.abs(time_avg(obs.vis_ast, obs.n_int_samples))).compute()
+        noise = da.std(obs.noise_data).compute()
+        flag_rate = 100 * da.mean(obs.flags).compute()
+
         print()
-        print(f"Flag Rate      : {100*obs.flags.mean().compute(): .1f} %")
+        print(f"Mean RFI Amp.  : {rfi_amp:.2f} Jy")
+        print(f"Mean AST Amp.  : {ast_amp:.2f} Jy")
+        print(f"Vis Noise Amp. : {noise:.2f} Jy")
+        print(f"Flag Rate      : {flag_rate:.1f} %")
 
     overwrite = obs_spec["output"]["overwrite"]
-    save_path = os.path.split(zarr_path)[0]
 
     if obs_spec["output"]["zarr"]:
+        start = datetime.now()
         print()
         print(f"Writing visibilities to zarr ...")
         obs.write_to_zarr(zarr_path, overwrite)
+        end = datetime.now()
+        print(f"zarr Write Time : {end - start}")
     if obs_spec["output"]["zarr"] and obs_spec["output"]["ms"]:
+        start = datetime.now()
         xds = xr.open_zarr(zarr_path)
         print()
         print(f"Writing visibilities to MS ...")
         write_ms(xds, ms_path, overwrite)
+        end = datetime.now()
+        print(f"MS Write Time : {end - start}")
     elif obs_spec["output"]["ms"]:
+        start = datetime.now()
         print()
         print(f"Writing visibilities to MS ...")
         write_ms(obs.dataset, ms_path, overwrite)
-
+        end = datetime.now()
+        print(f"MS Write Time : {end - start}")
 
 def save_inputs(obs_spec: dict, save_path: str) -> None:
 
@@ -449,12 +484,18 @@ def save_inputs(obs_spec: dict, save_path: str) -> None:
 
 def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
 
+    log = open('log.txt', 'w')
+    sys.stdout = Tee(sys.stdout, log)
+
+    start = datetime.now()
+    print(datetime.now())
+
     if path is not None:
         obs_spec = load_sim_config(path)
     elif obs_spec is None:
         print("obs_spec or path must be defined.")
         return None
-
+    
     obs = load_obs(obs_spec)
     add_astro_sources(obs, obs_spec)
     add_satellite_sources(obs, obs_spec)
@@ -476,5 +517,15 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
 
     plot_diagnostics(obs, obs_spec, save_path)
     save_data(obs, obs_spec, zarr_path, ms_path)
+
+    end = datetime.now()
+    print()
+    print(f"Total simulation time : {end - start}")
+    print()
+    print(datetime.now())
+
+    log.close()
+    shutil.copy("log.txt", save_path)
+    os.remove("log.txt")
 
     return obs

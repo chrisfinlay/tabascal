@@ -6,6 +6,7 @@ telescope:
   dish_d: 13.5
   enu_path: ../../data/Meerkat.enu.txt
   itrf_path:
+  n_ant: 64
 
 observation:
   target_name: calibrator1
