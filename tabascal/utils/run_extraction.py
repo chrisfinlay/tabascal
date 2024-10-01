@@ -1,0 +1,95 @@
+import argparse
+import shutil
+import glob
+import yaml
+import sys
+import os
+import subprocess
+
+from tabascal.utils.yaml import load_sim_config, Tee
+from tabascal.utils.extract import extract
+from tabascal.utils.flag_data import write_flags
+
+def main():
+    parser = argparse.ArgumentParser(
+        description="Process a simulation file that has potentially had tabascal run on it."
+    )
+    parser.add_argument(
+        "-c", "--config_path", help="File path to the observation config file."
+    )
+    parser.add_argument(
+        "-s", "--sim_dir", help="Path to the directory of the simulation."
+    )
+    parser.add_argument(
+        "-d", "--data", default="ideal,tab,flag", help="The data types to analyse. {'ideal', 'tab', 'flag'}"
+    )
+    parser.add_argument(
+        "-p", "--processes", default="image,extract", help="The types of processing to do. {'image', 'extract'}"
+    )
+    parser.add_argument(
+        "-b", "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker. Default is /bin/bash."
+    )
+    args = parser.parse_args()
+    bash = args.bash_exec
+
+
+    log = open('log_extract.txt', 'w')
+    sys.stdout = Tee(sys.stdout, log)
+
+    config = load_sim_config(args.config_path)
+    if config["data"]["sim_dir"] is None:
+        config["data"]["sim_dir"] = os.path.abspath(sim_dir)
+    else:
+        sim_dir = config["data"]["sim_dir"]
+
+    if sim_dir[-1]=="/":
+        sim_dir = sim_dir[:-1]
+    f_name = os.path.split(sim_dir)[1]
+    zarr_path = os.path.join(sim_dir, f"{f_name}.zarr")
+    ms_path = os.path.join(sim_dir, f"{f_name}.ms")
+    img_dir = os.path.join(sim_dir, "images")
+
+    os.makedirs(img_dir, exist_ok=True)
+
+    print()
+    print(f"Working on {ms_path}")
+
+    data = args.data.lower().split(",")
+    procs = args.processes.lower().split(",")
+
+    for key in data:
+
+        data_col = config[key]["data_col"]
+        thresh = config[key]["flag"]["thresh"]
+        if "image" in procs:
+            wsclean_opts = "".join([f" -{k} {v}" for k, v in config[key]["image"].items()])
+            img_cmd = f"image -m {ms_path} -d {data_col} -n {thresh:.1f}sigma -w '{wsclean_opts}'"
+            print()
+            print(f"Flagging {data_col} column of the MS file.")
+            write_flags(ms_path, thresh)
+            print()
+            print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
+            subprocess.run(img_cmd, shell=True, executable=bash)
+            img_paths = glob.glob(os.path.join(sim_dir, f"{data_col}_{thresh:.1f}sigma*"))
+            for img_path in img_paths:
+                shutil.copy(img_path, img_dir)
+                os.remove(img_path)
+        
+        if "extract" in procs:
+            img_path = os.path.join(img_dir, f"{data_col}_{thresh:.1f}sigma-image.fits")
+            print()
+            print(f"Extracting sources from {img_path}")
+            extract(img_path, zarr_path, config["extract"]["sigma_cut"], config["extract"]["beam_cut"], 
+                    config["extract"]["thresh_isl"], config["extract"]["thresh_pix"], )
+
+
+    log.close()
+    shutil.copy("log_extract.txt", sim_dir)
+    os.remove("log_extract.txt")
+
+    with open(os.path.join(sim_dir, "extract_config.yaml"), "w") as fp:
+        yaml.dump(config, fp)
+    
+
+if __name__=="__main__":
+    main()

@@ -34,11 +34,15 @@ def main():
         description="Copy recovered data from a tabascal run and save in a MS file under the column named 'TAB_DATA'."
     )
     parser.add_argument(
-        "--ms_path", required=True, help="File path to the Measurement Set."
+        "-m", "--ms_path", required=True, help="File path to the Measurement Set."
     )
     parser.add_argument(
-        "--zarr_path", required=True, help="File path to the zarr file containing results."
+        "-z", "--zarr_path", required=True, help="File path to the zarr file containing results."
     )
 
     args = parser.parse_args()
     write_results(ms_path=args.ms_path, zarr_path=args.zarr_path)
+
+
+if __name__=="__main__":
+    main()

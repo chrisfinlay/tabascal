@@ -484,7 +484,7 @@ def save_inputs(obs_spec: dict, save_path: str) -> None:
 
 def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
 
-    log = open('log.txt', 'w')
+    log = open('log_sim.txt', 'w')
     sys.stdout = Tee(sys.stdout, log)
 
     start = datetime.now()
@@ -525,7 +525,7 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
     print(datetime.now())
 
     log.close()
-    shutil.copy("log.txt", save_path)
-    os.remove("log.txt")
+    shutil.copy("log_sim.txt", save_path)
+    os.remove("log_sim.txt")
 
     return obs

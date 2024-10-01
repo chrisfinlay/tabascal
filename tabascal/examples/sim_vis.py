@@ -47,6 +47,8 @@ def main():
         obs_spec["rfi_sources"]["satellite"]["power_scale"] = args.rfi_amp
         obs_spec["rfi_sources"]["stationary"]["power_scale"] = args.rfi_amp
 
+    obs_spec["output"]["suffix"] = f"{args.rfi_amp:.1e}RFI"
+
     if args.SEFD is not None:
         obs_spec["observation"]["SEFD"] = args.SEFD
 

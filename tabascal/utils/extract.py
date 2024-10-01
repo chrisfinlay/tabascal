@@ -49,21 +49,25 @@ def construct_src_df(xds: xr.Dataset) -> pd.DataFrame:
 
     return source_df
 
-def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=True) -> None:
+def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float=1.0, thresh_isl: float=1.0, thresh_pix: float=1.0, beam_corr: bool=True) -> None:
 
     # tclean naming convention
     # img_name = os.path.splitext(img_path)[0]
     # wsclean naming convention
     img_name = img_path.removesuffix("-image.fits")
-
+    img_dir = os.path.split(img_path)[0]
+    
     bmaj = fits.getheader(img_path)["BMAJ"]*3600
+    bmin = fits.getheader(img_path)["BMIN"]*3600
+    beam_width = np.sqrt(bmaj**2 + bmin**2)
 
     print(f"Beam Major : {bmaj:.2f} arcsec")
+    print(f"Beam Minor : {bmin:.2f} arcsec")
 
     # image = process_image(
     #     img_path, quiet=True, thresh_isl=2.0, thresh_pix=1.0
     # )
-    image = process_image(img_path, thresh_isl=1.0, thresh_pix=1.0, quiet=True)
+    image = process_image(img_path, thresh_isl=thresh_isl, thresh_pix=thresh_pix, quiet=True)
 
     image.export_image(outfile=img_name + ".gauss_resid.fits", img_type="gaus_resid", clobber=True)
     image.write_catalog(
@@ -81,7 +85,7 @@ def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=T
     xds = xr.open_zarr(zarr_path)
     keys2 = [" RA", " DEC", " Total_flux", " E_Total_flux"]
     true_df = construct_src_df(xds).sort_values(" Total_flux").reset_index()[keys2]
-    true_df.to_csv("true_sources.csv")
+    true_df.to_csv(os.path.join(img_dir, "true_sources.csv"))
 
     df = pd.read_csv(img_name + ".pybdsf.csv", skiprows=5)
     keys1 = [
@@ -100,7 +104,7 @@ def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=T
         " E_PA",
     ]
     image_df = (
-        df[df[" Total_flux"] > n_sigma*noise][keys1]
+        df[df[" Total_flux"] > sigma_cut*noise][keys1]
         .sort_values(" Total_flux")
         .reset_index()[keys1]
     )
@@ -138,7 +142,7 @@ def extract(img_path: str, zarr_path: str, n_sigma: float=3.0, beam_corr: bool=T
     )
     error_df["E_RADEC [as]"] = d2d.arcsec
 
-    mask = d2d.arcsec < bmaj
+    mask = d2d.arcsec < beam_cut * beam_width
 
     keys = [
         "RA [deg]",
@@ -162,8 +166,8 @@ def main():
     program_desc = "Extract and measure sources from FITS file using PyBDSF."
     parser = argparse.ArgumentParser(description=program_desc)
     # Output File Arguments
-    parser.add_argument("--zarr_path", help="Path to zarr simulation file.")
-    parser.add_argument("--img_path", help="Path to image or directory of images if '--type' is specified.")
+    parser.add_argument("-z", "--zarr_path", help="Path to zarr simulation file.")
+    parser.add_argument("-i", "--img_path", help="Path to image or directory of images if '--type' is specified.")
     parser.add_argument(
         "--type",
         default=None,

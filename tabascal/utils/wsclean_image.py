@@ -8,19 +8,19 @@ def main():
         description="Use WSclean to image columns of an MS file."
     )
     parser.add_argument(
-        "--ms_path", required=True, help="File path to the MS file."
+        "-m", "--ms_path", required=True, help="File path to the MS file."
     )
     parser.add_argument(
-        "--data_col", default="DATA", type=str, help="The names of the data columns in the MS file to image."
+        "-d", "--data_col", default="DATA", type=str, help="The names of the data columns in the MS file to image. E.g. 'AST_DATA,TAB_DATA,CAL_DATA'."
     )
     parser.add_argument(
-        "--name_suffix", default=None, type=str, help="Image name suffix. Iamge name will be '{--data_col}_{--name_suffix}-image.fits'."
+        "-n", "--name_suffix", default=None, type=str, help="Image name suffix. Iamge name will be '{--data_col}_{--name_suffix}-image.fits'."
     )
     parser.add_argument(
-        "--wsclean_opts", default="-size 2048 2048 -scale 2asec -niter 50000 -mgain 0.3 -auto-threshold 1 -pol xx -weight briggs -0.5 -auto-mask 3", help="WSclean options."
+        "-w", "--wsclean_opts", default="-size 2048 2048 -scale 2asec -niter 50000 -mgain 0.3 -auto-threshold 1 -pol xx -weight briggs -0.5 -auto-mask 3", help="WSclean options."
     )
     parser.add_argument(
-        "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker."
+        "-b", "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker. Default is /bin/bash."
     )
 
     args = parser.parse_args()
