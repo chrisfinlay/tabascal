@@ -77,7 +77,7 @@ sim-vis -c target_obs.yaml
 Again, as before, you can run the help function to see what other command line options there are.
 
 ```bash
-sim-target -h
+sim-vis -h
 ```
 
 Downstream analysis such as flagging, RFI subtraction, imaging, and soource extraction can be performed through such configuration files as well. This is currently still in development where the `tabascal` RFI subtraction algorithm itself is not yet publically available. However, a full end to end analysis pipeline is available. Individual portions can be accessed through the command line scripts: `flag-data`, `image`, and  `src-extract`. All three of these can be perfomed in a single command line script by using `extract`. See the help documentation of these scripts for further details.  
