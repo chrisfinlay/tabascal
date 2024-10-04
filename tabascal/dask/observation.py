@@ -153,11 +153,13 @@ class Observation(Telescope):
     dec: float
         Declination of the phase centre.
     times: ndarray (n_time,)
-        Time centroids of each data point.
+        Time centroids of each data point in seconds as a Greenwich Mean Sidereal Time (GMST).
     freqs: ndarray (n_freq,)
-        Frequency centroids for each observation channel.
+        Frequency centroids for each observation channel in Hz.
     SEFD: ndarray (n_freq,)
         System Equivalent Flux Density of the telescope over frequency.
+    chan_width: float
+        Frequency channel width in Hz. Only used if `n_freq=1`, else calculated from `freqs`.
     ENU_path: str
         Path to a txt file containing the ENU coordinates of each antenna.
     ENU_array: ndarray (n_ant, 3)
@@ -190,6 +192,7 @@ class Observation(Telescope):
         times: Array,
         freqs: Array,
         SEFD: Array,
+        chan_width: float=209e3,
         ENU_array: Array=None,
         ENU_path: str=None,
         ITRF_array: Array=None,
@@ -253,7 +256,7 @@ class Observation(Telescope):
         self.lha = da.asarray(gmst_to_lst(self.times_fine.compute(), longitude)) - self.ra
 
         self.freqs = da.asarray(freqs).rechunk((self.freq_chunk,))
-        self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else 209e3
+        self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else chan_width
         self.n_freq = len(freqs)
 
         self.SEFD = da.asarray(SEFD) * da.ones(self.n_freq, chunks=(self.freq_chunk,))
