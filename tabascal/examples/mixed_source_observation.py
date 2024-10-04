@@ -257,3 +257,6 @@ def main():
     print("Saving observation MS file ...")
     xds = xr.open_zarr(zarr_path)
     write_ms(xds, ms_path, overwrite=overwrite)
+
+if __name__=="__main__":
+    main()

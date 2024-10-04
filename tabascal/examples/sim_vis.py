@@ -59,3 +59,6 @@ def main():
         obs_spec["observation"]["n_time"] = args.n_time
     
     return run_sim_config(obs_spec=obs_spec)
+
+if __name__=="__main__":
+    main()
