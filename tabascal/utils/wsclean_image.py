@@ -24,7 +24,7 @@ def main():
         "-b", "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker. Default is /bin/bash."
     )
     parser.add_argument(
-        "-s", "--sing", default="n", type=str2bool, help="Whether to use singularity or not."
+        "-s", "--sif_path", default=None, help="Singularity image path if using singularity."
     )
 
     args = parser.parse_args()
@@ -32,6 +32,7 @@ def main():
     bash_exec = args.bash_exec
     wsclean_opts = args.wsclean_opts
     suffix = args.name_suffix
+    sif_path = args.sif_path
 
     if suffix is not None:
         suffix = "_" + suffix
@@ -46,12 +47,12 @@ def main():
     data_dir, ms_file = os.path.split(ms_path)
 
     docker_opts = "--rm -v /etc/group:/etc/group -v /etc/passwd:/etc/passwd -v /etc/shadow:/etc/shadow -v/etc/sudoers.d:/etc/sudoers.d -e HOME=${HOME} --user=`id -ur`"
-    docker_cmd = f"docker run {docker_opts} -v {data_dir}:/data --workdir /data chrisjfinlay/wsclean:kern8"
+    container_cmd = f"docker run {docker_opts} -v {data_dir}:/data --workdir /data/images chrisjfinlay/wsclean:kern8"
     
-    if args.sing:
-        docker_cmd = "singularity exec --bind /home/users/f/finlay/paper/tabascal/tabascal/analysis/yaml_configs/target:/mnt /home/users/f/finlay/paper/tabascal/tabascal/analysis/yaml_configs/target/wsclean.sif"
-    # wsclean_cmd = f"{sing_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}_{thresh:.1f}sigma {ms_path}"
-            
+    if sif_path is not None:
+        sif_path = os.path.abspath(sif_path)
+        container_cmd = f"singularity exec --bind {data_dir}:/data --pwd /data/images {sif_path}"
+       
     for data_col in data_cols:
 
         if "flag" in data_col.lower():
@@ -59,6 +60,8 @@ def main():
             flag_cmd = f"flag-data --ms_path {ms_path} --n_sigma {n_sigma}"
             subprocess.run(flag_cmd, shell=True, executable=bash_exec)
         else:
-            wsclean_cmd = f"{docker_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}{suffix} {ms_file}"
+            wsclean_cmd = f"{container_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}{suffix} /data/{ms_file}"
             subprocess.run(wsclean_cmd, shell=True, executable=bash_exec)
 
+if __name__=="__main__":
+    main()

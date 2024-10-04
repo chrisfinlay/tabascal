@@ -29,9 +29,13 @@ def main():
     parser.add_argument(
         "-b", "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker. Default is /bin/bash."
     )
+    parser.add_argument(
+        "-sp", "--sif_path", default=None, help="Singularity image path if using singularity."
+    )
     args = parser.parse_args()
     bash = args.bash_exec
     sim_dir = args.sim_dir
+    sif_path = args.sif_path
 
 
     log = open('log_extract.txt', 'w')
@@ -44,8 +48,15 @@ def main():
     else:
         sim_dir = config["data"]["sim_dir"]
 
+    if sif_path is not None:
+        sif_path = os.path.abspath(sif_path)
+        config["data"]["sif_path"] = sif_path 
+    elif config["data"]["sif_path"] is not None:
+        sif_path = config["data"]["sif_path"]
+
     if sim_dir[-1]=="/":
         sim_dir = sim_dir[:-1]
+
     f_name = os.path.split(sim_dir)[1]
     zarr_path = os.path.join(sim_dir, f"{f_name}.zarr")
     ms_path = os.path.join(sim_dir, f"{f_name}.ms")
@@ -59,29 +70,25 @@ def main():
     data = args.data.lower().split(",")
     procs = args.processes.lower().split(",")
 
+    if sif_path is not None:
+        sing = f" -s {sif_path}"
+    else:
+        sing = ""
+
     for key in data:
 
         data_col = config[key]["data_col"]
         thresh = config[key]["flag"]["thresh"]
         if "image" in procs:
             wsclean_opts = "".join([f" -{k} {v}" for k, v in config[key]["image"].items()])
-            # wsclean_opts = "-size 2048 2048 -scale 2asec -niter 50000 -mgain 0.3 -auto-threshold 1 -pol xx -weight briggs -0.5 -auto-mask 3"
-            sing_cmd = "singularity exec --bind /home/users/f/finlay/paper/tabascal/tabascal/analysis/yaml_configs/target:/mnt wsclean.sif"
-            wsclean_cmd = f"{sing_cmd} wsclean {wsclean_opts} -data-column {data_col} -name {data_col}_{thresh:.1f}sigma {ms_path}"
-            # img_cmd = f"image -m {ms_path} -d {data_col} -n {thresh:.1f}sigma -w '{wsclean_opts}'"
+            img_cmd = f"image{sing} -m {ms_path} -d {data_col} -n {thresh:.1f}sigma -w '{wsclean_opts}'"
             print("\n\n================================================================================")
             print()
             print(f"Flagging {data_col} column of the MS file.")
             write_flags(ms_path, thresh)
             print()
-            # print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
-            # subprocess.run(img_cmd, shell=True, executable=bash)
-            print(f"Imaging {data_col} column of the MS file.\nUsing {wsclean_cmd}")
-            subprocess.run(wsclean_cmd, shell=True, executable=bash)
-            img_paths = glob.glob(os.path.join(sim_dir, f"{data_col}_{thresh:.1f}sigma*"))
-            for img_path in img_paths:
-                shutil.copy(img_path, img_dir)
-                os.remove(img_path)
+            print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
+            subprocess.run(img_cmd, shell=True, executable=bash)
         
         if "extract" in procs:
             img_path = os.path.join(img_dir, f"{data_col}_{thresh:.1f}sigma-image.fits")
