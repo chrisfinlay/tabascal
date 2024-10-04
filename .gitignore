@@ -5,6 +5,7 @@ build
 examples/data/*
 tabascal/examples/data/*
 tabascal/examples/cal_obs/data/
+tabascal/analysis/data/
 *.DS_Store
 *.h5
 *.ipynb
@@ -18,3 +19,4 @@ tabascal/optimize/mcmc.py
 tabascal/utils/ms.py
 tabascal/data/MeerKAT_real.ENU.txt
 .coverage
+*.sif
