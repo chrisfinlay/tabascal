@@ -92,7 +92,10 @@ def plot_uv(obs: Observation, save_path: str) -> None:
     """   
 
     plt.figure(figsize=(10,10))
-    time_step = int(obs.n_time_fine/100)
+    if obs.n_time_fine > 100:
+        time_step = int(obs.n_time_fine/100)
+    else:
+        time_step = 1
     u = obs.bl_uvw[::time_step,:,0].compute().flatten()
     v = obs.bl_uvw[::time_step,:,1].compute().flatten()
     max_U = np.max(np.sqrt(u**2 + v**2))
