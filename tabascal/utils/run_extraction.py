@@ -32,21 +32,28 @@ def main():
     parser.add_argument(
         "-sp", "--sif_path", default=None, help="Singularity image path if using singularity."
     )
+    parser.add_argument(
+        "-sx", "--suffix", default="", help="Image name suffix."
+    )
     args = parser.parse_args()
     bash = args.bash_exec
     sim_dir = args.sim_dir
     sif_path = args.sif_path
-
+    suffix = args.suffix
 
     log = open('log_extract.txt', 'w')
     backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
 
     config = load_sim_config(args.config_path)
-    if config["data"]["sim_dir"] is None:
-        config["data"]["sim_dir"] = os.path.abspath(sim_dir)
+    if sim_dir is not None:
+        sim_dir = os.path.abspath(sim_dir)
+        config["data"]["sim_dir"] = sim_dir
+    elif config["data"]["sim_dir"] is not None:
+        sim_dir = os.path.abs(config["data"]["sim_dir"])
+        config["data"]["sim_dir"] = sim_dir
     else:
-        sim_dir = config["data"]["sim_dir"]
+        raise KeyError("'sim_dir' must be specified in either the config file or as a command line argument.")
 
     if sif_path is not None:
         sif_path = os.path.abspath(sif_path)
@@ -81,7 +88,7 @@ def main():
         thresh = config[key]["flag"]["thresh"]
         if "image" in procs:
             wsclean_opts = "".join([f" -{k} {v}" for k, v in config[key]["image"].items()])
-            img_cmd = f"image{sing} -m {ms_path} -d {data_col} -n {thresh:.1f}sigma -w '{wsclean_opts}'"
+            img_cmd = f"image{sing} -m {ms_path} -d {data_col} -n {thresh:.1f}sigma_{suffix} -w '{wsclean_opts}'"
             print("\n\n================================================================================")
             print()
             print(f"Flagging {data_col} column of the MS file.")
@@ -91,7 +98,7 @@ def main():
             subprocess.run(img_cmd, shell=True, executable=bash)
         
         if "extract" in procs:
-            img_path = os.path.join(img_dir, f"{data_col}_{thresh:.1f}sigma-image.fits")
+            img_path = os.path.join(img_dir, f"{data_col}_{thresh:.1f}sigma_{suffix}-image.fits")
             print()
             print(f"Extracting sources from {img_path}")
             extract(img_path, zarr_path, config["extract"]["sigma_cut"], config["extract"]["beam_cut"], 
