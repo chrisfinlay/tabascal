@@ -376,7 +376,7 @@ def airy_beam(theta: jnp.ndarray, freqs: jnp.ndarray, dish_d: float):
     Parameters
     ----------
     theta: (n_src, n_time, n_ant)
-        The angular separation between the pointing direction and the
+        The angular separation (in degrees) between the pointing direction and the
         source.
     freqs: (n_freq,)
         The frequencies at which to calculate the beam in Hz.

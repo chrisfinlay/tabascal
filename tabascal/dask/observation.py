@@ -434,7 +434,7 @@ Number of stationary RFI :  {n_stat}"""
         ra = da.atleast_1d(ra)
         dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
-        theta = da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1))
+        theta = da.rad2deg(da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1)))
         I_app = (
             I
             * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
@@ -487,7 +487,7 @@ Number of stationary RFI :  {n_stat}"""
         ra = da.atleast_1d(ra)
         dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
-        theta = da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1))
+        theta = da.rad2deg(da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1)))
         I_app = (
             I
             * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
@@ -537,7 +537,7 @@ Number of stationary RFI :  {n_stat}"""
         ra = da.atleast_1d(ra)
         dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
-        theta = da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1))
+        theta = da.rad2deg(da.arcsin(da.linalg.norm(lmn[:, :-1], axis=-1)))
         I_app = (
             I
             * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
