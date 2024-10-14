@@ -45,6 +45,8 @@ def main():
         ms_path = ms_path[:-1]
         
     data_dir, ms_file = os.path.split(ms_path)
+    img_dir = os.path.join(data_dir, "images")
+    os.makedirs(img_dir, exist_ok=True)
 
     docker_opts = "--rm -v /etc/group:/etc/group -v /etc/passwd:/etc/passwd -v /etc/shadow:/etc/shadow -v/etc/sudoers.d:/etc/sudoers.d -e HOME=${HOME} --user=`id -ur`"
     container_cmd = f"docker run {docker_opts} -v {data_dir}:/data --workdir /data/images chrisjfinlay/wsclean:kern8"

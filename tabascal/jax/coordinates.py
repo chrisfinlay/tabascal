@@ -354,6 +354,48 @@ def gmst_to_lst(gmst: Array, lon: float) -> Array:
 
     return lst
 
+def gmst_from_jd(jd: float) -> float:
+    """Get the Greenwich Mean Sidereal Time in seconds from the Julian Day (UT1).
+    Calculated using https://aa.usno.navy.mil/faq/GAST
+
+    Parameters
+    ----------
+    jd : float
+        Julian Day (UT1).
+
+    Returns
+    -------
+    float
+        Greenwich Mean Sidereal Time in seconds. 
+    """
+
+    gmst_hours = 18.697375 + 24.065709824279 * (jd - 2451545.0)
+
+    gmst = gmst_hours * 3600
+
+    return gmst
+
+
+def jd_from_gmst(gmst: float) -> float:
+    """Get the Julian Date (UT1) from the Greenwich Mean Sidereal Time in seconds.
+
+    Parameters
+    ----------
+    gmst : float
+        Greenwich Mean Sidereal Time in seconds.
+
+    Returns
+    -------
+    float
+        Julian Date (UT1).
+    """
+
+    gmst_hours = gmst / 3600
+    
+    jd = (gmst_hours - 18.697375) / 24.065709824279 + 2451545.0
+
+    return jd
+
 def time_above_horizon(lat: float, dec: float) -> Array:
     """
     The number of degrees an object is above the horizon in a given day.
@@ -615,7 +657,7 @@ def angular_separation(
     Returns
     -------
     angles: ndarray (n_src, n_time, n_ant)
-        Angular separation between the pointing direction and RFI source for each antenna.
+        Angular separation (in degrees) between the pointing direction and RFI source for each antenna.
     """
     rfi_xyz = jnp.asarray(rfi_xyz)
     ants_xyz = jnp.asarray(ants_xyz)
