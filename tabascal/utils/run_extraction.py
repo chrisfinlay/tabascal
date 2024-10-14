@@ -8,7 +8,7 @@ import subprocess
 
 from tabascal.utils.yaml import load_sim_config, Tee
 from tabascal.utils.extract import extract
-from tabascal.utils.flag_data import write_flags
+from tabascal.utils.flag_data import write_perfect_flags
 
 def main():
     parser = argparse.ArgumentParser(
@@ -33,13 +33,19 @@ def main():
         "-sp", "--sif_path", default=None, help="Singularity image path if using singularity."
     )
     parser.add_argument(
-        "-sx", "--suffix", default="", help="Image name suffix."
+        "-sx", "--suffix", default=None, help="Image name suffix."
     )
     args = parser.parse_args()
     bash = args.bash_exec
     sim_dir = args.sim_dir
     sif_path = args.sif_path
     suffix = args.suffix
+
+    if suffix is not None:
+        suffix = "_" + suffix
+    else:
+        suffix = ""
+
 
     log = open('log_extract.txt', 'w')
     backup = sys.stdout
@@ -87,12 +93,12 @@ def main():
         data_col = config[key]["data_col"]
         thresh = config[key]["flag"]["thresh"]
         if "image" in procs:
-            wsclean_opts = "".join([f" -{k} {v}" for k, v in config[key]["image"].items()])
+            wsclean_opts = "".join([f" -{k} {v}" for k, v in config["image"].items()])
             img_cmd = f"image{sing} -m {ms_path} -d {data_col} -n {thresh:.1f}sigma_{suffix} -w '{wsclean_opts}'"
             print("\n\n================================================================================")
             print()
             print(f"Flagging {data_col} column of the MS file.")
-            write_flags(ms_path, thresh)
+            write_perfect_flags(ms_path, thresh)
             print()
             print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
             subprocess.run(img_cmd, shell=True, executable=bash)

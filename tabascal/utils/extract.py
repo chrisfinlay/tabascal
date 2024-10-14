@@ -193,7 +193,7 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
     if beam_corr:
 
         lmn = radec_to_lmn(image_df1[" RA"].values, image_df1[" DEC"].values, [xds.target_ra, xds.target_dec])
-        theta = np.arcsin(np.linalg.norm(lmn[:, :-1], axis=-1))
+        theta = np.rad2deg(np.arcsin(np.linalg.norm(lmn[:, :-1], axis=-1)))
         beam = airy_beam(theta[:,None,None], xds.freq.data, xds.dish_diameter)[:,0,0,0]**2
         image_df1.loc[:," Total_flux"] = beam * image_df1[" Total_flux"]
         image_df1.loc[:," E_Total_flux"] = beam * image_df1[" E_Total_flux"]
