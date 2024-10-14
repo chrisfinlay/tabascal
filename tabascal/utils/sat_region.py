@@ -51,8 +51,7 @@ def main():
 
     times = np.linspace(xds.time_fine.min(), xds.time_fine.max(), 100)
 
-    # xyz = (xds.rfi_sat_xyz - xds.ants_xyz.mean(dim="ant")).sel(time_fine=times, method="nearest")
-    xyz = xds.rfi_sat_xyz.sel(time_fine=times, method="nearest")
+    xyz = (xds.rfi_sat_xyz - xds.ants_xyz.mean(dim="ant")).sel(time_fine=times, method="nearest")
 
     radec = xyz_to_radec(xyz.compute())
 
