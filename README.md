@@ -82,6 +82,25 @@ sim-vis -h
 
 Downstream analysis such as flagging, RFI subtraction, imaging, and source extraction can be performed through such configuration files as well. This is currently still in development where the `tabascal` RFI subtraction algorithm itself is not yet publically available. However, a full end to end analysis pipeline is available. Individual portions can be accessed through the command line scripts: `flag-data`, `image`, and  `src-extract`, with example configs in [tabascal/analysis/yaml_configs/target](tabascal/analysis/yaml_configs/target). All three of these can be perfomed in a single command line script by using `extract`. See the help documentation of these scripts for further details.  
 
+## Measurement Set output
+
+Measurement sets allow the addition of non-standard data columns. The simulator in tabascal takes advantage of this and adds the following columns to help with debugging and analysis.
+
+### Standard
+
+* `DATA` : Observed data which includes gains and noise.
+* `CORRECTED_DATA` : Filled with zeros or the data of ones choice when calling the `write_ms` function.
+* `MODEL_DATA` : Filled with zeros as it will be used by `WSCLEAN` when imaging.
+
+### Non-standard
+
+* `CAL_DATA` : Observed data (`DATA`) where the true gain solutions have been applied.
+* `AST_MODEL_DATA` : The astronomical visibilities only with perfect gains and no noise. 
+* `RFI_MODEL_DATA` : The RFI visibilities only with perfect gains and no noise.
+* `AST_DATA` : The same as `AST_MODEL_DATA` but with the noise added. 
+* `RFI_DATA` : The same as `RFI_MODEL_DATA` but with the noise added. 
+* `NOISE_DATA` : The complex noise that is added to the above datasets. 
+
 ## Documentation
 
 [https://tabascal.readthedocs.io/en/latest/](https://tabascal.readthedocs.io/en/latest/)
