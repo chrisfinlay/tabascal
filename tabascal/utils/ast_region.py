@@ -21,7 +21,7 @@ def main():
         description="Extract astronomical positions to ds9 region file."
     )
     parser.add_argument(
-        "--zarr_path", required=True, help="File path to the tabascal zarr simulation file."
+        "-z", "--zarr_path", required=True, help="File path to the tabascal zarr simulation file."
     )
 
     args = parser.parse_args()

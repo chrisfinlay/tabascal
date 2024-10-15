@@ -21,10 +21,10 @@ def main():
         description="Extract satellite paths to ds9 region file."
     )
     parser.add_argument(
-        "--zarr_path", required=True, help="File path to the tabascal zarr simulation file."
+        "-z", "--zarr_path", required=True, help="File path to the tabascal zarr simulation file."
     )
     parser.add_argument(
-        "--max_d", default=30.0, type=float, help="Maximum angular distance from phase centre (in degrees) of the satellite path to include."
+        "-m", "--max_d", default=90.0, type=float, help="Maximum angular distance from phase centre (in degrees) of the satellite path to include."
     )
 
     args = parser.parse_args()
