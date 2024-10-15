@@ -27,14 +27,15 @@ observation:
 ast_sources:
   point:
     random: 
-      n_src: 100
+      n_src: 300
       min_I: 3sigma
+      # min_I: 0.8
       max_I: 1.0
       I_pow_law: 1.6
       si_mean: 0.7
       si_std: 0.2
       n_beam: 5.0
-      max_sep: 50.0 # arcseconds
+      max_sep: 200.0 # arcseconds
       random_seed: 123456
 
 rfi_sources:

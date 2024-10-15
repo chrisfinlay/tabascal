@@ -1,7 +1,11 @@
+data:
+  sim_dir: 
+  sampling: 1
+  
 plots:
   init: True
   truth: True
-  prior: False
+  prior: True
   prior_samples: 100
 
 inference:
@@ -24,10 +28,6 @@ init:
   rfi_sig: 1.0
   orbit_sig: 1.0
   gain_sig: 1.0
-
-data:
-  sim_dir: 
-  sampling: 1
 
 pow_spec:
   P0: 1e3
