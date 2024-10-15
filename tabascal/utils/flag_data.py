@@ -31,7 +31,7 @@ def write_perfect_flags(ms_path: str, n_sigma: float = 3.0):
 
     return flags
 
-def run_aoflagger(ms_path: str, strategy_paths: list=None, bash_exec: str="/bin/bash"):
+def run_aoflagger(ms_path: str, data_column: str="DATA", strategy_paths: list=None, sif_path: str=None, bash_exec: str="/bin/bash"):
 
     if ms_path[-1]=="/":
         ms_path = ms_path[:-1]
@@ -41,9 +41,13 @@ def run_aoflagger(ms_path: str, strategy_paths: list=None, bash_exec: str="/bin/
     docker_opts = "--rm -v /etc/group:/etc/group -v /etc/passwd:/etc/passwd -v /etc/shadow:/etc/shadow -v/etc/sudoers.d:/etc/sudoers.d -e HOME=${HOME} --user=`id -ur`"
     container_cmd = f"docker run {docker_opts} -v {data_dir}:/data --workdir /data stimela/aoflagger:latest"
     
+    if sif_path is not None:
+        sif_path = os.path.abspath(sif_path)
+        container_cmd = f"singularity exec --bind {data_dir}:/data --pwd /data {sif_path}"
+       
+
     if strategy_paths is not None:
         write_perfect_flags(ms_path, 0)
-        strategy_paths = strategy_paths.split(",")
         for strategy_path in strategy_paths:
 
             strategy_path = os.path.abspath(strategy_path)
@@ -51,11 +55,11 @@ def run_aoflagger(ms_path: str, strategy_paths: list=None, bash_exec: str="/bin/
             strategy_file = os.path.split(strategy_path)[1]
             strategy = f"-strategy /data/{strategy_file}"
 
-            aoflag_cmd = f"{container_cmd} aoflagger {strategy} /data/{ms_file}"
+            aoflag_cmd = f"{container_cmd} aoflagger -column {data_column} {strategy} /data/{ms_file}"
             subprocess.run(aoflag_cmd, shell=True, executable=bash_exec)
     
         print()
-        print(f"Strategies : {[os.path.split(s)[1] for s in strategy_paths]}")
+        print(f"Strategies : {[os.path.split(strategy)[1] for strategy in strategy_paths]}")
 
     else:
         aoflag_cmd = f"{container_cmd} aoflagger /data/{ms_file}"
@@ -81,6 +85,9 @@ def main():
         "-s", "--n_sigma", default=3.0, type=float, help="Threshold in number of std of noise given by SIGMA column. 0 unflags everything."
     )
     parser.add_argument(
+        "-d", "--data_col", default="DATA", help="Data column to run AOFlagger on."
+    )
+    parser.add_argument(
         "-ao", "--aoflagger", default=None, action=argparse.BooleanOptionalAction, help="Whether to use AOFlagger to flag the data."
     )
     parser.add_argument(
@@ -92,9 +99,12 @@ def main():
     ms_path = args.ms_path
     n_sigma = args.n_sigma
     strategy_paths = args.strategy_paths
+    data_col = args.data_col
 
     if args.aoflagger is not None:
-        flags = run_aoflagger(ms_path, strategy_paths)
+        if strategy_paths is not None:
+            strategy_paths = strategy_paths.split(",")
+        flags = run_aoflagger(ms_path, data_col, strategy_paths)
     else:
         flags = write_perfect_flags(ms_path, n_sigma)
 

@@ -1,7 +1,7 @@
 import argparse
 import subprocess
 from datetime import datetime
-from tabascal.utils.yaml import load_sim_config, run_sim_config
+from tabascal.utils.yaml import load_config, run_sim_config
 from tabascal.utils.run_tabascal import tabascal_subtraction
 
 def main():
@@ -23,7 +23,7 @@ def main():
     )
     args = parser.parse_args()
     config_path = args.sim_config
-    config = load_sim_config(config_path)
+    config = load_config(config_path)
 
     if args.rfi_amp is not None:
         config["rfi_sources"]["satellite"]["power_scale"] = args.rfi_amp

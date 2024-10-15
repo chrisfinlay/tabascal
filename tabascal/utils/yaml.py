@@ -63,6 +63,107 @@ def get_base_sim_config():
 
     return base_config
 
+def get_base_extract_config():
+
+    extract_config = {
+        "data": {
+            "sim_dir": None,
+        },
+        "ideal": {
+            "data_col": "AST_DATA",
+            "flag": {
+                "type": "perfect",
+                "thresh": 0,
+            },
+        },
+        "tab": {
+            "data_col": "TAB_DATA",
+            "flag": {
+                "type": "perfect",
+                "thresh": 0,
+            },
+        },
+        "flag1": {
+            "data_col": "CAL_DATA",
+            "flag": {
+                "type": "perfect",
+                "thresh": 3.0,
+            },
+        },
+        "flag2": {
+            "data_col": "CAL_DATA",
+            "flag": {
+                "type": "aoflagger",
+                "sif_path": None,
+                "strategies": None,
+            },
+        },
+        "image": {
+            "sif_path": None,
+            "params": {
+                "size": "256 256",
+                "scale": "20amin",
+                "niter": 100000,
+                "mgain": 0.1,
+                "auto-threshold": 0.3,
+                "auto_mask": 2.0,
+                "pol": "xx",
+                "weight": "natural",
+            },
+        },
+        "extract": {
+            "sigma_cut": 3.0,
+            "beam_cut": 1.0,
+            "thresh_isl": 1.5,
+            "thresh_pix": 1.5,
+        },
+    }
+
+    return extract_config
+
+
+def get_base_tab_config():
+
+    tab_config = {
+        "data": {
+            "sim_dir": None,
+            "sampling": 1,
+        },
+        "plots": {
+            "init": True,
+            "truth": True,
+            "prior": True,
+            "prior_samples": 100,
+        },
+        "inference": {
+            "mcmc": False,
+            "opt": True,
+            "fisher": False
+        },
+        "opt": {
+            "epsilon": 1e-1,
+            "max_iter": 100,
+            "guide": "map",
+        },
+        "fisher": {
+            "n_samples": 1,
+            "max_cg_iter": 10000,
+        },
+        "init": {
+            "truth": True,
+            "ast_sig": 1.0,
+            "rfi_sig": 1.0,
+            "orbit_sig": 1.0,
+            "gain_sig": 1.0,
+        },
+        "pow_spec": {
+            "P0": 1e3,
+            "k0": 1e-3,
+            "gamma": 1.0,
+        },
+    }
+
+    return tab_config
 
 def deep_update(d: dict, u: dict) -> dict:
     """Recursively update a dictionary which includes subdictionaries.
@@ -115,11 +216,36 @@ class Tee(object):
     def flush(self):
         pass
 
-def load_sim_config(path):
-    obs_spec = yaml_load(path)
-    base_config = get_base_sim_config()
+
+def load_config(path: str, config_type: str="sim") -> dict:
+    """Load a configuration file and populate default parameters where needed.
+
+    Parameters
+    ----------
+    path : str
+        Path to the yaml config file.
+    config_type : str, optional
+        Type of configuration file, by default "sim"
+
+    Returns
+    -------
+    dict
+        Configuration dictionary.
+    """
+
+
+    config = yaml_load(path)
+    if config_type=="sim":
+        base_config = get_base_sim_config()
+    elif config_type=="tab":
+        base_config = get_base_tab_config()
+    elif config_type=="extract":
+        base_config = get_base_extract_config()
+    else:
+        print("A config type must be specified. Options are {sim, tab, extract}.")
+        return {}
     
-    return deep_update(base_config, obs_spec)
+    return deep_update(base_config, config)
 
 
 def load_sky_model(file_path: str, freqs: da.Array, src_type: str) -> tuple:
@@ -253,7 +379,7 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
             max_beam = rand_["max_sep"]/3600/n_beam
             beam_width = np.min([obs.syn_bw, max_beam])
             print()
-            print(f"Generating {rand_['n_src']} sources within {obs.fov:.2f} deg FoV ...") 
+            print(f"Generating {rand_['n_src']} sources within {obs.fov:.2f} deg FoV ({obs.fov/2:.2f} radius) ...") 
             print(f"Minimum {n_beam*beam_width*3600:.1f} arcsec separation ...")
             
             I, d_ra, d_dec = generate_random_sky(
@@ -494,7 +620,7 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
     print(datetime.now())
 
     if path is not None:
-        obs_spec = load_sim_config(path)
+        obs_spec = load_config(path)
     elif obs_spec is None:
         print("obs_spec or path must be defined.")
         return None

@@ -118,6 +118,9 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
 
     config = yaml_load(conf_path)
+
+    # config = load_config(conf_path)
+
     if config["data"]["sim_dir"] is None:
         config["data"]["sim_dir"] = os.path.abspath(sim_dir)
     else:
