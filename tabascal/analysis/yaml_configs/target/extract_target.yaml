@@ -25,9 +25,9 @@ flag2:
     type: aoflagger
     sif_path: 
     strategies: 
-      - /home/chris/tab_dev/tabascal/tabascal/analysis/yaml_configs/aux_data/firstpass.rfis
-      - /home/chris/tab_dev/tabascal/tabascal/analysis/yaml_configs/aux_data/secondpass.rfis
-      - /home/chris/tab_dev/tabascal/tabascal/analysis/yaml_configs/aux_data/thirdpass.rfis
+      - ../aux_data/firstpass.rfis
+      - ../aux_data/secondpass.rfis
+      - ../aux_data/thirdpass.rfis
 
 image: 
   sif_path: 

@@ -1,6 +1,6 @@
 import argparse
 
-from tabascal.utils.yaml import load_sim_config, run_sim_config
+from tabascal.utils.yaml import load_config, run_sim_config
 from tabascal.utils.tools import str2bool
 
 def main():
@@ -33,7 +33,7 @@ def main():
     )
     args = parser.parse_args()
 
-    obs_spec = load_sim_config(args.config_path)
+    obs_spec = load_config(args.config_path, config_type="sim")
 
     obs_spec["output"]["overwrite"] = args.overwrite
 

@@ -27,9 +27,8 @@ observation:
 ast_sources:
   point:
     random: 
-      n_src: 300
+      n_src: 100
       min_I: 3sigma
-      # min_I: 0.8
       max_I: 1.0
       I_pow_law: 1.6
       si_mean: 0.7
@@ -56,7 +55,7 @@ gains:
   G0_std: 0.05
   Gt_std_amp: 1e-5
   Gt_std_phase: 1e-3
-  random_seed: 
+  random_seed: 999
 
 output:
   path: ../../data/

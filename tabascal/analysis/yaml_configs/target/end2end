@@ -1,0 +1,8 @@
+#!/bin/bash
+#for rr in 0;
+for rr in 0 1 2 3 4 5 6 7 8 9;
+#do for r in 1e-2 3e-2 1e-1 3e-1 1e0 3e0 1e1 3e1 1e2 3e2;
+do for r in 3e2;
+do end2end -s sim_target.yaml -t tab_target.yaml -e extract_target.yaml -r $r -rr $rr 2>&1 | tee log_end2end.txt ;
+done;
+done;

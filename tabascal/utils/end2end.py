@@ -21,15 +21,23 @@ def main():
     parser.add_argument(
         "-r", "--rfi_amp", type=float, help="Path to the extraction config file."
     )
+    parser.add_argument(
+        "-rr", "--random_seed_offset", default=0, type=int, help="Offset to random seeds used."
+    )
     args = parser.parse_args()
     config_path = args.sim_config
-    config = load_config(config_path)
+    r_seed_offset = args.random_seed_offset
+    config = load_config(config_path, config_type="sim")
 
     if args.rfi_amp is not None:
         config["rfi_sources"]["satellite"]["power_scale"] = args.rfi_amp
         config["rfi_sources"]["stationary"]["power_scale"] = args.rfi_amp
 
-    config["output"]["suffix"] = f"{args.rfi_amp:.1e}RFI"
+    config["observation"]["random_seed"] += r_seed_offset
+    config["ast_sources"]["point"]["random"]["random_seed"] += r_seed_offset
+    config["gains"]["random_seed"] += r_seed_offset
+    
+    config["output"]["suffix"] = f"{args.rfi_amp:.1e}RFI_{r_seed_offset:.0f}RSEED"
 
     times = {"t0": datetime.now(),}
 

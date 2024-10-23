@@ -6,6 +6,7 @@ examples/data/*
 tabascal/examples/data/*
 tabascal/examples/cal_obs/data/
 tabascal/analysis/data/
+tabascal/analysis/yaml_configs/tests/
 *.DS_Store
 *.h5
 *.ipynb

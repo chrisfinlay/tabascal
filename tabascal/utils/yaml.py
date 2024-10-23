@@ -620,7 +620,7 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
     print(datetime.now())
 
     if path is not None:
-        obs_spec = load_config(path)
+        obs_spec = load_config(path, config_type="sim")
     elif obs_spec is None:
         print("obs_spec or path must be defined.")
         return None
