@@ -14,8 +14,8 @@ inference:
   fisher: False
 
 opt:
-  epsilon: 1e-2
-  max_iter: 100
+  epsilon: 5e-1
+  max_iter: 2000
   dual_run: True
   guide: map
 
@@ -35,20 +35,12 @@ rfi:
   var: 100        # Jy
   corr_time: 15   # seconds
 
-# True gains
 gains:
-  amp_mean: truth
-  phase_mean: truth
-  amp_std: 1.0      # %
-  phase_std: 1.0    # degrees
+  amp_mean: 1.0
+  phase_mean: 0.0   # degrees
+  amp_std: 5.0      # %
+  phase_std: 10.0    # degrees
   corr_time: 180    # minutes
-
-# gains:
-#   amp_mean: 1.0
-#   phase_mean: 0.0   # degrees
-#   amp_std: 5.0      # %
-#   phase_std: 10.0    # degrees
-#   corr_time: 180    # minutes
 
 # pow_spec_args = {"P0": 2e3, "k0": 8e-4, "gamma": 1.1}
 # pow_spec_args = {"P0": 2e3, "k0": 2e-3, "gamma": 1.1}

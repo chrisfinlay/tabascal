@@ -98,8 +98,8 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     sys.stdout = Tee(sys.stdout, log)
 
     print()
-    start = datetime.now()
-    print(f"Start Time : {start}")
+    start_time = datetime.now()
+    print(f"Start Time : {start_time}")
 
     key, subkey = random.split(random.PRNGKey(1))
 
@@ -179,17 +179,10 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     ################
     del bl_uvw
+    del vis_cal
+    del noise_data
     #################
 
-    gains_true = vmap(jnp.interp, in_axes=(None, None, 1))(
-        times, times_fine, gains_ants
-    ).T
-    vis_ast_true = vis_ast.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
-    vis_rfi_true = vis_rfi.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
-
-    print()
-    print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")
-    print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast_true)):.1f} Jy")
     print()
     print(f"Number of Antennas   : {N_ant: 4}")
     print(f"Number of Time Steps : {N_time: 4}")
@@ -218,21 +211,10 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     ### Gain Sampling Times
     g_times = get_times(times, g_l)
-    gains_induce = vmap(jnp.interp, in_axes=(None, None, 1))(
-        g_times, times_fine, gains_ants
-    )
     N_g_times = len(g_times)
 
     ### RFI Sampling Times
     rfi_times = get_times(times, rfi_l)
-    rfi_induce = jnp.array(
-        [
-            vmap(jnp.interp, in_axes=(None, None, 1))(
-                rfi_times, times_fine, rfi_A_app[i]
-            )
-            for i in range(N_rfi)
-        ]
-    )
     N_rfi_times = len(rfi_times)
 
     print()
@@ -278,31 +260,16 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     ##############################################
 
     ### Vis AST Fourier modes
-    ast_k = jnp.fft.fft(vis_ast_true, axis=0).T
-    k_ast = jnp.fft.fftfreq(N_time, int_time)
 
-    ast_k_mean = jnp.fft.fft(
-        vis_ast_true.mean(axis=0)[:, None] * jnp.ones((N_bl, N_time)), axis=1
-    )
-    
-    ### Define True Parameters
-    true_params = {
-        **{f"g_amp_induce": jnp.abs(gains_induce)},
-        **{f"g_phase_induce": jnp.angle(gains_induce[:-1])},
-        **{f"rfi_r_induce": rfi_induce.real},
-        **{f"rfi_i_induce": rfi_induce.imag},
-        **{"ast_k_r": ast_k.real},
-        **{"ast_k_i": ast_k.imag},
-    }
+    vis_ast_est = jnp.mean(vis_obs.T, axis=1, keepdims=True) * jnp.ones((N_bl, N_time))
+    ast_k_est = jnp.fft.fft(vis_ast_est, axis=1)
+    k_ast = jnp.fft.fftfreq(N_time, int_time)
 
     v_obs_ri = jnp.concatenate([vis_obs.real, vis_obs.imag], axis=0).T
 
     # Set Constant Parameters
     args = {
         "noise": noise if noise > 0 else 0.2,
-        # "vis_ast_true": vis_ast_true.T,
-        # "vis_rfi_true": vis_rfi_true.T,
-        # "gains_true": gains_true.T,
         "vis_ast_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), # Use this to not plot the truth
         "vis_rfi_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), # Use this to not plot the truth
         "gains_true": jnp.nan * jnp.zeros((N_ant, N_time), dtype=complex), # Use this to not plot the truth
@@ -317,6 +284,51 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         "bl": jnp.arange(N_bl),
         "n_int": int(N_int_samples),
     }
+
+    if config["plots"]["truth"] or config["init"]["truth"] or config["gains"]["amp_mean"] == "truth" or config["gains"]["phase_mean"] == "truth":
+        ### Define True Parameters
+        gains_true = vmap(jnp.interp, in_axes=(None, None, 1))(
+            times, times_fine, gains_ants
+        ).T
+        vis_ast_true = vis_ast.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
+        vis_rfi_true = vis_rfi.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
+
+        print()
+        print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")
+        print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast_true)):.1f} Jy")
+
+        ast_k = jnp.fft.fft(vis_ast_true, axis=0).T
+
+        ast_k_mean = jnp.fft.fft(
+            vis_ast_true.mean(axis=0)[:, None] * jnp.ones((N_bl, N_time)), axis=1
+        )
+
+        gains_induce = vmap(jnp.interp, in_axes=(None, None, 1))(
+            g_times, times_fine, gains_ants
+        )
+        rfi_induce = jnp.array(
+            [
+                vmap(jnp.interp, in_axes=(None, None, 1))(
+                    rfi_times, times_fine, rfi_A_app[i]
+                )
+                for i in range(N_rfi)
+            ]
+        )
+
+        true_params = {
+            **{f"g_amp_induce": jnp.abs(gains_induce)},
+            **{f"g_phase_induce": jnp.angle(gains_induce[:-1])},
+            **{f"rfi_r_induce": rfi_induce.real},
+            **{f"rfi_i_induce": rfi_induce.imag},
+            **{"ast_k_r": ast_k.real},
+            **{"ast_k_i": ast_k.imag},
+        }
+
+        args.update({
+            "vis_ast_true": vis_ast_true.T,
+            "vis_rfi_true": vis_rfi_true.T,
+            "gains_true": gains_true.T,
+        })
 
     if config["gains"]["amp_mean"] == "truth":
         g_amp_mean = true_params["g_amp_induce"]
@@ -339,8 +351,8 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             "mu_rfi_i": jnp.zeros((N_rfi, N_ant, N_rfi_times)),
             # "mu_ast_k_r": true_params["ast_k_r"],
             # "mu_ast_k_i": true_params["ast_k_i"],
-            "mu_ast_k_r": ast_k_mean.real,
-            "mu_ast_k_i": ast_k_mean.imag,
+            "mu_ast_k_r": ast_k_est.real,
+            "mu_ast_k_i": ast_k_est.imag,
             # "mu_ast_k_r": jnp.zeros((N_bl, N_time)),
             # "mu_ast_k_i": jnp.zeros((N_bl, N_time)),
             "L_G_amp": jnp.linalg.cholesky(kernel(g_times, g_times, g_amp_var, g_l, 1e-8)),
@@ -357,14 +369,12 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         }
     )
 
-    vis_ast_est = jnp.mean(vis_obs, axis=0, keepdims=True) * jnp.ones((N_time, N_bl))
-
     ##############################################
     # Try to change this to only include available data like this example
     ##############################################
 
     rfi_r_induce_init = (
-        jnp.interp(rfi_times, times, jnp.sqrt(jnp.max(jnp.abs(vis_obs - vis_ast_est), axis=1)))[
+        jnp.interp(rfi_times, times, jnp.sqrt(jnp.max(jnp.abs(vis_obs - vis_ast_est.T), axis=1)))[
             None, None, :
         ] # shape is now (1, 1, N_rfi_times)
         * jnp.ones((N_rfi, N_ant, N_rfi_times))
@@ -375,7 +385,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     # rfi_r_induce_init = true_params["rfi_r_induce"] + 1.0j * true_params["rfi_i_induce"]
 
     # ast_k_init = ast_k_mean
-    ast_k_init = jnp.fft.fft(vis_ast_est, axis=0).T
+    ast_k_init = jnp.fft.fft(vis_ast_est, axis=1)
     # ast_k_init = args["mu_ast_k_r"] + 1.0j * args["mu_ast_k_i"]
     # ast_k_init = true_params["ast_k_r"] + 1.0j*true_params["ast_k_i"]
 
@@ -394,16 +404,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     ################
     del gains_ants
     del rfi_A_app
-    del ast_k
-    del ast_k_mean
-    del k_ast
-    del gains_induce
-    del rfi_induce
-    del gains_true
-    del vis_ast_true
-    del vis_rfi_true
-    del vis_cal
-    del noise_data
     ################
 
     inv_scaling = {
@@ -415,8 +415,8 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     print()
     end_start = datetime.now()
-    print(f"End Time   : {end_start}")
-    print(f"Total Time : {end_start - start}")
+    print(f"Startup Time : {end_start - start_time}")
+    print(f"{end_start}")
 
     mem_i += 1
     jax.profiler.save_device_memory_profile(
@@ -439,11 +439,13 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     rchi2 = reduced_chi2(init_pred["vis_obs"][0], vis_obs.T, noise)
     print()
     print(f"Reduced Chi^2 @ init: {rchi2}")
-    print()
 
     ### Check and Plot Model at true parameters
     
     if config["plots"]["init"]:
+        start = datetime.now()
+        print()
+        print("Plotting Initial Parameters")
         plot_predictions(
             times=times,
             pred=init_pred,
@@ -453,9 +455,15 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             max_plots=10,
             save_dir=plot_dir,
         )
+        print()
+        print(f"Initial Plot Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
 
     if config["plots"]["truth"]:
 
+        start = datetime.now()
+        print()
+        print("Plotting True Parameters")
         true_params_base = inv_transform(true_params, args, inv_scaling)
         pred = Predictive(
         model=model,
@@ -477,11 +485,11 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             max_plots=10,
             save_dir=plot_dir,
         )
-
-    print()
-    end_true = datetime.now()
-    print(f"End Time  : {end_true}")
-    print(f"Init/True Plot Time : {end_true - end_start}")
+        print()
+        print(f"True Plot Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
+    
+    
 
     mem_i += 1
     jax.profiler.save_device_memory_profile(
@@ -491,7 +499,11 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     ### Check and Plot Model at prior parameters
     key, subkey = random.split(key)
     if config["plots"]["prior"]:
-        pred = Predictive(model, num_samples=config["plots"]["prior_samples"])
+        start = datetime.now()
+        n_prior = config["plots"]["prior_samples"]
+        print()
+        print(f"Plotting {n_prior:.0f} Prior Parameter Samples")
+        pred = Predictive(model, num_samples=n_prior)
         prior_pred = pred(subkey, args=args)
         print("Prior Samples Drawn")
         plot_predictions(
@@ -503,18 +515,18 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             max_plots=10,
             save_dir=plot_dir,
         )
-
-
-    print()
-    end_prior = datetime.now()
-    print(f"End Time  : {end_prior}")
-    print(f"Prior Plot Time : {end_prior - end_true}")
+        print()
+        print(f"Prior Plot Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
+    
 
     ### Run Inference
     key, *subkeys = random.split(key, 3)
     if config["inference"]["mcmc"]:
         num_warmup = 500
         num_samples = 1000
+        print(f"Running MCMC with {num_warmup:.0f} Warm Up Samples and for {num_samples:.0f} Samples")
+        start = datetime.now()
 
         nuts_kernel = NUTS(model, dense_mass=False)  # [('g_phase_0', 'g_phase_1')])
         mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples)
@@ -525,6 +537,10 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             extra_fields=("potential_energy",),
             init_params=init_params_base,
         )
+        print()
+        print(f"MCMC Run Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
+        start = datetime.now()
 
         pred = Predictive(model, posterior_samples=mcmc.get_samples())
         mcmc_pred = pred(subkeys[1], args=args)
@@ -537,11 +553,9 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             max_plots=10,
             save_dir=plot_dir,
         )
-
-    print()
-    end_mcmc = datetime.now()
-    print(f"End Time  : {end_mcmc}")
-    print(f"MCMC Plot Time : {end_mcmc - end_prior}")
+        print()
+        print(f"MCMC Plot Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
 
     mem_i += 1
     jax.profiler.save_device_memory_profile(
@@ -550,6 +564,8 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     key, *subkeys = random.split(key, 3)
     if config["inference"]["opt"]:
+        print()
+        print("Running Optimization ...")
         guide_family = guides[config["opt"]["guide"]]
         vi_results, vi_guide = run_svi(
             model=model,
@@ -562,6 +578,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             },
             epsilon=config["opt"]["epsilon"],
             key=subkeys[0],
+            dual_run=config["opt"]["dual_run"],
         )
         vi_params = vi_results.params
         vi_pred = svi_predict(
@@ -572,6 +589,10 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             num_samples=1,
             key=subkeys[1],
         )
+        print()
+        print(f"Optimization Run Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
+        start = datetime.now()
 
         map_xds = write_xds(vi_pred, times, map_path)
 
@@ -584,6 +605,9 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             max_plots=10,
             save_dir=plot_dir,
         )
+        print()
+        print(f"Optimize Plot Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
 
         rchi2 = reduced_chi2(vi_pred["vis_obs"][0], vis_obs.T, noise)
         print()
@@ -596,12 +620,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         del vi_pred
         del vi_results
 
-
-    print()
-    end_opt = datetime.now()
-    print(f"End Time  : {end_opt}")
-    print(f"Opt Plot Time : {end_opt - end_prior}")
-
     mem_i += 1
     jax.profiler.save_device_memory_profile(
         os.path.join(mem_dir, f"memory_{mem_i}.prof")
@@ -610,7 +628,9 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     key, *subkeys = random.split(key, 3)
     if config["inference"]["fisher"] and rchi2 < 1.1:
 
-        print("Calculating Fisher Samples ...")
+        start = datetime.now()
+        n_fisher = config["fisher"]["n_samples"]
+        print(f"Calculating {n_fisher:.0f} Fisher Samples ...")
 
         f_model = lambda params, args: vis_model(params, args)[0]
         model_flat = lambda params: f_model_flat(f_model, params, args)
@@ -622,10 +642,14 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             post_mean,
             flatten_obs(vis_obs),
             noise,
-            config["fisher"]["n_samples"],
+            n_fisher,
             subkeys[0],
             config["fisher"]["max_cg_iter"],
         )
+        print()
+        print(f"Fisher Run Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
+        start = datetime.now()
 
         samples = tree_map(jnp.add, post_mean, dtheta)
 
@@ -643,16 +667,14 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             max_plots=10,
             save_dir=plot_dir,
         )
+        print()
+        print(f"Fisher Plot Time : {datetime.now() - start}")
+        print(f"{datetime.now()}")
 
     print()
-    end_fisher = datetime.now()
-    print(f"End Time  : {end_fisher}")
-    print(f"Fisher Plot Time : {end_fisher - end_opt}")
-
-    print()
-    end_final = datetime.now()
-    print(f"End Time  : {end_final}")
-    print(f"Total Time : {end_final - start}")
+    end_time = datetime.now()
+    print(f"End Time  : {end_time}")
+    print(f"Total Time : {end_time - start_time}")
 
     mem_i += 1
     jax.profiler.save_device_memory_profile(

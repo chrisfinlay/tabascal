@@ -143,6 +143,7 @@ def get_base_tab_config():
         "opt": {
             "epsilon": 1e-1,
             "max_iter": 100,
+            "dual_run": True,
             "guide": "map",
         },
         "fisher": {
@@ -151,15 +152,22 @@ def get_base_tab_config():
         },
         "init": {
             "truth": True,
-            "ast_sig": 1.0,
-            "rfi_sig": 1.0,
-            "orbit_sig": 1.0,
-            "gain_sig": 1.0,
         },
         "pow_spec": {
             "P0": 1e3,
             "k0": 1e-3,
             "gamma": 1.0,
+        },
+        "gains": {
+            "amp_mean": "truth",
+            "phase_mean": "truth",
+            "amp_std": 1.0,      # %
+            "phase_std": 1.0,    # degrees
+            "corr_time": 180,    # minutes
+        },
+        "rfi": {
+            "var": 100,        # Jy
+            "corr_time": 15,   # seconds
         },
     }
 
