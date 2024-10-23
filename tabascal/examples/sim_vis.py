@@ -39,10 +39,14 @@ def main():
     if rfi_amp is not None:
         obs_spec["rfi_sources"]["satellite"]["power_scale"] = rfi_amp
         obs_spec["rfi_sources"]["stationary"]["power_scale"] = rfi_amp
+    elif obs_spec["rfi_sources"]["satellite"]["power_scale"] is None:
+         rfi_amp = obs_spec["rfi_sources"]["satellite"]["power_scale"]
     else:
         obs_spec["rfi_sources"]["satellite"]["power_scale"] = 1.0
-        obs_spec["rfi_sources"]["stationary"]["power_scale"] = 1.0
         rfi_amp = 1.0
+
+    if obs_spec["rfi_sources"]["stationary"]["power_scale"] is None:
+        obs_spec["rfi_sources"]["stationary"]["power_scale"] = 1.0
 
     obs_spec["output"]["overwrite"] = args.overwrite
 
@@ -66,4 +70,4 @@ def main():
     return run_sim_config(obs_spec=obs_spec)
 
 if __name__=="__main__":
-    main()
+    obs, obs_path = main()
