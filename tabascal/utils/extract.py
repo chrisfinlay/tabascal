@@ -123,13 +123,18 @@ def radec_to_lmn(
     return np.array([l, m, n]).T
 
 
-def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float=1.0, thresh_isl: float=1.0, thresh_pix: float=1.0, beam_corr: bool=True) -> None:
+def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float=1.0, thresh_isl: float=1.0, thresh_pix: float=1.0, save_dir: str=None, beam_corr: bool=True) -> None:
 
     # tclean naming convention
     # img_name = os.path.splitext(img_path)[0]
     # wsclean naming convention
     img_name = img_path.removesuffix("-image.fits")
-    img_dir = os.path.split(img_path)[0]
+    img_dir, img_file = os.path.split(img_path)
+    # img_name = img_file.removesuffix("-image.fits")
+    if save_dir is None:
+        save_dir = img_dir
+
+    save_name = os.path.join(save_dir, os.path.split(img_name)[1])
     
     bmaj = fits.getheader(img_path)["BMAJ"]*3600
     bmin = fits.getheader(img_path)["BMIN"]*3600
@@ -143,9 +148,9 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
     # )
     image = process_image(img_path, thresh_isl=thresh_isl, thresh_pix=thresh_pix, quiet=True)
 
-    image.export_image(outfile=img_name + ".gauss_resid.fits", img_type="gaus_resid", clobber=True)
+    image.export_image(outfile=save_name + ".gauss_resid.fits", img_type="gaus_resid", clobber=True)
     image.write_catalog(
-        outfile=img_name + ".pybdsf.csv", format="csv", catalog_type="srl", clobber=True
+        outfile=save_name + ".pybdsf.csv", format="csv", catalog_type="srl", clobber=True
     )
 
     # tclean naming convention
@@ -161,7 +166,7 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
     true_df = construct_src_df(xds).sort_values(" Total_flux").reset_index()[keys2]
     true_df.to_csv(os.path.join(img_dir, "true_sources.csv"))
 
-    df = pd.read_csv(img_name + ".pybdsf.csv", skiprows=5)
+    df = pd.read_csv(save_name + ".pybdsf.csv", skiprows=5)
     keys1 = [
         " Isl_id",
         " RA",
@@ -195,14 +200,15 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
         lmn = radec_to_lmn(image_df1[" RA"].values, image_df1[" DEC"].values, [xds.target_ra, xds.target_dec])
         theta = np.rad2deg(np.arcsin(np.linalg.norm(lmn[:, :-1], axis=-1)))
         beam = airy_beam(theta[:,None,None], xds.freq.data, xds.dish_diameter)[:,0,0,0]**2
-        image_df1.loc[:," Total_flux"] = beam * image_df1[" Total_flux"]
-        image_df1.loc[:," E_Total_flux"] = beam * image_df1[" E_Total_flux"]
+        image_df1.loc[:," Total_flux"] = image_df1[" Total_flux"] / beam
+        image_df1.loc[:," E_Total_flux"] = image_df1[" E_Total_flux"] / beam
 
     error_df = np.abs((image_df1 - true_df1))
     error_df = pd.DataFrame(
         data=np.abs((image_df1 - true_df1)[[" RA", " DEC"]] * 3600).values,
         columns=["E_RA [as]", "E_DEC [as]"],
     )
+    error_df["E_Total_flux [mJy]"] = 1e3 * (image_df1 - true_df1)[" Total_flux"]
     error_df["E_Total_flux [%]"] = (
         100 * (image_df1 - true_df1)[" Total_flux"] / true_df1[" Total_flux"]
     )
@@ -233,7 +239,7 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
     ]
     error_df = error_df[keys].iloc[mask]
 
-    error_df.to_csv(img_name + ".csv", index=False)
+    error_df.to_csv(save_name + ".csv", index=False)
 
 
 def main():
