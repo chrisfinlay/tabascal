@@ -19,14 +19,11 @@ import jax.numpy as jnp
 from jax import random, vmap, jit
 from jax.tree_util import tree_map
 
-from jax.flatten_util import ravel_pytree as flatten
-
 from numpyro.infer import MCMC, NUTS, Predictive
 
 import matplotlib.pyplot as plt
 
-from tabascal.jax.interferometry import ants_to_bl
-from tabascal.utils.yaml import yaml_load, Tee
+from tabascal.utils.yaml import Tee, load_config
 from tab_opt.data import extract_data
 from tab_opt.opt import run_svi, svi_predict, f_model_flat, flatten_obs, post_samples
 from tab_opt.gp import (
@@ -35,12 +32,64 @@ from tab_opt.gp import (
     resampling_kernel,
 )
 from tab_opt.plot import plot_predictions
-from tab_opt.vis import averaging, get_rfi_phase
+from tab_opt.vis import get_rfi_phase
 from tab_opt.models import (
     fixed_orbit_rfi_fft_standard,
     fixed_orbit_rfi_full_fft_standard_model,
 )
 from tab_opt.transform import affine_transform_full_inv, affine_transform_diag_inv
+
+
+def reduced_chi2(pred, true, noise):
+    rchi2 = ((jnp.abs(pred - true) / noise) ** 2).sum() / (2 * true.size)
+    return rchi2
+
+
+def write_xds(vi_pred, times, file_path, overwrite=True):
+    import dask.array as da
+    import xarray as xr
+
+    map_xds = xr.Dataset(
+        data_vars={
+            "ast_vis": (["sample", "bl", "time"], da.asarray(vi_pred["ast_vis"])),
+            "gains": (["sample", "ant", "time"], da.asarray(vi_pred["gains"])),
+            "rfi_vis": (["sample", "bl", "time"], da.asarray(vi_pred["rfi_vis"])),
+            "vis_obs": (["sample", "bl", "time"], da.asarray(vi_pred["vis_obs"])),
+            },
+        coords={"time": da.asarray(times)},
+        )
+    
+    mode = "w" if overwrite else "w-"
+
+    map_xds.to_zarr(file_path, mode=mode)
+    
+    return map_xds
+
+
+@jit
+def inv_transform(params, loc, inv_scaling):
+    params_trans = {
+        "rfi_r_induce_base": vmap(
+            vmap(affine_transform_full_inv, (0, None, 0), 0), (1, None, 1), 1
+        )(params["rfi_r_induce"], inv_scaling["L_RFI"], loc["mu_rfi_r"]),
+        "rfi_i_induce_base": vmap(
+            vmap(affine_transform_full_inv, (0, None, 0), 0), (1, None, 1), 1
+        )(params["rfi_i_induce"], inv_scaling["L_RFI"], loc["mu_rfi_i"]),
+        "g_amp_induce_base": vmap(affine_transform_full_inv, in_axes=(0, None, 0))(
+            params["g_amp_induce"], inv_scaling["L_G_amp"], loc["mu_G_amp"]
+        ),
+        "g_phase_induce_base": vmap(affine_transform_full_inv, in_axes=(0, None, 0))(
+            params["g_phase_induce"], inv_scaling["L_G_phase"], loc["mu_G_phase"]
+        ),
+        "ast_k_r_base": vmap(affine_transform_diag_inv, in_axes=(0, 0, 0))(
+            params["ast_k_r"], inv_scaling["sigma_ast_k"], loc["mu_ast_k_r"]
+        ),
+        "ast_k_i_base": vmap(affine_transform_diag_inv, in_axes=(0, 0, 0))(
+            params["ast_k_i"], inv_scaling["sigma_ast_k"], loc["mu_ast_k_i"]
+        ),
+    }
+    return params_trans
+
 
 def tabascal_subtraction(conf_path: str, sim_dir: str):
 
@@ -54,51 +103,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     key, subkey = random.split(random.PRNGKey(1))
 
-
-    # config["plots"]["init"] = 1
-    # config["plots"]["truth"] = 1
-    # config["plots"]["prior"] = 0
-    # config["plots"]["prior_samples"] = 100
-    # config["inference"]["mcmc"] = 0
-    # config["inference"]["opt"] = 1
-    # config["inference"]["fisher"] = 1
-    # config["opt"]["guide"] = "map"
-    # # epsilon = 3e-1
-    # # epsilon = 3e-3
-    # # config["opt"]["max_iter"] = 3_000
-    # # config["opt"]["max_iter"] = 10
-
-    # # config["fisher"]["n_samples"] = 10
-    # # config["fisher"]["max_cg_iter"] = 10_000  # None
-
-    # # config["fisher"]["n_samples"] = 1
-    # # config["fisher"]["max_cg_iter"] = 1_000  # None
-
-    # # 64 Antenna Case
-
-    # # N_ant = 64
-    # # N_time = 450
-    # # config["data"]["sampling"] = 4
-    # # N_sat = 1
-    # # N_ast = 100
-    # # config["init"]["truth"] = True
-
-
-    # # 16 Antenna Case
-
-    # config["init"]["truth"] = True
-
-    # config["data"]["sampling"] = 1
-
-    # # config["data"]["sampling"] = 4
-    # # rfi_factor = 5e-3
-    # epsilon = 1e-1
-    # config["opt"]["max_iter"] = 100
-    # # config["opt"]["max_iter"] = 1_000
-
-    # config["fisher"]["n_samples"] = 1
-    # config["fisher"]["max_cg_iter"] = 10_000  # None
-
     mem_i = 0
 
     ### Define Model
@@ -110,16 +114,10 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
 
     model_name = f"fixed_orbit_rfi"
-
     print(f"Model : {model_name}")
-
-
     results_name = f"fixed_orbit_rfi"
 
-
-    config = yaml_load(conf_path)
-
-    # config = load_config(conf_path)
+    config = load_config(conf_path, config_type="tab")
 
     if config["data"]["sim_dir"] is None:
         config["data"]["sim_dir"] = os.path.abspath(sim_dir)
@@ -152,15 +150,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     map_path = os.path.join(results_dir, f"map_results_{results_name}.zarr")
     fisher_path = os.path.join(results_dir, f"fisher_results_{results_name}.zarr")
 
-    # if not os.path.isdir(plot_dir):
-    #     os.mkdir(plot_dir)
-
-    # if not os.path.isdir(results_dir):
-    #     os.mkdir(results_dir)
-
-    # if not os.path.isdir(mem_dir):
-    #     os.mkdir(mem_dir)
-
     (
         N_int_samples,
         N_ant,
@@ -190,10 +179,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     ################
     del bl_uvw
-    # del ants_uvw
-    # del ants_xyz
-    # del freqs
-    # del rfi_orbit
     #################
 
     gains_true = vmap(jnp.interp, in_axes=(None, None, 1))(
@@ -201,100 +186,83 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     ).T
     vis_ast_true = vis_ast.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
     vis_rfi_true = vis_rfi.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
-    # vis_obs = (
-    #     (ants_to_bl(gains_ants, a1, a2) * (vis_ast + vis_rfi))
-    #     .reshape(N_time, N_int_samples, N_bl, 1)
-    #     .mean(axis=1)
-    # ) + noise_data
-    # vis_cal = (vis_obs / ants_to_bl(gains_true[:, :, None], a1, a2))
-    # flag_rate = (
-    #     100 * jnp.where(jnp.abs(vis_ast_true - vis_cal) > 3 * noise, True, False).mean()
-    # )
-
-    bl = jnp.arange(N_bl)
 
     print()
     print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")
     print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast_true)):.1f} Jy")
-    # print(f"Flag Rate :     {flag_rate:.2f} %")
     print()
     print(f"Number of Antennas   : {N_ant: 4}")
     print(f"Number of Time Steps : {N_time: 4}")
 
-    ### Vis AST Fourier modes
-    ast_k = jnp.fft.fft(vis_ast_true, axis=0).T
-    k_ast = jnp.fft.fftfreq(N_time, int_time)
-
-    ast_k_mean = jnp.fft.fft(
-        vis_ast_true.mean(axis=0)[None, :] * jnp.ones((N_time, 1)), axis=0
-    ).T
-
+    ##############################################
+    # Try to change this to only include available data
+    # P0, k0, gamma for the power_spectrum
+    # rfi_var, rfi_l 
+    # g_amp_var, g_phase_var, g_l These can probably stay the same or be made smaller
+    ##############################################
 
     @jit
     def f(k, P0=1e3, k0=1e-3, gamma=1.0):
         k_ = (k / k0) ** 2
         return P0 * 0.5 * (jnp.exp(-0.5 * k_) + 1.0 / ((1.0 + k_) ** (gamma / 2)))
 
-
     ### GP Parameters
 
-    g_amp_var = (1.0e-2) ** 2  # 1%
-    g_phase_var = jnp.deg2rad(1.0) ** 2  # 1 degree
-    g_amp_var = (1.0e-4) ** 2  # 1%
-    g_phase_var = jnp.deg2rad(1.0e-2) ** 2  # 1 degree
-    g_l = 3 * 60.0 * 60.0  # 3 hours
+    g_amp_var = (config["gains"]["amp_std"] / 100)**2 # convert % to decimal
+    g_phase_var = jnp.deg2rad(config["gains"]["phase_std"])**2 # convert degrees to radians
+    g_l = 60.0 * config["gains"]["corr_time"] # convert minutes to seconds
 
-    rfi_var, rfi_l = 1e2, 15.0
-    # rfi_var, rfi_l = jnp.sqrt(jnp.abs(vis_obs).max()), 15.0
-
+    # rfi_var = jnp.sqrt(jnp.abs(vis_obs).max())
+    rfi_var = config["rfi"]["var"]
+    rfi_l = config["rfi"]["corr_time"]
 
     ### Gain Sampling Times
     g_times = get_times(times, g_l)
     gains_induce = vmap(jnp.interp, in_axes=(None, None, 1))(
         g_times, times_fine, gains_ants
     )
-    n_g_times = len(g_times)
+    N_g_times = len(g_times)
 
     ### RFI Sampling Times
     rfi_times = get_times(times, rfi_l)
     rfi_induce = jnp.array(
         [
             vmap(jnp.interp, in_axes=(None, None, 1))(
-                rfi_times, times_fine, gains_ants * rfi_A_app[i]
+                rfi_times, times_fine, rfi_A_app[i]
             )
             for i in range(N_rfi)
         ]
     )
-    n_rfi_times = len(rfi_times)
+    N_rfi_times = len(rfi_times)
 
     print()
     print("Number of parameters per antenna/baseline")
-    print(f"Gains : {n_g_times: 4}")
-    print(f"RFI   : {n_rfi_times: 4}")
+    print(f"Gains : {N_g_times: 4}")
+    print(f"RFI   : {N_rfi_times: 4}")
     print(f"AST   : {N_time: 4}")
     print()
     print(
-        f"Number of parameters : {((2 * N_ant - 1) * n_g_times) + (2 * N_time * N_bl) + (2 * N_ant * n_rfi_times)}"
+        f"Number of parameters : {((2 * N_ant - 1) * N_g_times) + (2 * N_time * N_bl) + (2 * N_ant * N_rfi_times)}"
     )
     print(f"Number of data points: {2* N_bl * N_time}")
 
 
-    ### Define RFI Kernel
-    # @jit
-    def rfi_kernel_fn(v_rfi, rfi_I, resample_rfi):
-        return averaging((v_rfi / rfi_I)[:, None] * resample_rfi, N_int_samples)
+    # ### Define RFI Kernel
+    # # @jit
+    # def rfi_kernel_fn(v_rfi, rfi_I, resample_rfi):
+    #     return averaging((v_rfi / rfi_I)[:, None] * resample_rfi, N_int_samples)
 
 
-    key, subkey = random.split(key)
-    phase_error_std = 0e-2
-    traj_phase_error = jnp.exp(
-        1.0j
-        * phase_error_std
-        * random.normal(key, (N_rfi, N_ant, 1))
-        * times_fine[None, None, :]
-    )
+    # key, subkey = random.split(key)
+    # phase_error_std = 0e-2
+    # traj_phase_error = jnp.exp(
+    #     1.0j
+    #     * phase_error_std
+    #     * random.normal(key, (N_rfi, N_ant, 1))
+    #     * times_fine[None, None, :]
+    # )
 
-    rfi_A_perturb = jnp.transpose(rfi_A_app, axes=(0, 2, 1)) * traj_phase_error
+    # rfi_A_perturb = jnp.transpose(rfi_A_app, axes=(0, 2, 1)) * traj_phase_error
 
     resample_rfi = resampling_kernel(rfi_times, times_fine, rfi_var, rfi_l, 1e-8)
 
@@ -305,6 +273,18 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         ]
     )
 
+    ##############################################
+    # Try to change this to only include derived data from MS
+    ##############################################
+
+    ### Vis AST Fourier modes
+    ast_k = jnp.fft.fft(vis_ast_true, axis=0).T
+    k_ast = jnp.fft.fftfreq(N_time, int_time)
+
+    ast_k_mean = jnp.fft.fft(
+        vis_ast_true.mean(axis=0)[:, None] * jnp.ones((N_bl, N_time)), axis=1
+    )
+    
     ### Define True Parameters
     true_params = {
         **{f"g_amp_induce": jnp.abs(gains_induce)},
@@ -320,9 +300,12 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     # Set Constant Parameters
     args = {
         "noise": noise if noise > 0 else 0.2,
-        "vis_ast_true": vis_ast_true.T,
-        "vis_rfi_true": vis_rfi_true.T,
-        "gains_true": gains_true.T,
+        # "vis_ast_true": vis_ast_true.T,
+        # "vis_rfi_true": vis_rfi_true.T,
+        # "gains_true": gains_true.T,
+        "vis_ast_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), # Use this to not plot the truth
+        "vis_rfi_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), # Use this to not plot the truth
+        "gains_true": jnp.nan * jnp.zeros((N_ant, N_time), dtype=complex), # Use this to not plot the truth
         "times": times,
         "times_fine": times_fine,
         "g_times": g_times,
@@ -331,21 +314,29 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         "N_bl": N_bl,
         "a1": a1,
         "a2": a2,
-        "bl": bl,
+        "bl": jnp.arange(N_bl),
         "n_int": int(N_int_samples),
     }
 
-    pow_spec_args = config["pow_spec"]
+    if config["gains"]["amp_mean"] == "truth":
+        g_amp_mean = true_params["g_amp_induce"]
+    else:
+        g_amp_mean = config["gains"]["amp_mean"]
+
+    if config["gains"]["phase_mean"] == "truth":
+        g_phase_mean = true_params["g_phase_induce"]
+    else:
+        g_phase_mean = jnp.deg2rad(config["gains"]["phase_mean"])
 
     ### Define Prior Parameters
     args.update(
         {
-            "mu_G_amp": jnp.abs(gains_induce),
-            "mu_G_phase": jnp.angle(gains_induce[:-1]),
+            "mu_G_amp": g_amp_mean * jnp.ones((N_ant, N_g_times)),
+            "mu_G_phase": g_phase_mean * jnp.ones((N_ant-1, N_g_times)),
             # "mu_rfi_r": true_params["rfi_r_induce"],
             # "mu_rfi_i": true_params["rfi_i_induce"],
-            "mu_rfi_r": jnp.zeros((N_rfi, N_ant, n_rfi_times)),
-            "mu_rfi_i": jnp.zeros((N_rfi, N_ant, n_rfi_times)),
+            "mu_rfi_r": jnp.zeros((N_rfi, N_ant, N_rfi_times)),
+            "mu_rfi_i": jnp.zeros((N_rfi, N_ant, N_rfi_times)),
             # "mu_ast_k_r": true_params["ast_k_r"],
             # "mu_ast_k_i": true_params["ast_k_i"],
             "mu_ast_k_r": ast_k_mean.real,
@@ -356,7 +347,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             "L_G_phase": jnp.linalg.cholesky(
                 kernel(g_times, g_times, g_phase_var, g_l, 1e-8)
             ),
-            "sigma_ast_k": jnp.array([f(k_ast, **pow_spec_args) for _ in range(N_bl)]),
+            "sigma_ast_k": jnp.array([f(k_ast, **config["pow_spec"]) for _ in range(N_bl)]),
             "L_RFI": jnp.linalg.cholesky(kernel(rfi_times, rfi_times, rfi_var, rfi_l)),
             "resample_g_amp": resampling_kernel(g_times, times, g_amp_var, g_l, 1e-8),
             "resample_g_phase": resampling_kernel(g_times, times, g_phase_var, g_l, 1e-8),
@@ -366,30 +357,31 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         }
     )
 
+    vis_ast_est = jnp.mean(vis_obs, axis=0, keepdims=True) * jnp.ones((N_time, N_bl))
+
+    ##############################################
+    # Try to change this to only include available data like this example
+    ##############################################
+
     rfi_r_induce_init = (
-        jnp.interp(rfi_times, times, jnp.sqrt(jnp.abs(vis_cal - vis_ast_true).max(axis=1)))[
+        jnp.interp(rfi_times, times, jnp.sqrt(jnp.max(jnp.abs(vis_obs - vis_ast_est), axis=1)))[
             None, None, :
-        ]
-        * jnp.ones((N_rfi, N_ant, 1))
+        ] # shape is now (1, 1, N_rfi_times)
+        * jnp.ones((N_rfi, N_ant, N_rfi_times))
         / N_rfi
-        + 1.0j * true_params["rfi_i_induce"]
     )
 
     # rfi_r_induce_init = args["mu_rfi_r"] + 1.0j * args["mu_rfi_i"]
-    # rfi_r_induce_init = rfi_induce
+    # rfi_r_induce_init = true_params["rfi_r_induce"] + 1.0j * true_params["rfi_i_induce"]
 
-    ast_k_init = jnp.fft.fft(
-        vis_ast_true.mean(axis=0)[:, None] * jnp.ones((N_bl, N_time)), axis=1
-    )
-
-    n_sigma = 10.0
-    ast_k_init = jnp.fft.fft(vis_ast_true + n_sigma * noise_data, axis=0).T
-
-    # ast_k_init = ast_k
+    # ast_k_init = ast_k_mean
+    ast_k_init = jnp.fft.fft(vis_ast_est, axis=0).T
+    # ast_k_init = args["mu_ast_k_r"] + 1.0j * args["mu_ast_k_i"]
+    # ast_k_init = true_params["ast_k_r"] + 1.0j*true_params["ast_k_i"]
 
     init_params = {
-        "g_amp_induce": true_params["g_amp_induce"],
-        "g_phase_induce": true_params["g_phase_induce"],
+        "g_amp_induce": args["mu_G_amp"],
+        "g_phase_induce": args["mu_G_phase"],
         "ast_k_r": ast_k_init.real,
         "ast_k_i": ast_k_init.imag,
         "rfi_r_induce": rfi_r_induce_init.real,
@@ -398,7 +390,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     if config["init"]["truth"]:
         init_params = true_params
-
 
     ################
     del gains_ants
@@ -415,42 +406,12 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     del noise_data
     ################
 
-
-    @jit
-    def inv_transform(params, loc, inv_scaling):
-        params_trans = {
-            "rfi_r_induce_base": vmap(
-                vmap(affine_transform_full_inv, (0, None, 0), 0), (1, None, 1), 1
-            )(params["rfi_r_induce"], inv_scaling["L_RFI"], loc["mu_rfi_r"]),
-            "rfi_i_induce_base": vmap(
-                vmap(affine_transform_full_inv, (0, None, 0), 0), (1, None, 1), 1
-            )(params["rfi_i_induce"], inv_scaling["L_RFI"], loc["mu_rfi_i"]),
-            "g_amp_induce_base": vmap(affine_transform_full_inv, in_axes=(0, None, 0))(
-                params["g_amp_induce"], inv_scaling["L_G_amp"], loc["mu_G_amp"]
-            ),
-            "g_phase_induce_base": vmap(affine_transform_full_inv, in_axes=(0, None, 0))(
-                params["g_phase_induce"], inv_scaling["L_G_phase"], loc["mu_G_phase"]
-            ),
-            "ast_k_r_base": vmap(affine_transform_diag_inv, in_axes=(0, 0, 0))(
-                params["ast_k_r"], inv_scaling["sigma_ast_k"], loc["mu_ast_k_r"]
-            ),
-            "ast_k_i_base": vmap(affine_transform_diag_inv, in_axes=(0, 0, 0))(
-                params["ast_k_i"], inv_scaling["sigma_ast_k"], loc["mu_ast_k_i"]
-            ),
-        }
-        return params_trans
-
-
     inv_scaling = {
         "L_RFI": jnp.linalg.inv(args["L_RFI"]),
         "L_G_amp": jnp.linalg.inv(args["L_G_amp"]),
         "L_G_phase": jnp.linalg.inv(args["L_G_phase"]),
         "sigma_ast_k": 1.0 / args["sigma_ast_k"],
     }
-
-    true_params_base = inv_transform(true_params, args, inv_scaling)
-
-    init_params_base = inv_transform(init_params, args, inv_scaling)
 
     print()
     end_start = datetime.now()
@@ -466,33 +427,8 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         "map": "AutoDelta",
     }
 
-
-    def reduced_chi2(pred, true, noise):
-        rchi2 = ((jnp.abs(pred - true) / noise) ** 2).sum() / (2 * true.size)
-        return rchi2
-
-    def write_xds(vi_pred, file_path, overwrite=True):
-        import dask.array as da
-        import xarray as xr
-
-        map_xds = xr.Dataset(
-            data_vars={
-                "ast_vis": (["sample", "bl", "time"], da.asarray(vi_pred["ast_vis"])),
-                "gains": (["sample", "ant", "time"], da.asarray(vi_pred["gains"])),
-                "rfi_vis": (["sample", "bl", "time"], da.asarray(vi_pred["rfi_vis"])),
-                "vis_obs": (["sample", "bl", "time"], da.asarray(vi_pred["vis_obs"])),
-                },
-            coords={"time": da.asarray(times)},
-            )
-        
-        mode = "w" if overwrite else "w-"
-
-        map_xds.to_zarr(file_path, mode=mode)
-        
-        return map_xds
-
-
     ### Check and Plot Model at init params
+    init_params_base = inv_transform(init_params, args, inv_scaling)
     pred = Predictive(
         model=model,
         posterior_samples=tree_map(lambda x: x[None, :], init_params_base),
@@ -506,19 +442,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     print()
 
     ### Check and Plot Model at true parameters
-    pred = Predictive(
-        model=model,
-        posterior_samples=tree_map(lambda x: x[None, :], true_params_base),
-        batch_ndims=1,
-    )
-    key, subkey = random.split(key)
-    true_pred = pred(subkey, args=args)
-    rchi2 = reduced_chi2(true_pred["vis_obs"][0], vis_obs.T, noise)
-    print()
-    print(f"Reduced Chi^2 @ true: {rchi2}")
-    print()
-
-
+    
     if config["plots"]["init"]:
         plot_predictions(
             times=times,
@@ -531,6 +455,19 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         )
 
     if config["plots"]["truth"]:
+
+        true_params_base = inv_transform(true_params, args, inv_scaling)
+        pred = Predictive(
+        model=model,
+        posterior_samples=tree_map(lambda x: x[None, :], true_params_base),
+        batch_ndims=1,
+        )
+        key, subkey = random.split(key)
+        true_pred = pred(subkey, args=args)
+        rchi2 = reduced_chi2(true_pred["vis_obs"][0], vis_obs.T, noise)
+        print()
+        print(f"Reduced Chi^2 @ true: {rchi2}")
+        print()
         plot_predictions(
             times=times,
             pred=true_pred,
@@ -586,7 +523,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             args=args,
             v_obs=v_obs_ri,
             extra_fields=("potential_energy",),
-            init_params=true_params_base,
+            init_params=init_params_base,
         )
 
         pred = Predictive(model, posterior_samples=mcmc.get_samples())
@@ -636,7 +573,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             key=subkeys[1],
         )
 
-        map_xds = write_xds(vi_pred, map_path)
+        map_xds = write_xds(vi_pred, times, map_path)
 
         plot_predictions(
             times,
@@ -678,7 +615,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         f_model = lambda params, args: vis_model(params, args)[0]
         model_flat = lambda params: f_model_flat(f_model, params, args)
 
-        post_mean = {k[:-9]: v for k, v in vi_params.items()} if config["inference"]["opt"] else true_params_base
+        post_mean = {k[:-9]: v for k, v in vi_params.items()} if config["inference"]["opt"] else init_params_base
 
         dtheta = post_samples(
             model_flat,
@@ -695,7 +632,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         pred = Predictive(model, posterior_samples=samples)
         fisher_pred = pred(subkeys[1], args=args)
 
-        fisher_xds = write_xds(fisher_pred, fisher_path)
+        fisher_xds = write_xds(fisher_pred, times, fisher_path)
 
         plot_predictions(
             times=times,
