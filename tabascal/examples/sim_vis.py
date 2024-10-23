@@ -11,7 +11,7 @@ def main():
         "-c", "--config_path", help="File path to the observation config file."
     )
     parser.add_argument(
-        "-r", "--rfi_amp", default=None, type=float, help="Scale the RFI power."
+        "-r", "--rfi_amp", default=None, type=float, help="Scale the RFI power. Default is 1."
     )
     parser.add_argument(
         "-a", "--n_ant", default=None, type=int, help="Number of antennas to include."
@@ -32,8 +32,17 @@ def main():
         "-o", "--overwrite", default="no", type=str2bool, help="Overwrite existing observation."
     )
     args = parser.parse_args()
-
+    rfi_amp = args.rfi_amp
+    
     obs_spec = load_config(args.config_path, config_type="sim")
+
+    if rfi_amp is not None:
+        obs_spec["rfi_sources"]["satellite"]["power_scale"] = rfi_amp
+        obs_spec["rfi_sources"]["stationary"]["power_scale"] = rfi_amp
+    else:
+        obs_spec["rfi_sources"]["satellite"]["power_scale"] = 1.0
+        obs_spec["rfi_sources"]["stationary"]["power_scale"] = 1.0
+        rfi_amp = 1.0
 
     obs_spec["output"]["overwrite"] = args.overwrite
 
@@ -43,11 +52,7 @@ def main():
     if args.n_int is not None:
         obs_spec["observation"]["n_int"] = args.n_int
 
-    if args.rfi_amp is not None:
-        obs_spec["rfi_sources"]["satellite"]["power_scale"] = args.rfi_amp
-        obs_spec["rfi_sources"]["stationary"]["power_scale"] = args.rfi_amp
-
-    obs_spec["output"]["suffix"] = f"{args.rfi_amp:.1e}RFI"
+    obs_spec["output"]["suffix"] = f"{rfi_amp:.1e}RFI"
 
     if args.SEFD is not None:
         obs_spec["observation"]["SEFD"] = args.SEFD
