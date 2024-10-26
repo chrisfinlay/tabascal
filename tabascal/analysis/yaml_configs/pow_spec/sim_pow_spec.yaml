@@ -1,0 +1,75 @@
+telescope:
+  name: MeerKAT
+  latitude: -30.0
+  longitude: 21.0
+  elevation: 1050.0
+  dish_d: 13.5
+  enu_path: /nfs/chris/projects/tabascal/tabascal/tabascal/data/Meerkat.enu.txt
+  itrf_path:
+  n_ant: 16
+
+observation:
+  target_name: target1
+  ra: 27.0
+  dec: -30.0
+  start_time: 440.0
+  int_time: 2.0
+  n_time: 450
+  n_int: 32
+  start_freq: 1.227e9
+  chan_width: 209e3
+  n_freq: 1
+  SEFD: 420
+  auto_corrs: False
+  no_w: False
+  random_seed: 12345
+
+
+ast_sources:
+  pow_spec:
+    random:
+      n_side: 128
+      fov_f: 1.2
+      random_seed: 123
+      type: Cl
+      A: 513e-6  # mK^2
+      beta: 1.34
+      # type: Pk
+      # P0: 1e12
+      # k0: 1e1
+      # gamma: 2.34
+
+rfi_sources:
+  satellite:
+    sat_ids: [1]
+    tle_path: 
+    circ_path: ../aux_data/satellite.ole
+    power_scale: 1
+    spec_model: ../aux_data/satellite.rfimodel
+  stationary:
+    loc_ids: 
+    geo_path: ../aux_data/stationary.loc
+    power_scale: 1
+    spec_model: ../aux_data/stationary.rfimodel
+    
+gains:
+  G0_mean: 1.0
+  G0_std: 0.05
+  Gt_std_amp: 1e-5
+  Gt_std_phase: 1e-3
+  random_seed: 999
+
+output:
+  path: ../../data/
+  prefix: pow_spec1
+  overwrite: True
+  zarr: True
+  ms: True
+
+diagnostics:
+  uv_cov: True
+  src_alt: True
+  rfi_seps: True
+
+dask:
+  max_chunk_MB: 100

@@ -17,6 +17,7 @@ from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
 from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir, time_avg
 
+from tge import simulate_sky, Cl, Pk, beam_constants, lm_to_radec
 
 # Define normalized yaml simulation config
 def get_base_sim_config():
@@ -36,7 +37,9 @@ def get_base_sim_config():
 
     src_dicts = [{"path": None, **src_rand} for src_rand in src_rands]
 
-    norm_ast = {key: src_dict  for key, src_dict in zip(["point", "gauss", "exp"], src_dicts)}
+    norm_ast = {key: src_dict for key, src_dict in zip(["point", "gauss", "exp"], src_dicts)}
+
+    norm_ast.update({"pow_spec": {"path": None, "random": {"type": None, "random_seed": 1234}}})
 
     norm_rfi = {
         "satellite": {"sat_ids": None, "tle_path": None, "circ_path": None, "power_scale": 1, "spec_model": None},
@@ -380,47 +383,65 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
             print()
             print(f"Adding {len(params[0])} {key} sources from {path} ...")
             methods[key](*params)
+        
+        if key=="pow_spec" and ast_["pow_spec"]["random"]["type"] is not None:
+            rand_ = ast_["pow_spec"]["random"]
+            const = beam_constants(D=obs.dish_d.compute(), freq=obs.freqs[0].compute(), dBdT=None, f=1)
+            beam = lambda x: 1
+            non_ps_keys = ["n_side", "fov_f", "type", "random_seed"]
+            ps_args = {key: value for key, value in rand_.items() if key not in non_ps_keys}
+            if rand_["type"] == "Cl":
+                I, lxy = simulate_sky(rand_["n_side"], rand_["fov_f"]*const["thetaFWHM"], Cl=Cl, PS_args=ps_args, beam=beam, seed=rand_["random_seed"])
+            elif rand_["type"] == "Pk":
+                I, lxy = simulate_sky(N_side=rand_["n_side"], fov=rand_["fov_f"]*const["thetaFWHM"], Pk=Pk, beam=beam, seed=rand_["random_seed"])
+            else:
+                ValueError("Keyword 'type' in section pow_spec.random must be one of {Cl, Pk}")
+            ra, dec = lm_to_radec(lxy, obs.ra, obs.dec).T
+            I = const["dBdT"] * da.asarray(I.reshape(-1, 1))
+            obs.addAstro(I[:,None,:], ra, dec)
+    
 
-        if ast_[key]["random"]["n_src"] > 0:
-            rand_ = ast_[key]["random"]
-            n_beam = rand_["n_beam"]
-            max_beam = rand_["max_sep"]/3600/n_beam
-            beam_width = np.min([obs.syn_bw, max_beam])
-            print()
-            print(f"Generating {rand_['n_src']} sources within {obs.fov:.2f} deg FoV ({obs.fov/2:.2f} radius) ...") 
-            print(f"Minimum {n_beam*beam_width*3600:.1f} arcsec separation ...")
-            
-            I, d_ra, d_dec = generate_random_sky(
-                    n_src=rand_["n_src"],
-                    min_I=sigma_value(rand_["min_I"], obs),
-                    max_I=sigma_value(rand_["max_I"], obs),
-                    freqs=obs.freqs,
-                    fov=obs.fov,
-                    beam_width=beam_width,
-                    random_seed=rand_["random_seed"],
-                    n_beam=n_beam,
-                )
-            
-            if key=="point":
+        if "n_src" in ast_[key]["random"]:
+            if ast_[key]["random"]["n_src"] > 0:
+                rand_ = ast_[key]["random"]
+                n_beam = rand_["n_beam"]
+                max_beam = rand_["max_sep"]/3600/n_beam
+                beam_width = np.min([obs.syn_bw, max_beam])
                 print()
-                print(f"Adding {rand_['n_src']} random {key} sources ...")
-                methods[key](I[:,None,:], obs.ra + d_ra, obs.dec + d_dec)
-            elif key=="gauss":
-                rng = np.random.default_rng(rand_["random_seed"]+1)
-                pos_ang = rng.uniform(low=0.0, high=360.0, size=(rand_["n_src"],))
-                major_ = np.abs(rng.normal(loc=rand_["major_mean"], scale=rand_["major_std"], size=(rand_["n_src"],)))
-                minor_ = np.abs(rng.normal(loc=rand_["minor_mean"], scale=rand_["minor_std"], size=(rand_["n_src"],)))
-                major = np.where(major_>minor_, major_, minor_)
-                minor = np.where(major_<minor_, major_, minor_)
-                print()
-                print(f"Adding {rand_['n_src']} random {key} sources ...")
-                methods[key](I[:,None,:], major, minor, pos_ang, obs.ra + d_ra, obs.dec + d_dec)
-            elif key=="exp":
-                rng = np.random.default_rng(rand_["random_seed"]+1)
-                shape = np.abs(rng.normal(loc=rand_["size_mean"], scale=rand_["size_std"], size=(rand_["n_src"],)))
-                print()
-                print(f"Adding {rand_['n_src']} random {key} sources ...")
-                methods[key](I[:,None,:], shape, obs.ra + d_ra, obs.dec + d_dec)
+                print(f"Generating {rand_['n_src']} sources within {obs.fov:.2f} deg FoV ({obs.fov/2:.2f} radius) ...") 
+                print(f"Minimum {n_beam*beam_width*3600:.1f} arcsec separation ...")
+                
+                I, d_ra, d_dec = generate_random_sky(
+                        n_src=rand_["n_src"],
+                        min_I=sigma_value(rand_["min_I"], obs),
+                        max_I=sigma_value(rand_["max_I"], obs),
+                        freqs=obs.freqs,
+                        fov=obs.fov,
+                        beam_width=beam_width,
+                        random_seed=rand_["random_seed"],
+                        n_beam=n_beam,
+                    )
+                
+                if key=="point":
+                    print()
+                    print(f"Adding {rand_['n_src']} random {key} sources ...")
+                    methods[key](I[:,None,:], obs.ra + d_ra, obs.dec + d_dec)
+                elif key=="gauss":
+                    rng = np.random.default_rng(rand_["random_seed"]+1)
+                    pos_ang = rng.uniform(low=0.0, high=360.0, size=(rand_["n_src"],))
+                    major_ = np.abs(rng.normal(loc=rand_["major_mean"], scale=rand_["major_std"], size=(rand_["n_src"],)))
+                    minor_ = np.abs(rng.normal(loc=rand_["minor_mean"], scale=rand_["minor_std"], size=(rand_["n_src"],)))
+                    major = np.where(major_>minor_, major_, minor_)
+                    minor = np.where(major_<minor_, major_, minor_)
+                    print()
+                    print(f"Adding {rand_['n_src']} random {key} sources ...")
+                    methods[key](I[:,None,:], major, minor, pos_ang, obs.ra + d_ra, obs.dec + d_dec)
+                elif key=="exp":
+                    rng = np.random.default_rng(rand_["random_seed"]+1)
+                    shape = np.abs(rng.normal(loc=rand_["size_mean"], scale=rand_["size_std"], size=(rand_["n_src"],)))
+                    print()
+                    print(f"Adding {rand_['n_src']} random {key} sources ...")
+                    methods[key](I[:,None,:], shape, obs.ra + d_ra, obs.dec + d_dec)
 
 
 def gauss(A: float, mean: float, sigma: float, x: da.Array) -> da.Array:
@@ -559,6 +580,7 @@ def save_data(obs: Observation, obs_spec: dict, zarr_path: str, ms_path: str) ->
         print()
         print("Calculating visibilities ...")
         obs.calculate_vis()
+
         rfi_amp = da.mean(da.abs(time_avg(obs.vis_rfi, obs.n_int_samples))).compute()
         ast_amp = da.mean(da.abs(time_avg(obs.vis_ast, obs.n_int_samples))).compute()
         noise = da.std(obs.noise_data).compute()

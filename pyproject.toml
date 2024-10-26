@@ -2,3 +2,18 @@
 # XXX: If your project needs other packages to build properly, add them to this list.
 requires = ["setuptools >= 64"]
 build-backend = "setuptools.build_meta"
+
+[project]
+dependencies = [
+    "jax", "dask", "xarray", "zarr", 
+    "dask-ms", "scipy", "tqdm", "pandas", 
+    "matplotlib",
+]
+
+[project.optional-dependencies]
+gpu = ["jax[cuda12]"]
+sat = ["astropy", "regions"]
+astro = ["bdsf"]
+ps = ["TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+all = ["jax[cuda12]", "astropy", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+all_cpu = ["astropy", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
