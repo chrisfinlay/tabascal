@@ -32,9 +32,16 @@ def astro_vis(
     time_chunk, bl_chunk = uvw.chunksize[:2]
     freq_chunk = freqs.chunksize[0]
 
+    src_n_time = sources.shape[1]
+    if src_n_time != n_time and src_n_time != 1:
+        ValueError("The size of the time dimension for the astronomical sources must be n_time_fine or 1.")
+
+    t = "time" if src_n_time is n_time else "time1"
+    I = {"I": (["src", f"{t}", "freq"], sources)}
+
     input = xr.Dataset(
         {
-            "I": (["src", "time", "freq"], sources),
+            **I,
             "uvw": (["time", "bl", "space"], uvw),
             "lmn": (["src", "space"], lmn),
             "freqs": (["freq"], freqs),

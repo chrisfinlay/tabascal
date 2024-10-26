@@ -148,6 +148,7 @@ def ENU_to_GEO(geo_ref: Array, enu: Array) -> Array:
     """
     geo_ref = jnp.asarray(geo_ref)
     enu = jnp.asarray(enu)
+    R_e = earth_radius(geo_ref[0])
     d_lon = jnp.rad2deg(
         jnp.arcsin(enu[:, 1] / (R_e * jnp.cos(jnp.deg2rad(geo_ref[0]))))
     )
@@ -344,7 +345,7 @@ def gmst_to_lst(gmst: Array, lon: float) -> Array:
     Returns
     -------
     Array
-        Local Sidereal Time at the location.
+        Local Sidereal Time at the location in degrees.
     """
 
     gmst = jnp.asarray(gmst)
@@ -536,6 +537,18 @@ def itrf_to_geo(itrf: Array) ->  Array:
     el = jnp.linalg.norm(itrf, axis=-1) - earth_radius(lat)
 
     return jnp.array([lat, lon, el]).T
+
+
+@jit_with_doc
+def itrf_to_xyz(itrf: Array, gsa: Array) -> Array:
+    
+    
+    itrf = jnp.atleast_2d(itrf)
+    gsa = jnp.atleast_1d(gsa)
+    ecef_to_eci = lambda ecef, gsa: jnp.einsum("ij,aj->ai", Rotz(gsa), ecef)
+    xyz = vmap(ecef_to_eci, in_axes=(None,0))(itrf, gsa)
+
+    return xyz
 
 @jit_with_doc
 def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:

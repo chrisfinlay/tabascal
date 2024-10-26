@@ -11,7 +11,7 @@ from tabascal.dask.coordinates import (
     ITRF_to_UVW, 
     ENU_to_GEO,
     GEO_to_XYZ_vmap0,
-    GEO_to_XYZ_vmap1,
+    ITRF_to_XYZ,
     orbit_vmap,
     radec_to_lmn,
     angular_separation,
@@ -252,7 +252,8 @@ class Observation(Telescope):
 
 
         self.altaz = da.asarray(alt_az_of_source(gmst_to_lst(self.times_fine.compute(), longitude), latitude, ra, dec))
-        self.gha = da.asarray(lst_sec2deg(self.times_fine.compute())) - self.ra
+        self.gsa = da.asarray(lst_sec2deg(self.times_fine.compute()), chunks=(self.time_fine_chunk,))
+        self.gha = self.gsa - self.ra
         self.lha = da.asarray(gmst_to_lst(self.times_fine.compute(), longitude)) - self.ra
 
         self.freqs = da.asarray(freqs).rechunk((self.freq_chunk,))
@@ -285,14 +286,7 @@ class Observation(Telescope):
         self.mag_uvw = da.linalg.norm(self.bl_uvw[0], axis=-1)
         self.syn_bw = beam_size(self.mag_uvw.max().compute(), freqs.max())
 
-        self.ants_xyz = GEO_to_XYZ_vmap1(
-            self.GEO_ants[None, ...]
-            * da.ones(
-                shape=(self.n_time_fine, self.n_ant, 3),
-                chunks=(self.time_fine_chunk, self.ant_chunk, 3),
-            ),
-            self.times_fine,
-        )
+        self.ants_xyz = ITRF_to_XYZ(self.ITRF, self.gsa) 
         self.vis_ast = da.zeros(
             shape=(self.n_time_fine, self.n_bl, self.n_freq),
             chunks=(self.time_fine_chunk, self.bl_chunk, self.freq_chunk),
@@ -427,10 +421,6 @@ Number of stationary RFI :  {n_stat}"""
         I = da.atleast_2d(I)
         if I.ndim == 2:
             I = da.expand_dims(I, axis=0)
-        I = I * da.ones(
-            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
-            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
-        )
         ra = da.atleast_1d(ra)
         dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
@@ -441,7 +431,11 @@ Number of stationary RFI :  {n_stat}"""
             ** 2
         )
         vis_ast = astro_vis(I_app, self.bl_uvw, lmn, self.freqs)
-
+        
+        I = I * da.ones(
+            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
+            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
+        )
         self.ast_p_I.append(I)
         self.ast_p_lmn.append(lmn)
         self.ast_p_radec.append(jnp.array([ra, dec]))

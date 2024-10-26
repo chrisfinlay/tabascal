@@ -237,6 +237,46 @@ def GEO_to_XYZ_vmap1(geo: da.Array, times: da.Array) -> da.Array:
 GEO_to_XYZ_vmap1.__doc__ = coord.GEO_to_XYZ_vmap1.__doc__
 
 
+def ITRF_to_XYZ(itrf: da.Array, gsa: da.Array) -> da.Array:
+    n_time = gsa.shape[0]
+    n_ant = itrf.shape[0]
+
+    time_chunk = gsa.chunksize[0]
+    ant_chunk = itrf.chunksize[0]
+
+    input = xr.Dataset(
+        {
+            "itrf": (["ant", "space"], itrf),
+            "gsa": (["time"], gsa),
+        }
+    )
+    output = xr.Dataset(
+        {
+            "xyz": (
+                ["time", "ant", "space"],
+                da.zeros(
+                    shape=(n_time, n_ant, 3),
+                    chunks=(time_chunk, ant_chunk, 3),
+                    dtype=float,
+                ),
+            )
+        }
+    )
+
+    def _ITRF_to_XYZ(ds):
+        XYZ = delayed(coord.itrf_to_xyz, pure=True)(
+            ds.itrf.data, ds.gsa.data
+        ).compute()
+        ds_out = xr.Dataset({"xyz": (["time", "ant", "space"], XYZ)})
+        return ds_out
+
+    ds = xr.map_blocks(_ITRF_to_XYZ, input, template=output)
+
+    return ds.xyz.data
+
+
+ITRF_to_XYZ.__doc__ = coord.itrf_to_xyz.__doc__
+
 def ENU_to_ITRF(ENU: da.Array, lat: da.Array, lon: da.Array, el: da.Array) -> da.Array:
     n_ant = ENU.shape[0]
 
