@@ -76,6 +76,7 @@ def astro_vis(sources, uvw, lmn, freqs):
     vis = _astro_vis(sources[0, None], uvw, lmn[0, None], freqs)
 
     # This is a scan over the sources, but we can't use scan it unless we jit decorate this function
+    @jit
     def _add_vis(vis, i):
         return vis + _astro_vis(sources[i, None], uvw, lmn[i, None], freqs), i
 
@@ -249,7 +250,7 @@ def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     phase = phase_from_distances(c_distances, a1, a2, freqs)
     intensity = amp_to_intensity(app_amplitude, a1, a2)
 
-    vis = jnp.sum(intensity * jnp.exp(-1.0j * phase), axis=0)
+    vis = jnp.sum(intensity * jnp.exp(1.0j * phase), axis=0)
 
     return vis
 
