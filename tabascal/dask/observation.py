@@ -615,7 +615,7 @@ Number of stationary RFI :  {n_stat}"""
 
         vis_rfi = rfi_vis(
             rfi_A_app,
-            distances - self.ants_uvw[None, :, :, -1],
+            distances + self.ants_uvw[None, :, :, -1],
             self.freqs,
             self.a1,
             self.a2,
@@ -695,7 +695,7 @@ Number of stationary RFI :  {n_stat}"""
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
             rfi_A_app,
-            distances - self.ants_uvw[None, :, :, -1],
+            distances + self.ants_uvw[None, :, :, -1],
             self.freqs,
             self.a1,
             self.a2,
