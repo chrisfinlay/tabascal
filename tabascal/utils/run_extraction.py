@@ -132,7 +132,7 @@ def main():
             print()
             print(f"Extracting sources from {img_path}")
             extract(img_path, zarr_path, config["extract"]["sigma_cut"], config["extract"]["beam_cut"], 
-                    config["extract"]["thresh_isl"], config["extract"]["thresh_pix"], )
+                    config["extract"]["thresh_isl"], config["extract"]["thresh_pix"])
 
 
     log.close()

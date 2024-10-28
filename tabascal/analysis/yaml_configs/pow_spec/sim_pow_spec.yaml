@@ -15,7 +15,7 @@ observation:
   start_time: 440.0
   int_time: 2.0
   n_time: 450
-  n_int: 32
+  n_int: 16
   start_freq: 1.227e9
   chan_width: 209e3
   n_freq: 1

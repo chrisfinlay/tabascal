@@ -175,6 +175,50 @@ def get_base_tab_config():
 
     return tab_config
 
+def get_pow_spec_config():
+    
+    ps_config = {
+        "ideal": {
+            "data_col": "AST_DATA",
+            "suffix": "",
+            "flag": {
+                "type": "perfect",
+                "thresh": 0.0,
+            },
+        },
+        "tab": {
+            "data_col": "TAB_DATA",
+            "suffix": "",
+            "flag": {
+                "type": "perfect",
+                "thresh": 0.0,
+            },
+        },
+        "flag1": {
+            "data_col": "CAL_DATA",
+            "suffix": "perfect",
+            "flag": {
+                "type": "perfect",
+                "thresh": 3.0,
+            },
+        },
+        "flag2": {
+            "data_col": "CAL_DATA",
+            "suffix": "aoflagger",
+            "flag": {
+                "type": "aoflagger",
+                "sif_path": None,
+                "strategies": None,
+            },
+        },
+        "tge": {
+            "n_grid": 256,
+            "n_bins": 20,
+        },
+    }
+
+    return ps_config
+
 def deep_update(d: dict, u: dict) -> dict:
     """Recursively update a dictionary which includes subdictionaries.
 
@@ -680,7 +724,7 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
         print()
         print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
         print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
-        print(f"Recommended n_int is >=     : {n_int:.0f}")
+        print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples})")
 
     print(obs)
 
