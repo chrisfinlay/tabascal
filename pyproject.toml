@@ -40,8 +40,8 @@ Repository = "https://github.com/chrisfinlay/tabascal.git"
 [tool.setuptools.package-data]
 tabascal = ["tabascal/data/*"]
 
-[tool.setuptools.packages.find]
-where = ["tabascal"]
+[tool.setuptools.packages]
+find = {}
 
 [project.scripts]
 # Not Needed
