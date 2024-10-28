@@ -7,6 +7,8 @@ build-backend = "setuptools.build_meta"
 name = "tabascal"
 version = "0.0.1"
 license = {file = "LICENSE"}
+readme = "README.md"
+# dynamic = ["version", "readme"]
 authors = [
   {name = "Chris Finlay", email = "christopher.finlay@unige.ch"},
 ]
@@ -14,8 +16,8 @@ maintainers = [
   {name = "Chris Finlay", email = "christopher.finlay@unige.ch"}
 ]
 description = "Trajectory based Radio Frequency Interference (RFI) subtraction and calibration using Bayesian methods for radio interferometeric data."
-readme = "README.md"
-requires-python = ">=3.9"
+
+requires-python = ">=3.9,<3.13"
 dependencies = [
     "jax", "dask", "xarray", "zarr", 
     "dask-ms>=0.2.21", "scipy", "tqdm", "pandas", 
@@ -34,6 +36,12 @@ all_cpu = ["astropy", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfi
 # Homepage = "https://example.com"
 Documentation = "https://tabascal.readthedocs.io/en/latest/"
 Repository = "https://github.com/chrisfinlay/tabascal.git"
+
+[tool.setuptools.package-data]
+tabascal = ["tabascal/data/*"]
+
+[tool.setuptools.packages.find]
+where = ["tabascal"]
 
 [project.scripts]
 # Not Needed
