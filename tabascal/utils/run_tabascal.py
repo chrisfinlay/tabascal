@@ -40,6 +40,7 @@ from tab_opt.models import (
 )
 from tab_opt.transform import affine_transform_full_inv, affine_transform_diag_inv
 
+import xarray as xr
 
 def reduced_chi2(pred, true, noise):
     rchi2 = ((jnp.abs(pred - true) / noise) ** 2).sum() / (2 * true.size)
@@ -294,15 +295,19 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         vis_ast_true = vis_ast.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
         vis_rfi_true = vis_rfi.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
 
-        # corr_time_params = {
-        #     "sat_xyz": orbit(times, *rfi_orbit[0]),
-        #     "ants_xyz": ants_xyz,
-        #     "orbit_el": rfi_orbit[0,0],
-        #     "lat": latitude,
-        #     "dish_d": dish_d,
-        #     "freqs": freqs,
-        # }
-        # l = calculate_sat_corr_time(**corr_time_params)
+        xds = xr.open_zarr(zarr_path)
+
+        corr_time_params = {
+            "sat_xyz": orbit(times, *rfi_orbit[0]),
+            "ants_xyz": ants_xyz[N_int_samples//2::N_int_samples],
+            "orbit_el": rfi_orbit[0,0],
+            "lat": xds.tel_latitude,
+            "dish_d": xds.dish_diameter,
+            "freqs": freqs,
+        }
+        l = calculate_sat_corr_time(**corr_time_params)
+
+        print(f"Minimum expected RFI correlation time : {l:.0f} s ({rfi_l:.0f} s)")
 
         print()
         print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")
