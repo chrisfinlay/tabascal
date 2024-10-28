@@ -60,6 +60,7 @@ def main():
 
     min_sep = c0.separation(c).min(axis=1).deg
     print(f"Minimum angular separation from target : {[round(x, 1) for x in min_sep]} deg.")
+    print(f"Only including satellites within {max_d:.1f} degrees of pointing direction.")
     idx = np.where(min_sep<max_d)[0]
 
     min_idx = np.argmin(c0.separation(c)[:,:-1], axis=1)

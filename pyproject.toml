@@ -4,9 +4,21 @@ requires = ["setuptools >= 64"]
 build-backend = "setuptools.build_meta"
 
 [project]
+name = "tabascal"
+version = "0.0.1"
+license = {file = "LICENSE"}
+authors = [
+  {name = "Chris Finlay", email = "christopher.finlay@unige.ch"},
+]
+maintainers = [
+  {name = "Chris Finlay", email = "christopher.finlay@unige.ch"}
+]
+description = "Trajectory based Radio Frequency Interference (RFI) subtraction and calibration using Bayesian methods for radio interferometeric data."
+readme = "README.md"
+requires-python = ">=3.9"
 dependencies = [
     "jax", "dask", "xarray", "zarr", 
-    "dask-ms", "scipy", "tqdm", "pandas", 
+    "dask-ms>=0.2.21", "scipy", "tqdm", "pandas", 
     "matplotlib",
 ]
 
@@ -17,3 +29,28 @@ astro = ["bdsf"]
 ps = ["TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
 all = ["jax[cuda12]", "astropy", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
 all_cpu = ["astropy", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+
+[project.urls]
+# Homepage = "https://example.com"
+Documentation = "https://tabascal.readthedocs.io/en/latest/"
+Repository = "https://github.com/chrisfinlay/tabascal.git"
+
+[project.scripts]
+# Not Needed
+sim-target = "tabascal.examples.target_observation:main"
+sim-calib = "tabascal.examples.calibration_observation:main"
+sim-mixed = "tabascal.examples.mixed_source_observation:main"
+sim-low = "tabascal.examples.low_freq_obs:main"
+# Useful extras
+sat-region = "tabascal.utils.sat_region:main"
+ast-region = "tabascal.utils.ast_region:main"
+# Base scripts
+tab2MS="tabascal.utils.results_to_MS:main"
+flag-data = "tabascal.utils.flag_data:main"
+image = "tabascal.utils.wsclean_image:main"
+src-extract = "tabascal.utils.extract:main"
+# Config enabled
+sim-vis = "tabascal.examples.sim_vis:main"
+tabascal = "tabascal.utils.run_tabascal:main"
+extract = "tabascal.utils.run_extraction:main"
+end2end = "tabascal.utils.end2end:main"
