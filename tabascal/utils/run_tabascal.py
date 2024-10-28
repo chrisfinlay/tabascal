@@ -24,6 +24,7 @@ from numpyro.infer import MCMC, NUTS, Predictive
 import matplotlib.pyplot as plt
 
 from tabascal.utils.yaml import Tee, load_config
+from tabascal.jax.coordinates import calculate_sat_corr_time, orbit
 from tab_opt.data import extract_data
 from tab_opt.opt import run_svi, svi_predict, f_model_flat, flatten_obs, post_samples
 from tab_opt.gp import (
@@ -292,6 +293,16 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         ).T
         vis_ast_true = vis_ast.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
         vis_rfi_true = vis_rfi.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
+
+        # corr_time_params = {
+        #     "sat_xyz": orbit(times, *rfi_orbit[0]),
+        #     "ants_xyz": ants_xyz,
+        #     "orbit_el": rfi_orbit[0,0],
+        #     "lat": latitude,
+        #     "dish_d": dish_d,
+        #     "freqs": freqs,
+        # }
+        # l = calculate_sat_corr_time(**corr_time_params)
 
         print()
         print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")

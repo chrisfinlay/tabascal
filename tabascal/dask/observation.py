@@ -259,6 +259,7 @@ class Observation(Telescope):
         self.freqs = da.asarray(freqs).rechunk((self.freq_chunk,))
         self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else chan_width
         self.n_freq = len(freqs)
+        self.lamda = 299792458.0 / self.freqs 
 
         self.SEFD = da.asarray(SEFD) * da.ones(self.n_freq, chunks=(self.freq_chunk,))
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)

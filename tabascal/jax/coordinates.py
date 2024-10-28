@@ -5,11 +5,12 @@ from tabascal.utils.jax_extras import jit_with_doc
 config.update("jax_enable_x64", True)
 
 # Constants
-G = 6.67408e-11  # Gravitational constant
-M_e = 5.9722e24  # Mass of the Earth
-R_e = 6.371e6  # Average radius of the Earth
+G = 6.67408e-11  # Gravitational constant in m^3/kg/s^2
+M_e = 5.9722e24  # Mass of the Earth in kilograms
+R_e = 6.371e6  # Average radius of the Earth in metres
 T_s = 86164.0905  # Sidereal day in seconds
-
+Omega_e = 2 * jnp.pi / T_s # Earth rotation rate in rad/s
+C = 299792458.0 # Speed of light in m/s
 
 @jit_with_doc
 def radec_to_lmn(
@@ -541,7 +542,20 @@ def itrf_to_geo(itrf: Array) ->  Array:
 
 @jit_with_doc
 def itrf_to_xyz(itrf: Array, gsa: Array) -> Array:
-    
+    """Transform coordinates from the ITRF (ECEF) frame to an ECI frame that aligns with the celestial sphere.
+
+    Parameters
+    ----------
+    itrf : Array (n_ant, 3)
+        ITRF coordinates in metres.
+    gsa : Array (n_time,)
+        Greenwich sidereal time in degrees
+
+    Returns
+    -------
+    Array (n_time, n_ant, 3)
+        ECI coordinates in metres.
+    """
     
     itrf = jnp.atleast_2d(itrf)
     gsa = jnp.atleast_1d(gsa)
@@ -549,6 +563,31 @@ def itrf_to_xyz(itrf: Array, gsa: Array) -> Array:
     xyz = vmap(ecef_to_eci, in_axes=(None,0))(itrf, gsa)
 
     return xyz
+
+
+@jit_with_doc
+def xyz_to_itrf(xyz: Array, gsa: Array) -> Array:
+    """Transform coordinates from the ECI frame to the ITRF (ECEF) frame that is fixed with the Earth.
+
+    Parameters
+    ----------
+    xyz : Array (n_time, 3)
+        ECI coordinates in metres.
+    gsa : Array (n_time,)
+        Greenwich sidereal time in degrees.
+
+    Returns
+    -------
+    Array (n_time, 3)
+        ITRF (ECEF) coordinates in metres.
+    """
+    
+    xyz = jnp.atleast_2d(xyz)
+    gsa = jnp.atleast_1d(gsa)
+    eci_to_ecef = lambda eci, gsa: Rotz(-gsa) @ eci
+    itrf = vmap(eci_to_ecef, in_axes=(0,0))(xyz, gsa)
+
+    return itrf
 
 @jit_with_doc
 def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
@@ -646,6 +685,86 @@ def enu_to_uvw(enu: Array,
     uvw = itrf_to_uvw(itrf, gh0, dec)
 
     return uvw
+
+
+@jit_with_doc
+def calculate_fringe_frequency(times: Array, freq: float, rfi_xyz: Array, ants_itrf: Array, ants_u: Array, dec: float) -> Array:
+    """Calculate the fringe frequency of an RFI source.
+
+    Parameters
+    ----------
+    times : Array (n_time,)
+        Times are which the RFI and antenna positions are given in seconds.
+    freq : float
+        Observational frequency in Hz.
+    rfi_xyz : Array (n_time, 3)
+        Position of the RFI source in the ECI frame in metres.
+    ants_itrf : Array (n_ant, 3)
+        Antenna positions in the ITRF (ECEF) frame in metres. 
+    ants_u : Array (n_time,)
+        U component of the antennas in UVW frame in metres.
+    dec : float
+        Phase centre declination in degrees.
+
+    Returns
+    -------
+    Array (n_time, n_bl)
+        Fringe frequencies on each baseline.
+    """
+
+    lam = C / freq
+    gsa = lst_sec2deg(times)
+
+    r_ecef = xyz_to_itrf(rfi_xyz, gsa)
+    s_ecef = r_ecef - jnp.mean(ants_itrf, axis=0)
+    s_hat_ecef = s_ecef / jnp.linalg.norm(s_ecef, axis=-1, keepdims=True)
+    s_hat_dot = jnp.gradient(s_hat_ecef, times, axis=0)
+
+    a1, a2 = jnp.triu_indices(len(ants_itrf), 1)
+    bl_ecef = ants_itrf[a1] - ants_itrf[a2]
+    bl_u = ants_u[:,a1] - ants_u[:,a2]
+
+    fringe_move = jnp.einsum("bi,ti->tb", bl_ecef, s_hat_dot) / lam
+    fringe_stat = - bl_u * Omega_e * jnp.cos(jnp.deg2rad(dec)) / lam
+    fringe_freq = fringe_move - fringe_stat
+
+    return fringe_freq
+
+
+@jit_with_doc
+def calculate_sat_corr_time(sat_xyz: Array, ants_xyz: Array, orbit_el: float, lat: float, dish_d: float, freqs: Array) -> float:
+    """Calculate the expected correlation time for a Gaussian process model of the RFI signal due to a satellite moving through the sidelobes of the primary beam.
+
+    Parameters
+    ----------
+    rfi_xyz : Array (n_time, 3)
+        Position of the RFI source over time in metres
+    ants_xyz : Array (n_time, n_ant, 3)
+        Positions of the antennas over time in metres.
+    orbit_el : float
+        Orbit elevation in metres.
+    lat : float
+        Latitude of the antennas in degrees.
+    dish_d : float
+        Dish diameter in metres. The primary beam is modelled by an Airy disk based on this.
+    freqs : Array (n_freq,)
+        Observational frequencies in Hz.
+
+    Returns
+    -------
+    float
+        Expected minimum correlation time in seconds.
+    """
+
+    r = sat_xyz - ants_xyz.mean(axis=1)
+    R = jnp.linalg.norm(r, axis=-1).min()
+
+    R_sat = earth_radius(lat) + orbit_el
+    v_sat = jnp.sqrt(G * M_e / R_sat)
+
+    l = jnp.min(C / freqs) * R / (dish_d * v_sat) / 4
+
+    return l
 
 @jit_with_doc
 def angular_separation(

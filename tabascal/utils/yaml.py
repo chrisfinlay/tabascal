@@ -16,8 +16,7 @@ from tabascal.dask.observation import Observation
 from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
 from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir, time_avg
-
-from tge import simulate_sky, Cl, Pk, beam_constants, lm_to_radec
+from tabascal.jax.coordinates import calculate_fringe_frequency
 
 # Define normalized yaml simulation config
 def get_base_sim_config():
@@ -385,6 +384,9 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
             methods[key](*params)
         
         if key=="pow_spec" and ast_["pow_spec"]["random"]["type"] is not None:
+
+            from tge import simulate_sky, Cl, Pk, beam_constants, lm_to_radec
+
             rand_ = ast_["pow_spec"]["random"]
             const = beam_constants(D=obs.dish_d.compute(), freq=obs.freqs[0].compute(), dBdT=None, f=1)
             beam = lambda x: 1
@@ -660,6 +662,25 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
     add_satellite_sources(obs, obs_spec)
     add_stationary_sources(obs, obs_spec)
     add_gains(obs, obs_spec)
+
+    # Change this for calculating all RFI sources
+    if obs.n_rfi_satellite>0:
+        fringe_params = {
+            "times": obs.times_fine[::obs.n_int_samples].compute(),
+            "freq": obs.freqs.max().compute(),
+            "rfi_xyz": obs.rfi_satellite_xyz[0][0,::obs.n_int_samples].compute(),
+            "ants_itrf": obs.ITRF.compute(),
+            "ants_u": obs.ants_uvw[::obs.n_int_samples,:,0].compute(),
+            "dec": obs.dec.compute(),
+        }
+        fringe_freq = calculate_fringe_frequency(**fringe_params)
+        f_sample = np.pi * np.max(np.abs(fringe_freq)) * np.max(obs.rfi_satellite_A_app) / np.sqrt(6 * obs.noise_std.mean()).compute()
+        n_int = np.ceil(obs.int_time.compute() * f_sample)
+
+        print()
+        print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
+        print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
+        print(f"Recommended n_int is >=     : {n_int:.0f}")
 
     print(obs)
 
