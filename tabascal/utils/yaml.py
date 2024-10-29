@@ -282,14 +282,13 @@ def load_config(path: str, config_type: str="sim") -> dict:
     path : str
         Path to the yaml config file.
     config_type : str, optional
-        Type of configuration file, by default "sim". Options are {"sim", "tab", "extract"}.
+        Type of configuration file, by default "sim". Options are {"sim", "tab", "extract", "pow_spec"}.
 
     Returns
     -------
     dict
         Configuration dictionary.
     """
-
 
     config = yaml_load(path)
     if config_type=="sim":

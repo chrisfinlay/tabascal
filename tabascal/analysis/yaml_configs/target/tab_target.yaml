@@ -23,20 +23,33 @@ fisher:
   n_samples: 1
   max_cg_iter: 10_000
 
-init:
-  truth: False
-
-pow_spec:
-  P0: 1e3
-  k0: 1e-3
-  gamma: 1.0
+# Priors and Initialization
+ast:
+  # init: est
+  init: prior
+  # init: truth
+  mean: 0
+  # mean: est
+  # mean: truth
+  pow_spec:
+    P0: 3e3
+    k0: 1e-3
+    gamma: 1.2
 
 rfi:
-  var: 100        # Jy
-  corr_time: 15   # seconds
+  # init: est
+  init: prior
+  # init: truth
+  mean: 0
+  # mean: est
+  # mean: truth
+  # var: 100        # Jy
+  corr_time: 24   # seconds
 
 # True gains
 gains:
+  # amp_mean: 1.0
+  # phase_mean: 0.0
   amp_mean: truth
   phase_mean: truth
   amp_std: 1.0      # %
