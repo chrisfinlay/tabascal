@@ -1,0 +1,38 @@
+data:
+  sim_dir:
+  
+ideal:
+  data_col: AST_DATA 
+  # suffix: perfect
+  flag: 
+    type: perfect
+    thresh: 0
+
+tab:
+  data_col: TAB_DATA 
+  # suffix: perfect
+  flag: 
+    type: perfect
+    thresh: 0
+
+flag1:
+  data_col: CAL_DATA 
+  # suffix: perfect
+  flag: 
+    type: perfect
+    thresh: 3
+  
+flag2:
+  data_col: CAL_DATA
+  # suffix: aoflagger
+  flag:
+    type: aoflagger
+    sif_path: 
+    strategies: 
+      - ../aux_data/firstpass.rfis
+      - ../aux_data/secondpass.rfis
+      - ../aux_data/thirdpass.rfis
+
+tge:
+  n_grid: 256
+  n_bins: 20

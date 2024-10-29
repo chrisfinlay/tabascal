@@ -1,6 +1,7 @@
 from tge import TGE, Cl
 from daskms import xds_from_ms, xds_from_table
 import xarray as xr
+import dask.array as da
 import argparse
 import numpy as np
 import matplotlib.pyplot as plt
@@ -11,23 +12,25 @@ from tabascal.utils.yaml import load_config
 def extract_ms_data(ms_path: str, data_col: str) -> tuple:
 
     xds = xds_from_ms(ms_path)[0]
-    flags = np.astype(xds.FLAG.data[:,0,0].compute(), bool)
+    flags = np.invert(xds.FLAG.data[:,0,0].compute().astype(bool))
     data = {
-        "dish_d": xds_from_ms(ms_path+"::ANTENNA")[0].DISH_DIAMETER.data.compute(),
-        "freq": xds_from_table(ms_path+"::SPECTRAL_WINDOW").CHAN_FREQ.data.compute(),
-        "vis": xds[data_col].data[not flags].compute(),
-        "uv": xds.UVW.data[not flags,:2].compute(),
-        "noise_std": xds.SIGMA.data[not flags].mean().compute()
+        "dish_d": xds_from_table(ms_path+"::ANTENNA")[0].DISH_DIAMETER.data.compute()[0],
+        "freq": xds_from_table(ms_path+"::SPECTRAL_WINDOW")[0].CHAN_FREQ.data.compute()[0,0],
+        "vis": xds[data_col].data[flags,0,0].compute(),
+        "uv": xds.UVW.data[flags,:2].compute(),
+        "noise_std": xds.SIGMA.data[flags].mean().compute()
     }
 
     return data
 
-def extract_pow_spec(zarr_path: str=None, ms_path: str=None, data_col: str="TAB_DATA", n_grid: int=256, n_bins: int=20, suffix: str=""): 
+def extract_pow_spec(ms_path: str=None, data_col: str="TAB_DATA", n_grid: int=256, n_bins: int=20, suffix: str=""): 
 
-    if suffix is not "":
+    if suffix != "":
         suffix = "_" + suffix
 
     sim_dir = os.path.split(ms_path)[0]
+    ps_dir = os.path.join(sim_dir, "power_spectrum")
+    os.makedirs(ps_dir, exist_ok=True)
 
     data = extract_ms_data(ms_path, data_col)
 
@@ -44,6 +47,25 @@ def extract_pow_spec(zarr_path: str=None, ms_path: str=None, data_col: str="TAB_
     norm = l * (l+1) / (2*np.pi)
     C_l_norm = norm*Cl(l)
 
+    xds = xr.Dataset(
+        {
+            # Gridded variables
+            "U_g": (("uv_grid"), da.asarray(tge_ps.U_g.flatten())),
+            "V_cg": (("uv_grid"), da.asarray(tge_ps.V_cg)),
+            "K1g": (("uv_grid"), da.asarray(tge_ps.K1g)),
+            "B_cg": (("uv_grid"), da.asarray(tge_ps.B_cg)),
+            "K2gg": (("uv_grid"), da.asarray(tge_ps.K2gg)),
+            "E_g": (("uv_grid"), da.asarray(tge_ps.E_g)),
+            # Binned variables
+            "U_b": (("l_bin"), da.asarray(tge_ps.U_b)),
+            "l_b": (("l_bin"), da.asarray(tge_ps.l_b)),
+            "Cl_b": (("l_bin"), da.asarray(tge_ps.Cl_b)),
+            "Cl_norm": (("l_bin"), da.asarray(tge_ps.Cl_norm)),
+            "delta_Cl_b": (("l_bin"), da.asarray(tge_ps.delta_Cl_b)),
+        }
+    )
+    xds.to_zarr(os.path.join(ps_dir, f"PS_results_{data_col}{suffix}.zarr"))
+
     plt.figure(figsize=(10,7))
 
     plt.loglog(l, C_l_norm*1e6, 'k', label="$C_l$")
@@ -54,35 +76,38 @@ def extract_pow_spec(zarr_path: str=None, ms_path: str=None, data_col: str="TAB_
     plt.ylabel("l(l+1)C$_l$/2$\\pi$ [mK$^2$]")
     plt.ylim(1e7, 5e9)
     plt.xlim(1e2, 1.5e4)
-    plt.savefig(os.path.join(sim_dir, f"plots/PS_Recovery_{data_col}{suffix}.pdf"), format="pdf", dpi=200)
+    plt.savefig(os.path.join(ps_dir, f"PS_Recovery_{data_col}{suffix}.pdf"), format="pdf", dpi=200)
 
 def main():
     parser = argparse.ArgumentParser(
         description="Calculate angular power spectrum using the tapered gridded estimator."
     )
     parser.add_argument(
-        "-z", "--zarr_path", default=None, help="Path to the zarr simulation file."
+        "-m", "--ms_path", default=None, help="Path to the MS file."
     )
     parser.add_argument(
-        "-m", "--ms_path", defualt=None, help="Path to the MS file."
+        "-d", "--data", default="ideal,tab,flag1,flag2", help="The data types to analyse. {'ideal', 'tab', 'flag1', 'flag2'}"
     )
     parser.add_argument(
         "-c", "--config", required=True, help="Path to the config file."
     )
     args = parser.parse_args()
-    zarr_path = args.zarr_path
     ms_path = args.ms_path
-    conf_path = args.config   
+    conf_path = args.config  
+    data_types = args.data.split(",") 
+
+    if ms_path[-1]=="/":
+        ms_path = ms_path[:-1]
 
     config = load_config(conf_path, config_type="pow_spec")
 
-    ps_conf = config["tge"]
+    tge_conf = config["tge"]
 
-    for data_type in config.keys():
+    for data_type in data_types:
         conf = config[data_type]
         if conf["suffix"] is None:
             conf["suffix"] = ""
-        extract_pow_spec(zarr_path, ms_path, conf["data_col"], ps_conf["n_grid"], ps_conf["n_bins"], conf["suffix"]) 
+        extract_pow_spec(ms_path, conf["data_col"], tge_conf["n_grid"], tge_conf["n_bins"], conf["suffix"]) 
 
 
 if __name__=="__main__":

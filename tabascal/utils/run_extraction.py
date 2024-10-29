@@ -24,7 +24,7 @@ def main():
         "-d", "--data", default="ideal,tab,flag1,flag2", help="The data types to analyse. {'ideal', 'tab', 'flag1', 'flag2'}"
     )
     parser.add_argument(
-        "-p", "--processes", default="image,extract", help="The types of processing to do. {'image', 'extract'}"
+        "-p", "--processes", default="image,extract", help="The types of processing to do. {'image', 'extract', 'pow_spec'}"
     )
     parser.add_argument(
         "-b", "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker. Default is /bin/bash."
@@ -134,6 +134,7 @@ def main():
             extract(img_path, zarr_path, config["extract"]["sigma_cut"], config["extract"]["beam_cut"], 
                     config["extract"]["thresh_isl"], config["extract"]["thresh_pix"])
 
+        # if "pow_spec" in procs:
 
     log.close()
     shutil.copy("log_extract.txt", sim_dir)

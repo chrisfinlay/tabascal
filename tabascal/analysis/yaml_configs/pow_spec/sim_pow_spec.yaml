@@ -19,7 +19,7 @@ observation:
   start_freq: 1.227e9
   chan_width: 209e3
   n_freq: 1
-  SEFD: 420
+  SEFD: 42
   auto_corrs: False
   no_w: False
   random_seed: 12345

@@ -175,7 +175,7 @@ def get_base_tab_config():
 
     return tab_config
 
-def get_pow_spec_config():
+def get_base_pow_spec_config():
     
     ps_config = {
         "ideal": {
@@ -295,9 +295,10 @@ def load_config(path: str, config_type: str="sim") -> dict:
         base_config = get_base_tab_config()
     elif config_type=="extract":
         base_config = get_base_extract_config()
+    elif config_type=="pow_spec":
+        base_config = get_base_pow_spec_config()
     else:
-        print("A config type must be specified. Options are {sim, tab, extract}.")
-        return {}
+        ValueError("A config type must be specified. Options are {sim, tab, extract, pow_spec}.")
     
     return deep_update(base_config, config)
 
@@ -724,7 +725,7 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
         print()
         print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
         print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
-        print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples})")
+        print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples} used)")
 
     print(obs)
 

@@ -1,7 +1,6 @@
 import argparse
 
 from tabascal.utils.yaml import load_config, run_sim_config
-from tabascal.utils.tools import str2bool
 
 def main():
     parser = argparse.ArgumentParser(
@@ -29,7 +28,7 @@ def main():
         "-nt", "--n_time", default=None, type=int, help="Number of time steps."
     )
     parser.add_argument(
-        "-o", "--overwrite", default="no", type=str2bool, help="Overwrite existing observation."
+        "-o", "--overwrite", default=False, action=argparse.BooleanOptionalAction, help="Overwrite existing observation."
     )
     args = parser.parse_args()
     rfi_amp = args.rfi_amp
