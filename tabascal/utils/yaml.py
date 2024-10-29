@@ -152,13 +152,20 @@ def get_base_tab_config():
             "n_samples": 1,
             "max_cg_iter": 10000,
         },
-        "init": {
-            "truth": True,
+        "ast":{
+            "init": "prior",    # Options are truth, prior, est, truth_mean
+            "mean": 0,          # Options include truth, est, 0, truth_mean
+            "pow_spec": {
+                "P0": 1e3,
+                "k0": 1e-3,
+                "gamma": 1.0,
+            },
         },
-        "pow_spec": {
-            "P0": 1e3,
-            "k0": 1e-3,
-            "gamma": 1.0,
+        "rfi": {
+            "init": "prior",    # Options are truth, prior, est
+            "mean": 0,          # Options are truth, est, 0
+            "var": None,        # Jy
+            "corr_time": 15,    # seconds
         },
         "gains": {
             "amp_mean": "truth",
@@ -166,10 +173,6 @@ def get_base_tab_config():
             "amp_std": 1.0,      # %
             "phase_std": 1.0,    # degrees
             "corr_time": 180,    # minutes
-        },
-        "rfi": {
-            "var": 100,        # Jy
-            "corr_time": 15,   # seconds
         },
     }
 

@@ -5,6 +5,7 @@ import os
 import sys
 import yaml
 import subprocess
+import numbers
 
 # os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"  # add this
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
@@ -189,26 +190,24 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     print(f"Number of Antennas   : {N_ant: 4}")
     print(f"Number of Time Steps : {N_time: 4}")
 
-    ##############################################
-    # Try to change this to only include available data
-    # P0, k0, gamma for the power_spectrum
-    # rfi_var, rfi_l 
-    # g_amp_var, g_phase_var, g_l These can probably stay the same or be made smaller
-    ##############################################
-
+    # Square root of the power spectrum in the time axis for the astronomical visibilities
     @jit
-    def f(k, P0=1e3, k0=1e-3, gamma=1.0):
+    def pow_spec(k, P0=1e3, k0=1e-3, gamma=1.0):
         k_ = (k / k0) ** 2
         return P0 * 0.5 * (jnp.exp(-0.5 * k_) + 1.0 / ((1.0 + k_) ** (gamma / 2)))
 
     ### GP Parameters
 
+    # Gain GP Parameters
     g_amp_var = (config["gains"]["amp_std"] / 100)**2 # convert % to decimal
     g_phase_var = jnp.deg2rad(config["gains"]["phase_std"])**2 # convert degrees to radians
     g_l = 60.0 * config["gains"]["corr_time"] # convert minutes to seconds
 
-    # rfi_var = jnp.sqrt(jnp.abs(vis_obs).max())
-    rfi_var = config["rfi"]["var"]
+    # RFI GP Parameters
+    if config["rfi"]["var"] is not None:
+        rfi_var = config["rfi"]["var"]
+    else:
+        rfi_var = jnp.max(jnp.abs(vis_obs))
     rfi_l = config["rfi"]["corr_time"]
 
     ### Gain Sampling Times
@@ -230,26 +229,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     )
     print(f"Number of data points: {2* N_bl * N_time}")
 
-
-    # ### Define RFI Kernel
-    # # @jit
-    # def rfi_kernel_fn(v_rfi, rfi_I, resample_rfi):
-    #     return averaging((v_rfi / rfi_I)[:, None] * resample_rfi, N_int_samples)
-
-
-    # key, subkey = random.split(key)
-    # phase_error_std = 0e-2
-    # traj_phase_error = jnp.exp(
-    #     1.0j
-    #     * phase_error_std
-    #     * random.normal(key, (N_rfi, N_ant, 1))
-    #     * times_fine[None, None, :]
-    # )
-
-    # rfi_A_perturb = jnp.transpose(rfi_A_app, axes=(0, 2, 1)) * traj_phase_error
-
-    resample_rfi = resampling_kernel(rfi_times, times_fine, rfi_var, rfi_l, 1e-8)
-
+    # To be replaced with TLE code for real data
     rfi_phase = jnp.array(
         [
             get_rfi_phase(times_fine, orbit, ants_uvw, ants_xyz, freqs).T
@@ -258,23 +238,31 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     )
 
     ##############################################
-    # Try to change this to only include derived data from MS
+    # Only include estimates derived from MS available data
     ##############################################
-
-    ### Vis AST Fourier modes
+    # Astronomical and RFI estimates from observed data
 
     vis_ast_est = jnp.mean(vis_obs.T, axis=1, keepdims=True) * jnp.ones((N_bl, N_time))
     ast_k_est = jnp.fft.fft(vis_ast_est, axis=1)
     k_ast = jnp.fft.fftfreq(N_time, int_time)
 
+    rfi_induce_est = (
+        jnp.interp(rfi_times, times, jnp.sqrt(jnp.max(jnp.abs(vis_obs - vis_ast_est.T), axis=1)))[
+            None, None, :
+        ] # shape is now (1, 1, N_rfi_times)
+        * jnp.ones((N_rfi, N_ant, N_rfi_times))
+        / N_rfi
+    )
+
+    # Stack observed data into real-valued array
     v_obs_ri = jnp.concatenate([vis_obs.real, vis_obs.imag], axis=0).T
 
     # Set Constant Parameters
     args = {
         "noise": noise if noise > 0 else 0.2,
-        "vis_ast_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), # Use this to not plot the truth
-        "vis_rfi_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), # Use this to not plot the truth
-        "gains_true": jnp.nan * jnp.zeros((N_ant, N_time), dtype=complex), # Use this to not plot the truth
+        "vis_ast_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), 
+        "vis_rfi_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex),
+        "gains_true": jnp.nan * jnp.zeros((N_ant, N_time), dtype=complex),
         "times": times,
         "times_fine": times_fine,
         "g_times": g_times,
@@ -287,7 +275,23 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         "n_int": int(N_int_samples),
     }
 
-    if config["plots"]["truth"] or config["init"]["truth"] or config["gains"]["amp_mean"] == "truth" or config["gains"]["phase_mean"] == "truth":
+    # Condition array if anything needs access to the truth
+    truth_cond = jnp.array(
+        [
+            bool(config["plots"]["truth"]),
+            config["gains"]["amp_mean"]=="truth",
+            config["gains"]["phase_mean"]=="truth",
+            config["ast"]["mean"]=="truth",
+            config["rfi"]["mean"]=="truth",
+            config["ast"]["mean"]=="truth_mean",
+            config["ast"]["init"]=="truth",
+            config["rfi"]["init"]=="truth",
+            config["ast"]["init"]=="truth_mean",
+        ]
+    )
+
+    # Calculate True Values
+    if jnp.any(truth_cond) :
         ### Define True Parameters
         gains_true = vmap(jnp.interp, in_axes=(None, None, 1))(
             times, times_fine, gains_ants
@@ -307,8 +311,8 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         }
         l = calculate_sat_corr_time(**corr_time_params)
 
-        print(f"Minimum expected RFI correlation time : {l:.0f} s ({rfi_l:.0f} s)")
-
+        print()
+        print(f"Minimum expected RFI correlation time : {l:.0f} s ({rfi_l:.0f} s used)")
         print()
         print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")
         print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast_true)):.1f} Jy")
@@ -346,76 +350,99 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             "gains_true": gains_true.T,
         })
 
+    # Set Gain Prior Mean
     if config["gains"]["amp_mean"] == "truth":
-        g_amp_mean = true_params["g_amp_induce"]
+        g_amp_prior_mean = true_params["g_amp_induce"]
+    elif isinstance(config["gains"]["amp_mean"], numbers.Number):
+        g_amp_prior_mean = config["gains"]["amp_mean"] * jnp.ones((N_ant, N_g_times))
     else:
-        g_amp_mean = config["gains"]["amp_mean"]
+        ValueError("gains: amp_mean: must be a number or 'truth'.")
 
     if config["gains"]["phase_mean"] == "truth":
-        g_phase_mean = true_params["g_phase_induce"]
+        g_phase_prior_mean = true_params["g_phase_induce"]
+    elif isinstance(config["gains"]["phase_mean"], numbers.Number):
+        g_phase_prior_mean = jnp.deg2rad(config["gains"]["phase_mean"]) * jnp.ones((N_ant-1, N_g_times))
     else:
-        g_phase_mean = jnp.deg2rad(config["gains"]["phase_mean"])
+        ValueError("gains: phase_mean: must be a number or 'truth'.")
+
+    # Set Astronomical Prior Mean
+    if config["ast"]["mean"]==0:
+        ast_k_prior_mean = jnp.zeros((N_bl, N_time), dtype=complex)
+    elif config["ast"]["mean"]=="est":
+        ast_k_prior_mean = ast_k_est
+    elif config["ast"]["mean"]=="truth":
+        ast_k_prior_mean = ast_k
+    elif config["ast"]["mean"]=="truth_mean":
+        ast_k_prior_mean = ast_k_mean
+    else:
+        ValueError("ast: mean: must be one of (est, prior, truth, truth_mean)")
+
+    # Set RFI Prior Mean
+    if config["rfi"]["mean"]==0:
+        rfi_prior_mean = jnp.zeros((N_rfi, N_ant, N_rfi_times), dtype=complex)
+    elif config["rfi"]["mean"]=="est":
+        rfi_prior_mean = rfi_induce_est
+    elif config["rfi"]["mean"]=="truth":
+        rfi_prior_mean = rfi_induce
+    else:
+        ValueError("rfi: mean: must be one of (est, prior, truth)")
 
     ### Define Prior Parameters
     args.update(
         {
-            "mu_G_amp": g_amp_mean * jnp.ones((N_ant, N_g_times)),
-            "mu_G_phase": g_phase_mean * jnp.ones((N_ant-1, N_g_times)),
-            # "mu_rfi_r": true_params["rfi_r_induce"],
-            # "mu_rfi_i": true_params["rfi_i_induce"],
-            "mu_rfi_r": jnp.zeros((N_rfi, N_ant, N_rfi_times)),
-            "mu_rfi_i": jnp.zeros((N_rfi, N_ant, N_rfi_times)),
-            # "mu_ast_k_r": true_params["ast_k_r"],
-            # "mu_ast_k_i": true_params["ast_k_i"],
-            "mu_ast_k_r": ast_k_est.real,
-            "mu_ast_k_i": ast_k_est.imag,
-            # "mu_ast_k_r": jnp.zeros((N_bl, N_time)),
-            # "mu_ast_k_i": jnp.zeros((N_bl, N_time)),
+            "mu_G_amp": g_amp_prior_mean,
+            "mu_G_phase": g_phase_prior_mean,
+            "mu_rfi_r": rfi_prior_mean.real,
+            "mu_rfi_i": rfi_prior_mean.imag,
+            "mu_ast_k_r": ast_k_prior_mean.real,
+            "mu_ast_k_i": ast_k_prior_mean.imag,
             "L_G_amp": jnp.linalg.cholesky(kernel(g_times, g_times, g_amp_var, g_l, 1e-8)),
             "L_G_phase": jnp.linalg.cholesky(
                 kernel(g_times, g_times, g_phase_var, g_l, 1e-8)
             ),
-            "sigma_ast_k": jnp.array([f(k_ast, **config["pow_spec"]) for _ in range(N_bl)]),
+            "sigma_ast_k": jnp.array([pow_spec(k_ast, **config["ast"]["pow_spec"]) for _ in range(N_bl)]),
             "L_RFI": jnp.linalg.cholesky(kernel(rfi_times, rfi_times, rfi_var, rfi_l)),
             "resample_g_amp": resampling_kernel(g_times, times, g_amp_var, g_l, 1e-8),
             "resample_g_phase": resampling_kernel(g_times, times, g_phase_var, g_l, 1e-8),
-            "resample_rfi": resample_rfi,
+            "resample_rfi": resampling_kernel(rfi_times, times_fine, rfi_var, rfi_l, 1e-8),
             "rfi_phase": rfi_phase,
-            # "rfi_kernel": rfi_kernel(vis_rfi, rfi_A_perturb, a1, a2),
         }
     )
 
     ##############################################
-    # Try to change this to only include available data like this example
+    # Initial parameters for optimization
     ##############################################
 
-    rfi_r_induce_init = (
-        jnp.interp(rfi_times, times, jnp.sqrt(jnp.max(jnp.abs(vis_obs - vis_ast_est.T), axis=1)))[
-            None, None, :
-        ] # shape is now (1, 1, N_rfi_times)
-        * jnp.ones((N_rfi, N_ant, N_rfi_times))
-        / N_rfi
-    )
+    # Set RFI parameter initialisation
+    if config["rfi"]["init"] == "est":
+        rfi_induce_init = rfi_induce_est    # Estimate from data
+    elif config["rfi"]["init"] == "prior":
+        rfi_induce_init = rfi_prior_mean    # Prior mean value
+    elif config["rfi"]["init"] == "truth":
+        rfi_induce_init = rfi_induce        # True value
+    else:
+        ValueError("rfi: init: must be one of (est, prior, truth)")
 
-    # rfi_r_induce_init = args["mu_rfi_r"] + 1.0j * args["mu_rfi_i"]
-    # rfi_r_induce_init = true_params["rfi_r_induce"] + 1.0j * true_params["rfi_i_induce"]
-
-    # ast_k_init = ast_k_mean
-    ast_k_init = jnp.fft.fft(vis_ast_est, axis=1)
-    # ast_k_init = args["mu_ast_k_r"] + 1.0j * args["mu_ast_k_i"]
-    # ast_k_init = true_params["ast_k_r"] + 1.0j*true_params["ast_k_i"]
+    # Set Astronomical parameter initialisation
+    if config["ast"]["init"] == "est":
+        ast_k_init = ast_k_est              # Estimate from data
+    elif config["ast"]["init"] == "prior":
+        ast_k_init = ast_k_prior_mean       # Prior mean value
+    elif config["ast"]["init"] == "truth":
+        ast_k_init = ast_k                  # True value
+    elif config["ast"]["init"] == "truth_mean":
+        ast_k_init = ast_k_mean           # Mean of true value
+    else:
+        ValueError("ast: init: must be one of (est, prior, truth, truth_mean)")
 
     init_params = {
-        "g_amp_induce": args["mu_G_amp"],
-        "g_phase_induce": args["mu_G_phase"],
+        "g_amp_induce": g_amp_prior_mean,
+        "g_phase_induce": g_phase_prior_mean,
         "ast_k_r": ast_k_init.real,
         "ast_k_i": ast_k_init.imag,
-        "rfi_r_induce": rfi_r_induce_init.real,
-        "rfi_i_induce": rfi_r_induce_init.imag,
+        "rfi_r_induce": rfi_induce_init.real,
+        "rfi_i_induce": rfi_induce_init.imag,
     }
-
-    if config["init"]["truth"]:
-        init_params = true_params
 
     ################
     del gains_ants

@@ -14,8 +14,8 @@ inference:
   fisher: False
 
 opt:
-  epsilon: 1e-2
-  max_iter: 100
+  epsilon: 1e-1
+  max_iter: 200
   dual_run: True
   guide: map
 
@@ -23,24 +23,37 @@ fisher:
   n_samples: 1
   max_cg_iter: 10_000
 
-init:
-  truth: False
-
-pow_spec:
-  P0: 5e3
-  k0: 1e-3
-  gamma: 1.0
+# Priors
+ast:
+  # init: est
+  # init: prior
+  init: truth
+  mean: 0
+  # mean: est
+  # mean: truth
+  pow_spec:
+    P0: 3e3
+    k0: 1e-3
+    gamma: 1.2
 
 rfi:
-  var: 100        # Jy
-  corr_time: 15   # seconds
+  # init: est
+  # init: prior
+  init: truth
+  mean: 0
+  # mean: est
+  # mean: truth
+  # var: 100        # Jy
+  corr_time: 24   # seconds
 
 # True gains
 gains:
+  # amp_mean: 1.0
+  # phase_mean: 0.0
   amp_mean: truth
   phase_mean: truth
-  amp_std: 1.0      # %
-  phase_std: 1.0    # degrees
+  amp_std: 0.1      # %
+  phase_std: 0.1    # degrees
   corr_time: 180    # minutes
 
 # gains:

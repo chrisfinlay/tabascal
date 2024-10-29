@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 import os
 
 from tabascal.utils.yaml import load_config
+from tabascal.utils.flag_data import write_perfect_flags, run_aoflagger
 
 def extract_ms_data(ms_path: str, data_col: str) -> tuple:
 
@@ -64,7 +65,7 @@ def extract_pow_spec(ms_path: str=None, data_col: str="TAB_DATA", n_grid: int=25
             "delta_Cl_b": (("l_bin"), da.asarray(tge_ps.delta_Cl_b)),
         }
     )
-    xds.to_zarr(os.path.join(ps_dir, f"PS_results_{data_col}{suffix}.zarr"))
+    xds.to_zarr(os.path.join(ps_dir, f"PS_results_{data_col}{suffix}.zarr"), mode="w")
 
     plt.figure(figsize=(10,7))
 
@@ -103,11 +104,26 @@ def main():
 
     tge_conf = config["tge"]
 
-    for data_type in data_types:
-        conf = config[data_type]
+    for key in data_types:
+        conf = config[key]
         if conf["suffix"] is None:
-            conf["suffix"] = ""
-        extract_pow_spec(ms_path, conf["data_col"], tge_conf["n_grid"], tge_conf["n_bins"], conf["suffix"]) 
+            suffix = ""
+        else:
+            suffix = "_" + conf["suffix"]
+
+        data_col = conf["data_col"]
+        flag_type = conf["flag"]["type"]
+        if flag_type=="perfect":
+            thresh = config[key]["flag"]["thresh"]
+            write_perfect_flags(ms_path, thresh)
+            name = f"{thresh:.1f}sigma{suffix}"
+        elif flag_type=="aoflagger":
+            run_aoflagger(ms_path, data_col, config[key]["flag"]["strategies"])
+            name = f"aoflagger{suffix}" 
+        else:
+            ValueError("Incorrect flagging type chosen. Must be one of {perfect, aoflagger}.")
+
+        extract_pow_spec(ms_path, conf["data_col"], tge_conf["n_grid"], tge_conf["n_bins"], name) 
 
 
 if __name__=="__main__":
