@@ -23,7 +23,7 @@ fisher:
   n_samples: 1
   max_cg_iter: 10_000
 
-# Priors
+# Priors and Initialisation
 ast:
   init: est
   # init: prior
