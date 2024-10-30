@@ -211,9 +211,9 @@ def rfi_vis(
 
     Parameters:
     -----------
-    app_amplitude: da.Array (n_src, n_time, n_ant, n_freq)
+    app_amplitude: da.Array (n_src, n_time, n_int, n_ant, n_freq)
         Apparent amplitude of the sources at each antenna.
-    c_distances: da.Array (n_src, n_time, n_ant)
+    c_distances: da.Array (n_src, n_time, n_int, n_ant)
         The phase corrected distances between the rfi sources and the antennas in metres.
     freqs: da.Array (n_freq,)
         Frequencies in Hz.
@@ -236,8 +236,8 @@ def rfi_vis(
 
     input = xr.Dataset(
         {
-            "app_amplitude": (["src", "time", "ant", "freq"], app_amplitude),
-            "c_distances": (["src", "time", "ant"], c_distances),
+            "app_amplitude": (["src", "time", "int", "ant", "freq"], app_amplitude),
+            "c_distances": (["src", "time", "int", "ant"], c_distances),
             "freqs": (["freq"], freqs),
             "a1": (["bl"], a1),
             "a2": (["bl"], a2),

@@ -203,14 +203,14 @@ def amp_to_intensity(amps, a1, a2):
     """Calculate intensity on a baseline ffrom the amplitudes at each antenna.
 
     Args:
-        amps (jnp.ndarray): Amplitudes at the antennas. (n_src, n_time, n_ant, n_freq)
+        amps (jnp.ndarray): Amplitudes at the antennas. (n_src, n_time, n_int, n_ant, n_freq)
         a1 (jnp.ndarray): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
         a2 (jnp.ndarray): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
 
     Returns:
         jnp.ndarray: Intensity on baselines.
     """
-    return amps[:, :, a1] * jnp.conjugate(amps[:, :, a2])
+    return amps[:, :, :, a1] * jnp.conjugate(amps[:, :, :, a2])
 
 
 @jit_with_doc
@@ -218,7 +218,7 @@ def phase_from_distances(distances, a1, a2, freqs):
     """Calculate phase differences between antennas from distances.
 
     Args:
-        distances (jnp.ndarray): Distances to antennas. (n_src, n_time, n_ant)
+        distances (jnp.ndarray): Distances to antennas. (n_src, n_time, n_int, n_ant)
         a1 (jnp.ndarray): Antenna 1 indexes, between 0 and n_ant-1. (n_bl,)
         a2 (jnp.ndarray): Antenna 2 indexes, between 0 and n_ant-1. (n_bl,)
         freqs (jnp.ndarray): Frequencies in Hz. (n_freq,)
@@ -227,17 +227,17 @@ def phase_from_distances(distances, a1, a2, freqs):
         jnp.ndarray: Phases on baselines.
     """
     # Create array of shape (n_src, n_time, n_bl, n_freq)
-    freqs = freqs[None, None, None, :]
-    distances = distances[:, :, :, None]
+    freqs = freqs[None, None, None, None, :]
+    distances = distances[:, :, :, :, None]
 
     phases = minus_two_pi_over_lamda(freqs) * (
-        distances[:, :, a1, :] - distances[:, :, a2, :]
+        distances[:, :, :, a1, :] - distances[:, :, :, a2, :]
     )
 
     return phases
 
 
-@jit_with_doc
+@jit
 def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     # Create array of shape (n_src, n_time, n_bl, n_freq), then sum over n_src
 
@@ -251,8 +251,9 @@ def _rfi_vis(app_amplitude, c_distances, freqs, a1, a2):
     intensity = amp_to_intensity(app_amplitude, a1, a2)
 
     vis = jnp.sum(intensity * jnp.exp(1.0j * phase), axis=0)
+    vis_avg = jnp.mean(vis, axis=1)
 
-    return vis
+    return vis_avg
 
 
 @jit_with_doc
@@ -570,7 +571,7 @@ def generate_gains(
     return gains_ants
 
 
-# @jit_with_doc
+@jit_with_doc
 def apply_gains(
     vis_ast: jnp.ndarray,
     vis_rfi: jnp.ndarray,

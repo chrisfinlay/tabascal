@@ -219,6 +219,8 @@ class Observation(Telescope):
             n_ant,
         )
 
+        n_int_samples = n_int_samples + 1 if n_int_samples%2==0 else n_int_samples
+
         self.target_name = target_name
         self.auto_corrs = auto_corrs
 
@@ -249,7 +251,7 @@ class Observation(Telescope):
         )
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
-
+        self.t_idx = da.arange(self.n_int_samples//2, self.n_time_fine, self.n_int_samples).rechunk(self.time_chunk)
 
         self.altaz = da.asarray(alt_az_of_source(gmst_to_lst(self.times_fine.compute(), longitude), latitude, ra, dec))
         self.gsa = da.asarray(lst_sec2deg(self.times_fine.compute()), chunks=(self.time_fine_chunk,))
@@ -287,20 +289,20 @@ class Observation(Telescope):
         self.mag_uvw = da.linalg.norm(self.bl_uvw[0], axis=-1)
         self.syn_bw = beam_size(self.mag_uvw.max().compute(), freqs.max())
 
-        self.ants_xyz = ITRF_to_XYZ(self.ITRF, self.gsa) 
-        self.vis_ast = da.zeros(
-            shape=(self.n_time_fine, self.n_bl, self.n_freq),
-            chunks=(self.time_fine_chunk, self.bl_chunk, self.freq_chunk),
+        self.ants_xyz = ITRF_to_XYZ(self.ITRF, self.gsa)
+        self.vis_rfi = da.zeros(
+            shape=(self.n_time, self.n_bl, self.n_freq),
+            chunks=(self.time_chunk, self.bl_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
-        self.vis_rfi = da.zeros(
-            shape=(self.n_time_fine, self.n_bl, self.n_freq),
-            chunks=(self.time_fine_chunk, self.bl_chunk, self.freq_chunk),
+        self.vis_ast = da.zeros(
+            shape=(self.n_time, self.n_bl, self.n_freq),
+            chunks=(self.time_chunk, self.bl_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
         self.gains_ants = da.ones(
-            shape=(self.n_time_fine, self.n_ant, self.n_freq),
-            chunks=(self.time_fine_chunk, self.ant_chunk, self.freq_chunk),
+            shape=(self.n_time, self.n_ant, self.n_freq),
+            chunks=(self.time_chunk, self.ant_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
         self.random_seed = np.random.default_rng(random_seed)
@@ -409,7 +411,7 @@ Number of stationary RFI :  {n_stat}"""
 
         Parameters
         ----------
-        I: ndarray (n_src, n_time_fine, n_freq) or
+        I: ndarray (n_src, n_time, n_freq) or
             Intensity of the sources in Jy. If I.ndim==2, then this is assumed
             to the spectrogram (n_time, n_freq) of a single source. If
             I.ndim==1, then this is assumed to be the spectral profile of a
@@ -422,6 +424,10 @@ Number of stationary RFI :  {n_stat}"""
         I = da.atleast_2d(I)
         if I.ndim == 2:
             I = da.expand_dims(I, axis=0)
+        I = I * da.ones(
+            shape=(I.shape[0], self.n_time, self.n_freq),
+            chunks=(I.shape[0], self.time_chunk, self.freq_chunk),
+        )
         ra = da.atleast_1d(ra)
         dec = da.atleast_1d(dec)
         lmn = radec_to_lmn(ra, dec, [self.ra, self.dec])
@@ -431,12 +437,8 @@ Number of stationary RFI :  {n_stat}"""
             * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
             ** 2
         )
-        vis_ast = astro_vis(I_app, self.bl_uvw, lmn, self.freqs)
+        vis_ast = astro_vis(I_app, self.bl_uvw[self.t_idx], lmn, self.freqs)
         
-        I = I * da.ones(
-            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
-            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
-        )
         self.ast_p_I.append(I)
         self.ast_p_lmn.append(lmn)
         self.ast_p_radec.append(jnp.array([ra, dec]))
@@ -453,7 +455,7 @@ Number of stationary RFI :  {n_stat}"""
 
         Parameters
         ----------
-        I: Array (n_src, n_time_fine, n_freq) or
+        I: Array (n_src, n_time, n_freq) or
             Intensity of the sources in Jy. If I.ndim==2, then this is assumed
             to the spectrogram (n_time, n_freq) of a single source. If
             I.ndim==1, then this is assumed to be the spectral profile of a
@@ -473,8 +475,8 @@ Number of stationary RFI :  {n_stat}"""
         if I.ndim == 2:
             I = da.expand_dims(I, axis=0)
         I = I * da.ones(
-            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
-            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
+            shape=(I.shape[0], self.n_time, self.n_freq),
+            chunks=(I.shape[0], self.time_chunk, self.freq_chunk),
         )
         major = da.atleast_1d(major)
         minor = da.atleast_1d(minor)
@@ -488,7 +490,7 @@ Number of stationary RFI :  {n_stat}"""
             * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
             ** 2
         )
-        vis_ast = astro_vis_gauss(I_app, major, minor, pos_angle, self.bl_uvw, lmn, self.freqs)
+        vis_ast = astro_vis_gauss(I_app, major, minor, pos_angle, self.bl_uvw[self.t_idx], lmn, self.freqs)
 
         self.ast_g_major.append(major)
         self.ast_g_minor.append(minor)
@@ -509,7 +511,7 @@ Number of stationary RFI :  {n_stat}"""
 
         Parameters
         ----------
-        I: Array (n_src, n_time_fine, n_freq) or
+        I: Array (n_src, n_time, n_freq) or
             Intensity of the sources in Jy. If I.ndim==2, then this is assumed
             to the spectrogram (n_time, n_freq) of a single source. If
             I.ndim==1, then this is assumed to be the spectral profile of a
@@ -525,8 +527,8 @@ Number of stationary RFI :  {n_stat}"""
         if I.ndim == 2:
             I = da.expand_dims(I, axis=0)
         I = I * da.ones(
-            shape=(I.shape[0], self.n_time_fine, I.shape[2]),
-            chunks=(I.shape[0], self.time_fine_chunk, self.freq_chunk),
+            shape=(I.shape[0], self.n_time, self.n_freq),
+            chunks=(I.shape[0], self.time_chunk, self.freq_chunk),
         )
         shape = da.atleast_1d(shape)
         ra = da.atleast_1d(ra)
@@ -538,7 +540,7 @@ Number of stationary RFI :  {n_stat}"""
             * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
             ** 2
         )
-        vis_ast = astro_vis_exp(I_app, shape, self.bl_uvw, lmn, self.freqs)
+        vis_ast = astro_vis_exp(I_app, shape, self.bl_uvw[self.t_idx], lmn, self.freqs)
 
         self.ast_e_major.append(shape)
         self.ast_e_I.append(I)
@@ -615,8 +617,8 @@ Number of stationary RFI :  {n_stat}"""
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
 
         vis_rfi = rfi_vis(
-            rfi_A_app,
-            distances + self.ants_uvw[None, :, :, -1],
+            rfi_A_app.reshape((-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)),
+            (distances + self.ants_uvw[None, :, :, -1]).reshape((-1, self.n_time, self.n_int_samples, self.n_ant)),
             self.freqs,
             self.a1,
             self.a2,
@@ -695,8 +697,8 @@ Number of stationary RFI :  {n_stat}"""
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
-            rfi_A_app,
-            distances + self.ants_uvw[None, :, :, -1],
+            rfi_A_app.reshape((-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)),
+            (distances + self.ants_uvw[None, :, :, -1]).reshape((-1, self.n_time, self.n_int_samples, self.n_ant)),
             self.freqs,
             self.a1,
             self.a2,
@@ -747,45 +749,39 @@ Number of stationary RFI :  {n_stat}"""
             G0_std,
             Gt_std_amp,
             Gt_std_phase,
-            self.times_fine,
+            self.times,
             self.n_ant,
             self.n_freq,
             random_seed if random_seed else self.random_seed,
-        ).rechunk((self.time_fine_chunk, self.ant_chunk, self.freq_chunk))
+        ).rechunk((self.time_chunk, self.ant_chunk, self.freq_chunk))
 
     def calculate_vis(self, flags: bool=True, random_seed=None):
         """
         Calculate the total gain amplified visibilities,  average down to the
         originally defined sampling rate and add noise.
         """
-        self.vis = apply_gains(
+        self.vis_uncal = apply_gains(
             self.vis_ast, self.vis_rfi, self.gains_ants, self.a1, self.a2
-        ).rechunk((self.time_fine_chunk, self.bl_chunk, self.freq_chunk))
-        self.vis_avg = time_avg(self.vis, self.n_int_samples).rechunk(
-            ((self.time_chunk, self.bl_chunk, self.freq_chunk))
-        )
+        ).rechunk((self.time_chunk, self.bl_chunk, self.freq_chunk))
         self.vis_obs, self.noise_data = add_noise(
-            self.vis_avg,
+            self.vis_uncal,
             self.noise_std,
             random_seed if random_seed else self.random_seed,
-        )
-        self.vis_model = time_avg(self.vis_ast, self.n_int_samples).rechunk(
-            (self.time_chunk, self.bl_chunk, self.freq_chunk)
         )
         self.vis_cal = apply_gains(
             self.vis_obs,
             da.zeros_like(self.vis_obs),
-            1.0 / self.gains_ants[self.n_int_samples // 2 :: self.n_int_samples],
+            1.0 / self.gains_ants,
             self.a1,
             self.a2,
         )
         if flags:
             if self.noise_std.mean() > 0:
-                self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * self.noise_std[
+                self.flags = da.abs(self.vis_cal - self.vis_ast) > 3.0 * self.noise_std[
                     None, None, :
                 ] * da.sqrt(2)
             else:
-                self.flags = da.abs(self.vis_cal - self.vis_model) > 3.0 * da.std(self.vis_model, axis=0)[None,...]
+                self.flags = da.abs(self.vis_cal - self.vis_ast) > 3.0 * da.std(self.vis_model, axis=0)[None,...]
         else:
             self.flags = da.zeros(shape=self.vis_cal.shape, dtype=bool)
 

@@ -630,8 +630,8 @@ def save_data(obs: Observation, obs_spec: dict, zarr_path: str, ms_path: str) ->
         print("Calculating visibilities ...")
         obs.calculate_vis()
 
-        rfi_amp = da.mean(da.abs(time_avg(obs.vis_rfi, obs.n_int_samples))).compute()
-        ast_amp = da.mean(da.abs(time_avg(obs.vis_ast, obs.n_int_samples))).compute()
+        rfi_amp = da.mean(da.abs(obs.vis_rfi)).compute()
+        ast_amp = da.mean(da.abs(obs.vis_ast)).compute()
         noise = da.std(obs.noise_data).compute()
         flag_rate = 100 * da.mean(obs.flags).compute()
 

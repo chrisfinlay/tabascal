@@ -123,10 +123,9 @@ def construct_observation_ds(obs: Observation):
 
 def get_visibility_data(obs: Observation):
     vis_data = {
-        "vis_ast": (["time_fine", "bl", "freq"], obs.vis_ast),
-        "vis_rfi": (["time_fine", "bl", "freq"], obs.vis_rfi),
+        "vis_ast": (["time", "bl", "freq"], obs.vis_ast),
+        "vis_rfi": (["time", "bl", "freq"], obs.vis_rfi),
         "vis_obs": (["time", "bl", "freq"], obs.vis_obs),
-        "vis_model": (["time", "bl", "freq"], obs.vis_model),
         "vis_calibrated": (["time", "bl", "freq"], obs.vis_cal),
         "flags": (["time", "bl", "freq"], obs.flags),
     }
@@ -150,7 +149,9 @@ def get_optional_data(obs: Observation):
         "noise_std": (["freq"], obs.noise_std),
         "noise_data": (["time", "bl", "freq"], obs.noise_data),
         # Gain parameters
-        "gains_ants": (["time_fine", "ant", "freq"], obs.gains_ants),
+        "gains_ants": (["time", "ant", "freq"], obs.gains_ants),
+        # Time index from time_fine to time
+        "time_idx": (["time"], obs.t_idx),
     }
     
     return opt_data
@@ -213,13 +214,13 @@ def get_astromonical_source_data(obs: Observation):
         ast_p_data = {
             # Astronomical point source parameters
             "ast_p_I": (
-                ["ast_p_src", "time_fine", "freq"],
-                da.concatenate(obs.ast_p_I, axis=0),
+                ["ast_p_src", "time", "freq"],
+                da.concatenate(obs.ast_p_I, axis=0).rechunk('auto'),
             ),
-            "ast_p_lmn": (["ast_p_src", "lmn"], da.concatenate(obs.ast_p_lmn, axis=0)),
+            "ast_p_lmn": (["ast_p_src", "lmn"], da.concatenate(obs.ast_p_lmn, axis=0).rechunk('auto')),
             "ast_p_radec": (
                 ["ast_p_src", "radec"],
-                da.concatenate(obs.ast_p_radec, axis=0).T,
+                da.concatenate(obs.ast_p_radec, axis=1).rechunk('auto').T,
             ),
         }
     else:
@@ -229,17 +230,17 @@ def get_astromonical_source_data(obs: Observation):
         ast_g_data = {
             # Astronomical point source parameters
             "ast_g_I": (
-                ["ast_g_src", "time_fine", "freq"],
-                da.concatenate(obs.ast_g_I, axis=0),
+                ["ast_g_src", "time", "freq"],
+                da.concatenate(obs.ast_g_I, axis=0).rechunk('auto'),
             ),
-            "ast_g_lmn": (["ast_g_src", "lmn"], da.concatenate(obs.ast_g_lmn, axis=0)),
+            "ast_g_lmn": (["ast_g_src", "lmn"], da.concatenate(obs.ast_g_lmn, axis=0).rechunk('auto')),
             "ast_g_radec": (
                 ["ast_g_src", "radec"],
-                da.concatenate(obs.ast_g_radec, axis=0).T,
+                da.concatenate(obs.ast_g_radec, axis=1).rechunk('auto').T,
             ),
-            "ast_g_major": (["ast_g_src"], da.concatenate(obs.ast_g_major, axis=0)),
-            "ast_g_minor": (["ast_g_src"], da.concatenate(obs.ast_g_minor, axis=0)),
-            "ast_g_pos_angle": (["ast_g_src"], da.concatenate(obs.ast_g_pos_angle, axis=0)),
+            "ast_g_major": (["ast_g_src"], da.concatenate(obs.ast_g_major, axis=0).rechunk('auto')),
+            "ast_g_minor": (["ast_g_src"], da.concatenate(obs.ast_g_minor, axis=0).rechunk('auto')),
+            "ast_g_pos_angle": (["ast_g_src"], da.concatenate(obs.ast_g_pos_angle, axis=0).rechunk('auto')),
         }
     else:
         ast_g_data = {}
@@ -248,15 +249,15 @@ def get_astromonical_source_data(obs: Observation):
         ast_e_data = {
             # Astronomical point source parameters
             "ast_e_I": (
-                ["ast_e_src", "time_fine", "freq"],
-                da.concatenate(obs.ast_e_I, axis=0),
+                ["ast_e_src", "time", "freq"],
+                da.concatenate(obs.ast_e_I, axis=0).rechunk('auto'),
             ),
-            "ast_e_lmn": (["ast_e_src", "lmn"], da.concatenate(obs.ast_e_lmn, axis=0)),
+            "ast_e_lmn": (["ast_e_src", "lmn"], da.concatenate(obs.ast_e_lmn, axis=0).rechunk('auto')),
             "ast_e_radec": (
                 ["ast_e_src", "radec"],
-                da.concatenate(obs.ast_e_radec, axis=0).T,
+                da.concatenate(obs.ast_e_radec, axis=1).rechunk('auto').T,
             ),
-            "ast_e_major": (["ast_e_src"], da.concatenate(obs.ast_e_major, axis=0)),
+            "ast_e_major": (["ast_e_src"], da.concatenate(obs.ast_e_major, axis=0).rechunk('auto')),
         }
     else:
         ast_e_data = {}
@@ -273,19 +274,19 @@ def get_satellite_rfi_data(obs: Observation):
             # Satellite RFI parameters
             "rfi_sat_A": (
                 ["sat_src", "time_fine", "ant", "freq"],
-                da.concatenate(obs.rfi_satellite_A_app, axis=0),
+                da.concatenate(obs.rfi_satellite_A_app, axis=0).rechunk('auto'),
             ),
             "rfi_sat_xyz": (
                 ["sat_src", "time_fine", "xyz"],
-                da.concatenate(obs.rfi_satellite_xyz, axis=0),
+                da.concatenate(obs.rfi_satellite_xyz, axis=0).rechunk('auto'),
             ),
             "rfi_sat_ang_sep": (
                 ["sat_src", "time_fine", "ant"],
-                da.concatenate(obs.rfi_satellite_ang_sep, axis=0),
+                da.concatenate(obs.rfi_satellite_ang_sep, axis=0).rechunk('auto'),
             ),
             "rfi_sat_orbit": (
                 ["sat_src", "orbit"],
-                da.concatenate(obs.rfi_satellite_orbit, axis=0),
+                da.concatenate(obs.rfi_satellite_orbit, axis=0).rechunk('auto'),
             ),
         }
     else:
@@ -299,19 +300,19 @@ def get_stationary_rfi_data(obs: Observation):
             # Stationary RFI parameters
             "rfi_stat_A": (
                 ["stat_src", "time_fine", "ant", "freq"],
-                da.concatenate(obs.rfi_stationary_A_app, axis=0),
+                da.concatenate(obs.rfi_stationary_A_app, axis=0).rechunk('auto'),
             ),
             "rfi_stat_xyz": (
                 ["stat_src", "time_fine", "xyz"],
-                da.concatenate(obs.rfi_stationary_xyz, axis=0),
+                da.concatenate(obs.rfi_stationary_xyz, axis=0).rechunk('auto'),
             ),
             "rfi_stat_ang_sep": (
                 ["stat_src", "time_fine", "ant"],
-                da.concatenate(obs.rfi_stationary_ang_sep, axis=0),
+                da.concatenate(obs.rfi_stationary_ang_sep, axis=0).rechunk('auto'),
             ),
             "rfi_stat_geo": (
                 ["stat_src", "geo"],
-                da.concatenate(obs.rfi_stationary_geo, axis=0),
+                da.concatenate(obs.rfi_stationary_geo, axis=0).rechunk('auto'),
             ),
         }
     else:
@@ -344,43 +345,21 @@ def write_ms(
         dask.compute(table)
 
 
-def time_avg(x: dask.Array, n_avg: int) -> dask.Array:
-    """Running average in chunks of size, and stride of 'n_avg' along the first dimension.
-
-    Parameters
-    ----------
-    x : dask.Array
-        Array to do averaging on over the first dimension
-    n_avg : int
-        The stride and size of averaging chunks.
-
-    Returns
-    -------
-    dask.Array
-        Averaged data.
-    """
-    shape = x.shape[1:]
-    x_avg = x.reshape(-1, n_avg, *shape).mean(axis=1)
-    return x_avg
-
 def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None, flags: dask.Array=None, extras: bool=True):
     """Get the data table for a Measurement Set."""
     n_time = ds.attrs["n_time"]
-    n_int_samples = ds.attrs["n_int_samples"]
     n_freq = ds.attrs["n_freq"]
     n_corr = 1
     n_bl = ds.attrs["n_bl"]
     n_row = n_time * n_bl
 
-    centroid_idx = int((n_int_samples) / 2) + n_int_samples * np.arange(n_time)
-
     noise_std = ds.noise_std.data.mean() * da.ones(shape=(n_row, 1))
 
     vis_obs = ds.vis_obs.data.reshape(n_row, n_freq, n_corr)
-    vis_model = ds.vis_model.data.reshape(n_row, n_freq, n_corr)
+    vis_model = ds.vis_ast.data.reshape(n_row, n_freq, n_corr)
 
     vis_cal = ds.vis_calibrated.data.reshape(n_row, n_freq, n_corr) 
-    vis_rfi = time_avg(ds.vis_rfi.data, ds.n_int_samples).reshape(n_row, n_freq, n_corr)#.rechunk(vis_obs.chunksize) 
+    vis_rfi = ds.vis_rfi.data.reshape(n_row, n_freq, n_corr)
     noise_data = ds.noise_data.data.reshape(n_row, n_freq, n_corr) 
     rfi_resid = vis_rfi + noise_data
     no_rfi = vis_model + noise_data
@@ -409,7 +388,7 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
         .astype(np.int32)
     )
 
-    uvw = ds.bl_uvw.data[centroid_idx].reshape(-1, 3)
+    uvw = ds.bl_uvw.data[ds.time_idx].reshape(-1, 3)
 
     weight = da.ones(shape=(n_row, 1))
     a_id = da.zeros(n_row, dtype=np.int32)
