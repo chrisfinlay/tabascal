@@ -15,16 +15,18 @@ import pandas as pd
 from tabascal.dask.observation import Observation
 from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
-from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir, time_avg
-from tabascal.jax.coordinates import calculate_fringe_frequency
+from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
+from tabascal.jax.coordinates import calculate_fringe_frequency, lst_deg2sec
+
+from daskms import xds_from_ms
 
 # Define normalized yaml simulation config
 def get_base_sim_config():
     tel_keys = ["name", "latitude", "longitude", "elevation", "dish_d", "enu_path", "itrf_path", "n_ant"]
     norm_tel = {key: None for key in tel_keys}
 
-    obs_keys = ["target_name", "ra", "dec", "start_time", "int_time", "n_time", 
-                "start_freq", "chan_width", "n_freq", "SEFD", "auto_corrs", "nor_w", 
+    obs_keys = ["target_name", "ra", "dec", "start_time", "start_time_jd", "start_time_isot", "int_time", "n_time", 
+                "start_freq", "chan_width", "n_freq", "SEFD", "auto_corrs", "no_w", 
                 "random_seed"]
     norm_obs = {key: None for key in obs_keys}
 
@@ -380,7 +382,20 @@ def load_obs(obs_spec: dict) -> Observation:
         x = da.arange(start, start + n * delta, delta)
         return x
 
-    times = arange(obs_["start_time"], obs_["int_time"], obs_["n_time"])
+    if obs_["start_time"] is not None:
+        start_time = obs_["start_time"]
+    elif obs_["start_time_jd"] is not None:
+        from astropy.time import Time
+        start_time_jd = Time(obs_["start_time_jd"], format="jd", scale="ut1")
+        start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
+    elif obs_["start_time_isot"] is not None:
+        from astropy.time import Time
+        start_time_jd = Time(obs_["start_time_isot"], format="isot", scale="ut1")
+        start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
+    else:
+        ValueError("A start time must be given in either the observation: start_time: or observation: start_time_jd:")
+
+    times = arange(start_time, obs_["int_time"], obs_["n_time"])
     freqs = arange(obs_["start_freq"], obs_["chan_width"], obs_["n_freq"])
 
     obs = Observation(
@@ -581,9 +596,6 @@ def add_stationary_sources(obs: Observation, obs_spec: dict) -> None:
                 else:
                     print()
                     print(f"loc_id: {uid} multiply-defined.")
-
-
-        
                     
 def add_gains(obs: Observation, obs_spec: dict) -> None:
 
@@ -605,7 +617,7 @@ def add_gains(obs: Observation, obs_spec: dict) -> None:
         print("No gains added ...")
 
 
-def plot_diagnostics(obs: Observation, obs_spec: dict, save_path: str):
+def plot_diagnostics(obs: Observation, obs_spec: dict, save_path: str) -> None:
 
     diag_ = obs_spec["diagnostics"]
 
@@ -622,49 +634,60 @@ def plot_diagnostics(obs: Observation, obs_spec: dict, save_path: str):
         print("Plotting RFI angular separations ...")
         plot_angular_seps(obs, save_path)
 
+def print_signal_specs(vis_rfi: da.Array, vis_ast: da.Array, noise_data: da.Array, flags: da.Array) -> None:
+
+    rfi_amp = da.mean(da.abs(vis_rfi)).compute()
+    ast_amp = da.mean(da.abs(vis_ast)).compute()
+    noise = da.std(noise_data).compute()
+    flag_rate = 100 * da.mean(flags).compute()
+
+    print()
+    print(f"Mean RFI Amp.  : {rfi_amp:.2f} Jy")
+    print(f"Mean AST Amp.  : {ast_amp:.2f} Jy")
+    print(f"Vis Noise Amp. : {noise:.2f} Jy")
+    print(f"Flag Rate      : {flag_rate:.1f} %")
+
+def write_to_ms(xds: xr.Dataset, ms_path: str, overwrite: bool) -> None:
+    start = datetime.now()
+    print()
+    print(f"Writing visibilities to MS ...")
+    write_ms(xds, ms_path, overwrite)
+    end = datetime.now()
+    print(f"MS Write Time : {end - start}")
+
+def write_to_zarr(obs: Observation, zarr_path: str, overwrite: bool) -> None:
+    start = datetime.now()
+    print()
+    print(f"Writing visibilities to zarr ...")
+    obs.write_to_zarr(zarr_path, overwrite)
+    end = datetime.now()
+    print(f"zarr Write Time : {end - start}")
+
 def save_data(obs: Observation, obs_spec: dict, zarr_path: str, ms_path: str) -> None:
 
-    
     if obs_spec["output"]["zarr"] or obs_spec["output"]["ms"]:
         print()
         print("Calculating visibilities ...")
         obs.calculate_vis()
 
-        rfi_amp = da.mean(da.abs(obs.vis_rfi)).compute()
-        ast_amp = da.mean(da.abs(obs.vis_ast)).compute()
-        noise = da.std(obs.noise_data).compute()
-        flag_rate = 100 * da.mean(obs.flags).compute()
-
-        print()
-        print(f"Mean RFI Amp.  : {rfi_amp:.2f} Jy")
-        print(f"Mean AST Amp.  : {ast_amp:.2f} Jy")
-        print(f"Vis Noise Amp. : {noise:.2f} Jy")
-        print(f"Flag Rate      : {flag_rate:.1f} %")
-
     overwrite = obs_spec["output"]["overwrite"]
 
-    if obs_spec["output"]["zarr"]:
-        start = datetime.now()
-        print()
-        print(f"Writing visibilities to zarr ...")
-        obs.write_to_zarr(zarr_path, overwrite)
-        end = datetime.now()
-        print(f"zarr Write Time : {end - start}")
     if obs_spec["output"]["zarr"] and obs_spec["output"]["ms"]:
-        start = datetime.now()
+        write_to_zarr(obs, zarr_path, overwrite)
         xds = xr.open_zarr(zarr_path)
-        print()
-        print(f"Writing visibilities to MS ...")
-        write_ms(xds, ms_path, overwrite)
-        end = datetime.now()
-        print(f"MS Write Time : {end - start}")
+        write_to_ms(xds, ms_path, overwrite)
+        print_signal_specs(xds.vis_rfi.data, xds.vis_ast.data, xds.noise_data.data, xds.flags.data)
+    elif obs_spec["output"]["zarr"]:
+        write_to_zarr(obs, zarr_path, overwrite)
+        xds = xr.open_zarr(zarr_path)
+        print_signal_specs(xds.vis_rfi.data, xds.vis_ast.data, xds.noise_data.data, xds.flags.data)
     elif obs_spec["output"]["ms"]:
-        start = datetime.now()
-        print()
-        print(f"Writing visibilities to MS ...")
-        write_ms(obs.dataset, ms_path, overwrite)
-        end = datetime.now()
-        print(f"MS Write Time : {end - start}")
+        write_to_ms(obs.dataset, ms_path, overwrite)
+        xds = xds_from_ms(ms_path)
+        print_signal_specs(xds.RFI_MODEL_DATA.data, xds.AST_MODEL_DATA.data, xds.NOISE_DATA.data, xds.FLAG.data)
+    else:
+        ValueError("No output format has been chosen. output: zarr: or output: ms: must be True.")
+
 
 def save_inputs(obs_spec: dict, save_path: str) -> None:
 
