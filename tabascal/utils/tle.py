@@ -273,12 +273,12 @@ def load_tle_data_json(json_paths: list[str], epoch_jd: float, norad_ids: list[i
     return tles
 
 
-def make_window(times: ArrayLike[Time], alt: ArrayLike, angular_sep: ArrayLike) -> dict:
+def make_window(times: list[Time], alt: ArrayLike, angular_sep: ArrayLike) -> dict:
     """Make a dictionary containing the start and end times of a satellite pass including some stats.
 
     Parameters
     ----------
-    times : ArrayLike[Time]
+    times : list[Time]
         Times of the satellite pass.
     alt : ArrayLike
         Altitude of the satellite during pass.
@@ -300,7 +300,7 @@ def make_window(times: ArrayLike[Time], alt: ArrayLike, angular_sep: ArrayLike) 
 
     return window
 
-def check_visibility(tle_line1: str, tle_line2: str, times: ArrayLike[Time], observer_lat: float, observer_lon: float, observer_elevation: float, target_ra: float, target_dec: float, max_ang_sep: float, min_elev: float) -> list:
+def check_visibility(tle_line1: str, tle_line2: str, times: list[Time], observer_lat: float, observer_lon: float, observer_elevation: float, target_ra: float, target_dec: float, max_ang_sep: float, min_elev: float) -> list:
     """Calculate visibility windows for a satellite when observing a celestial target.
 
     This function determines time windows when a satellite will pass a celestial
@@ -313,7 +313,7 @@ def check_visibility(tle_line1: str, tle_line2: str, times: ArrayLike[Time], obs
         First line of the satellite's Two-Line Element set (TLE).
     tle_line2 : str
         Second line of the satellite's Two-Line Element set (TLE).
-    times : ArrayLike[Time]
+    times : list[Time]
         Array of observation times as Astropy Time objects.
     observer_lat : float
         Observer's latitude in degrees.
@@ -380,7 +380,7 @@ def check_visibility(tle_line1: str, tle_line2: str, times: ArrayLike[Time], obs
     
     return windows
 
-def check_satellite_visibilibities(norad_ids: ArrayLike[int], tles_line1: ArrayLike[str], tles_line2: ArrayLike[str], times: ArrayLike[Time], observer_lat: float, observer_lon: float, observer_elevation: float, target_ra: float, target_dec: float, max_ang_sep: float, min_elev: float) -> dict:
+def check_satellite_visibilibities(norad_ids: list[int], tles_line1: list[str], tles_line2: list[str], times: list[Time], observer_lat: float, observer_lon: float, observer_elevation: float, target_ra: float, target_dec: float, max_ang_sep: float, min_elev: float) -> dict:
     """Calculate visibility windows for a satellite when observing a celestial target.
 
     This function determines time windows when a satellite will pass a celestial
@@ -389,13 +389,13 @@ def check_satellite_visibilibities(norad_ids: ArrayLike[int], tles_line1: ArrayL
 
     Parameters
     ----------
-    norad_ids: ArrayLike[int]
+    norad_ids: list[int]
         NORAD IDs to calculate for.
-    tles_line1 : ArrayLike[str]
+    tles_line1 : list[str]
         First line of the satellites' Two-Line Element set (TLE).
-    tles_line2 : ArrayLike[str]
+    tles_line2 : list[str]
         Second line of the satellites' Two-Line Element set (TLE).
-    times : ArrayLike[Time]
+    times : list[Time]
         Array of observation times as Astropy Time objects.
     observer_lat : float
         Observer's latitude in degrees.
@@ -444,6 +444,30 @@ def check_satellite_visibilibities(norad_ids: ArrayLike[int], tles_line1: ArrayL
         if len(windows)>0:
             all_windows[norad_ids[i]] = windows
     return all_windows
+
+
+def get_satellite_positions(tles: list, times: list) -> ArrayLike:
+    """Calculate the ICRS positions of satellites by propagating their TLEs over the given times.
+
+    Parameters
+    ----------
+    tles : Array (n_sat, 2)
+        TLEs usind to propagate positions.
+    times : Array (n_time,)
+        Astropy times to calculate positions at.
+
+    Returns
+    -------
+    Array (n_sat, n_time, 3)
+        Satellite positions over time
+    """
+    
+    ts = load.timescale()
+    sf_times = ts.ut1_jd(times.jd)
+    
+    sat_pos = np.array([EarthSatellite(tle_line1, tle_line2, ts=ts).at(sf_times).position.km.T*1e3 for tle_line1, tle_line2 in tles])
+
+    return sat_pos
 
 
 def sathub_time_to_isot(sathub_time: str) -> str:
