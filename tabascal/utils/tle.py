@@ -7,101 +7,135 @@ import numpy as np
 import pandas as pd
 from numpy.typing import ArrayLike
 
+from spacetrack import SpaceTrackClient
+import spacetrack.operators as op
+
 from tqdm import tqdm
 
 import os
-import json
+import ast
 
-class SpaceTrackClient:
-    """
-    Client for fetching TLE data from Space-Track.org
-    """
+from glob import glob
+
+import string
+import random
+
+
+def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
+    return ''.join(random.choice(chars) for _ in range(size))
+
+
+def get_tles_by_id(username: str, password: str, norad_ids: list[int], epoch_jd: float, window_days: float=1.0, limit: int=2000, tle_dir: str=None) -> pd.DataFrame:
+
+    norad_ids = list(set(norad_ids))
+    n_ids_start = len(norad_ids)
+    epoch_str = Time(epoch_jd, format="jd", scale="ut1").strftime("%Y-%m-%d")
+
+    if tle_dir:
+        tle_dir = os.path.abspath(tle_dir)
+        tle_paths = glob(os.path.join(tle_dir, f"{epoch_str}-*.json"))
+        local_ids = []
+        if len(tle_paths)>0:
+            tles_local = pd.concat([pd.read_json(tle_path) for tle_path in tle_paths])
+            tles_local = tles_local[tles_local["NORAD_CAT_ID"].isin(norad_ids)]
+            # tles_local.reset_index(drop=True, inplace=True)
+            local_ids = tles_local["NORAD_CAT_ID"].unique()
+            norad_ids = list(set(norad_ids) - set(local_ids))
+        print(f"Local TLEs loaded  : {len(local_ids)}")
+    else:
+        local_ids = []
+        
+    max_ids = 500
+    n_ids = len(norad_ids)
     
-    def __init__(self, username: str, password: str):
-        self.auth = {
-            "identity": username,
-            "password": password
-        }
-        self.base_url = "https://www.space-track.org"
-        self.session = requests.Session()
-        self._authenticate()
+    n_req = n_ids // max_ids + 1 if n_ids%max_ids>0 else n_ids // max_ids
+    
+    # Calculate the date threshold
+    start_time = Time(epoch_jd - window_days, format="jd", scale="ut1").datetime
+    end_time = Time(epoch_jd + window_days, format="jd", scale="ut1").datetime
+    drange = op.inclusive_range(start_time, end_time)
 
-    def _authenticate(self) -> None:
-        """Authenticate with Space-Track.org"""
-        auth_url = f"{self.base_url}/ajaxauth/login"
-        response = self.session.post(auth_url, data=self.auth)
-        response.raise_for_status()
-
-    def get_tles_by_id(self, norad_ids: list[int], epoch_jd: float, limit: int) -> list[dict]:
+    remote_ids = []
+    tles = pd.DataFrame()
+    if len(norad_ids)>0:
+        st = SpaceTrackClient(identity=username, password=password)
+        tles = [0]*n_req
+        for i in range(n_req):
+            tles[i] = pd.DataFrame(ast.literal_eval(st.tle(norad_cat_id=norad_ids[max_ids*i:max_ids*(i+1)], epoch=drange, limit=limit, format='json')))
+        if sum([len(tle) for tle in tles])>0:
+            tles = pd.concat(tles)
+            tles["Fetch_Timestamp"] = Time.now().fits
+            remote_ids = tles["NORAD_CAT_ID"].unique()
+        else:
+            tles = pd.DataFrame()
         
-        if len(norad_ids)>500:
-            ValueError("Can only request 500 NORAD IDs at a time.")
-
-        # Calculate the date threshold
-        start_time = Time(epoch_jd-1, format="jd", scale="ut1").strftime("%Y-%m-%d")
-        end_time = Time(epoch_jd+1, format="jd", scale="ut1").strftime("%Y-%m-%d")
-        date_str = f"%3E{start_time}%2C%3C{end_time}"
-        id_str = "".join([str(i)+"%2C" for i in norad_ids])[:-3]
         
+
+    print(f"Remote TLEs loaded : {len(remote_ids)}")
+    print(f"TLEs not found     : {n_ids_start - len(remote_ids) - len(local_ids)}")
+
+    save_name = id_generator()
+
+    if tle_dir and len(tles)>0:
+        save_path = os.path.join(tle_dir, f"{epoch_str}-{save_name}.json")
+        tles.to_json(save_path)
+        print(f"Saving remotely obtained TLEs to {save_path}")
+    elif len(tles)>0:
+        save_path = os.path.join("./", f"{epoch_str}-{save_name}.json")
+        tles.to_json(save_path)
+        print(f"Saving remotely obtained TLEs to {save_path}")
+
+    if tle_dir:
+        tles = pd.concat([tles_local, tles])
+
+    if len(tles)>0:
+        tles.reset_index(drop=True, inplace=True)
+        tles["EPOCH_JD"] = tles["EPOCH"].apply(lambda x: Time(spacetrack_time_to_isot(x)).jd)
+        tles = get_closest_times(tles, epoch_jd)
+    
+    return tles
+
+
+def get_tles_by_name(username: str, password: str, names: list[str], epoch_jd: float, window_days: float=1.0, limit: int=10000, tle_dir: str="./tles") -> pd.DataFrame:
+    
+    os.makedirs(tle_dir, exist_ok=True)
+
+    # Calculate the date threshold
+    epoch_str = Time(epoch_jd, format="jd", scale="ut1").strftime("%Y-%m-%d")
+    start_time = Time(epoch_jd - window_days, format="jd", scale="ut1").datetime
+    end_time = Time(epoch_jd + window_days, format="jd", scale="ut1").datetime
+    drange = op.inclusive_range(start_time, end_time)
+
+    names_op = [op.like(name.upper()) for name in names]
+    
+    st = SpaceTrackClient(identity=username, password=password)
+
+    local_ids = 0
+    remote_ids = 0
+    tles = [0] * len(names)
+    for i, name in enumerate(names):
         try:
-            # Build query URL for Starlink satellites
-            # This query:
-            # 1. Gets latest TLEs for objects with OBJECT_NAME starting with STARLINK
-            # 2. Only includes TLEs updated after the specified date
-            # 3. Orders by NORAD_CAT_ID for consistency
-            query_url = (
-                f"{self.base_url}/basicspacedata/query/class/tle_latest/"
-                f"NORAD_CAT_ID/{id_str}/EPOCH/{date_str}/"
-                f"orderby/NORAD_CAT_ID%20asc/limit/{limit}/format/json"
-            )
-
-            # Make request
-            response = self.session.get(query_url)
-            response.raise_for_status()
-            
-            # Parse response
-            data = response.json()
-            
-            # Add a timestamp for when this data was fetched
-            timestamp = Time.now().fits
-            for entry in data:
-                entry["_fetch_timestamp"] = timestamp
-            
-            return data
-            
-        except Exception as e:
-            print(f"Error fetching TLEs: {str(e)}")
-            raise
-
-    def save_tles(self, filename: str, norad_ids: list[int], epoch_jd: float, limit: int) -> None:
+            tle = pd.read_json(os.path.join(tle_dir, f"{epoch_str}-{name}.json"))
+            tles[i] = tle
+            local_ids += len(tle["NORAD_CAT_ID"].unique())
+        except:
+            tle = pd.DataFrame(ast.literal_eval(st.tle(object_name=names_op[i], epoch=drange, limit=limit, format='json')))
+            tle["Fetch_Timestamp"] = Time.now().strftime("%Y-%m-%d %H:%M:%S")
+            tles[i] = tle
+            remote_ids += len(tle["NORAD_CAT_ID"].unique())
+            if len(tles)>0:
+                tles[i].to_json(os.path.join(tle_dir, f"{epoch_str}-{name}.json"))
         
-        data = self.get_tles_by_id(norad_ids, epoch_jd, limit)
-        
-        # Save to file
-        with open(filename, "w") as f:
-            json.dump({
-                "fetch_timestamp": Time.now().fits,
-                "total_satellites": len(data),
-                "tle_data": data
-            }, f, indent=2)
-        
-        print(f"Saved {len(data)} TLEs to {filename}")
+    print(f"Local TLEs loaded   : {local_ids}")
+    print(f"Remote TLEs loaded  : {remote_ids}")
+    
+    tles = pd.concat(tles)
+    if len(tles)>0:
+        tles.reset_index(drop=True, inplace=True)
+        tles["EPOCH_JD"] = tles["EPOCH"].apply(lambda x: Time(spacetrack_time_to_isot(x)).jd)
+        tles = get_closest_times(tles, epoch_jd)
 
-        return data
-
-    def close(self) -> None:
-        """Close the session and logout"""
-        logout_url = f"{self.base_url}/auth/logout"
-        try:
-            self.session.get(logout_url)
-        finally:
-            self.session.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close()
+    return tles
 
 
 def spacetrack_time_to_isot(spacetrack_time: str) -> str:
@@ -118,12 +152,11 @@ def spacetrack_time_to_isot(spacetrack_time: str) -> str:
         ISOT formatted time.
     """
     
-    from datetime import datetime
-    
     dt = datetime.strptime(spacetrack_time, "%Y-%m-%d %H:%M:%S")
     isot = dt.strftime("%Y-%m-%dT%H:%M:%S.000")
     
     return isot
+
 
 def get_closest_times(df: pd.DataFrame, target_time_jd: float, id_col: str="NORAD_CAT_ID", time_jd_col: str="EPOCH_JD") -> pd.DataFrame:
     """
@@ -156,135 +189,93 @@ def get_closest_times(df: pd.DataFrame, target_time_jd: float, id_col: str="NORA
     return closest_instances
 
 
-def get_tle_data_st(username: str, password: str, norad_ids: list[int], epoch_jd: float, limit: int=3000, save_path: str=None) -> pd.DataFrame:
-    """Download TLE data from SpaceTrack for the given NORAD IDs.
+def get_visible_satellite_tles(username: str, password: str, times: ArrayLike, observer_lat: float, observer_lon: float, observer_elevation: float,
+    target_ra: float, target_dec: float, max_angular_separation: float, min_elevation: float, names: list, norad_ids: ArrayLike=None, tle_dir: str="./tles") -> tuple:
+    """Get the TLEs corresponding to satellites that satisfy the conditions given. 
 
     Parameters
     ----------
     username : str
-        Username for SpaceTrack login.
+        SpaceTrack username
     password : str
-        Password for SpaceTrack login.
-    norad_ids : list[int]
-        NORAD IDs.
-    epoch_jd : float
-        Epoch in Julian date to search around.
-    limit : int, default=3000
-        Number of results to limit to.
-    save_path : str, optional
-        Path to save downloaded TLEs to.
+        SpaceTrack password.
+    times : ArrayLike
+        Times to condsider in Astropy.time.Time format.
+    observer_lat : float
+        Observer latitude in degrees.
+    observer_lon : float
+        Observer longitude in degrees.
+    observer_elevation : float
+        Observer elevation in metres above sea level.
+    target_ra : float
+        Right ascension of the target direction.
+    target_dec : float
+        Declination of the target direction.
+    max_angular_separation : float
+        Maximum angular separation, in degrees, to accept a satellite pass.
+    min_elevation : float
+        Minimum elevation, in degrees, above the horizon to accept the satellite pass.
+    norad_ids : ArrayLike
+        NORAD IDs to consider.
+    names: list
+        Satellite names to consider. An approximate search is done.
+    tle_dir: str
+        Directory path where TLEs should be / are cached.
 
     Returns
     -------
-    pd.DataFrame
-        Dataframe of TLE data for each NORAD ID.
-    """
-    max_query_id = 500
-    
-    with SpaceTrackClient(username, password) as client:
-        data = []
-        n_iter = int(np.ceil(len(norad_ids)/max_query_id))
-        for i in range(n_iter):
-            slc = slice(max_query_id*i, max_query_id*(i+1))
-    
-            if save_path is not None:
-                name, ext = os.path.splitext(save_path)
-                save_name = name + "_" + Time(epoch_jd, format="jd", scale="ut1").strftime("%Y-%m-%d") + f"_{i:03}" + ext
-                data += client.save_tles(save_name, norad_ids[slc], epoch_jd, limit)
-            else:
-                data += client.get_tles_by_id(norad_ids[slc], epoch_jd, limit)
-    
-    df = pd.DataFrame(data)
-    if len(df)>0:
-        df["EPOCH_JD"] = df["EPOCH"].apply(lambda x: Time(spacetrack_time_to_isot(x)).jd)
-        df = get_closest_times(df, epoch_jd, "NORAD_CAT_ID", "EPOCH_JD")
-        numeric_cols = [
-            "ORDINAL", "NORAD_CAT_ID", "EPOCH_MICROSECONDS", "MEAN_MOTION", "ECCENTRICITY", "INCLINATION",
-            "RA_OF_ASC_NODE", "ARG_OF_PERICENTER", "MEAN_ANOMALY", "EPHEMERIS_TYPE", "ELEMENT_SET_NO", 
-            "REV_AT_EPOCH", "BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT", "FILE", "OBJECT_NUMBER", 
-            "SEMIMAJOR_AXIS", "PERIOD", "APOGEE", "PERIGEE"
-        ]
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col])
-        df["DECAYED"] = pd.to_numeric(df["DECAYED"]).astype(bool)
-
-    return df
-
-
-def load_tle_data_st(tle_json_path: str, epoch_jd: float, norad_ids: list[int]=None) -> pd.DataFrame:
-    """Load TLE data from JSON files downloaded using the get_tle_data_st function.
-
-    Parameters
-    ----------
-    tle_json_path : str
-        TLE JSON path.
-    epoch_jd : float
-        Epoch to search for TLE in Julian date.
-    norad_ids : list[int], optional
-        NORAD IDs to search for., by default None
-
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe of TLE data for given NORAD IDs. If none are given, all are returned.
-    """
-    
-    data = json.load(open(tle_json_path))["tle_data"]
-
-    df = pd.DataFrame(data)
-    if len(df)>0:
-        df["EPOCH_JD"] = df["EPOCH"].apply(lambda x: Time(spacetrack_time_to_isot(x)).jd)
-        df = get_closest_times(df, epoch_jd, "NORAD_CAT_ID", "EPOCH_JD")
-        numeric_cols = [
-            "ORDINAL", "NORAD_CAT_ID", "EPOCH_MICROSECONDS", "MEAN_MOTION", "ECCENTRICITY", "INCLINATION",
-            "RA_OF_ASC_NODE", "ARG_OF_PERICENTER", "MEAN_ANOMALY", "EPHEMERIS_TYPE", "ELEMENT_SET_NO", 
-            "REV_AT_EPOCH", "BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT", "FILE", "OBJECT_NUMBER", 
-            "SEMIMAJOR_AXIS", "PERIOD", "APOGEE", "PERIGEE"
-        ]
-        for col in numeric_cols:
-            df[col] = pd.to_numeric(df[col])
-        df["DECAYED"] = pd.to_numeric(df["DECAYED"]).astype(bool)
-        if norad_ids is not None:
-            df = df[df["NORAD_CAT_ID"].isin(norad_ids)]
-
-    return df
-
-
-def load_tle_data_json(json_paths: list[str], epoch_jd: float, norad_ids: list[int]=None) -> pd.DataFrame:
-    """Load TLE data from JSON files downloaded using the get_tle_data_st function.
-
-    Parameters
-    ----------
-    json_paths : list[str]
-        TLE JSON path.
-    epoch_jd : float
-        Epoch to search for TLE in Julian date.
-    norad_ids : list[int], optional
-        NORAD IDs to search for., by default None
-
-    Returns
-    -------
-    pd.DataFrame
-        Dataframe of TLE data for given NORAD IDs. If none are given, all are returned.
+    tuple
+        - NORAD IDs that pass the criteria.
+        - TLEs for the satellites corresponding to the returned NORAD IDs.
     """
 
-    tles = pd.concat([load_tle_data_st(path, epoch_jd, norad_ids) for path in json_paths])
+    tles = pd.DataFrame()
+    if norad_ids is not None:
+        tles = get_tles_by_id(username, password, norad_ids, np.mean(times.jd), tle_dir=tle_dir)
+    if names is not None:
+        tles = pd.concat([tles, get_tles_by_name(username, password, names, np.mean(times.jd), tle_dir=tle_dir)])
+
+    windows = check_satellite_visibilibities(
+        tles["NORAD_CAT_ID"].values, tles["TLE_LINE1"].values, tles["TLE_LINE2"].values, 
+        times, observer_lat, observer_lon, observer_elevation,
+        target_ra, target_dec, max_angular_separation, min_elevation)
+
+    if len(windows)>0:
+        tles_ = tles[tles["NORAD_CAT_ID"].isin(windows["norad_id"])][["NORAD_CAT_ID", "TLE_LINE1", "TLE_LINE2"]].values
+        return tles_[:,0], tles_[:,1:]
+    else:
+        return None, None
+    
+
+def type_cast_tles(tles: pd.DataFrame) -> pd.DataFrame:
+    
+    numeric_cols = [
+        "NORAD_CAT_ID", "EPOCH_MICROSECONDS", "MEAN_MOTION", "ECCENTRICITY", "INCLINATION",
+        "RA_OF_ASC_NODE", "ARG_OF_PERICENTER", "MEAN_ANOMALY", "EPHEMERIS_TYPE", "ELEMENT_SET_NO", 
+        "REV_AT_EPOCH", "BSTAR", "MEAN_MOTION_DOT", "MEAN_MOTION_DDOT", "FILE", "OBJECT_NUMBER", 
+        "SEMIMAJOR_AXIS", "PERIOD", "APOGEE", "PERIGEE"
+    ]
+    
+    for col in numeric_cols:
+        tles[col] = pd.to_numeric(tles[col])
+    tles["DECAYED"] = pd.to_numeric(tles["DECAYED"]).astype(bool)
     
     return tles
 
 
-def make_window(times: list[Time], alt: ArrayLike, angular_sep: ArrayLike) -> dict:
+def make_window(times: ArrayLike, alt: ArrayLike, angular_sep: ArrayLike, idx: ArrayLike) -> dict:
     """Make a dictionary containing the start and end times of a satellite pass including some stats.
 
     Parameters
     ----------
-    times : list[Time]
+    times : ArrayLike[Time]
         Times of the satellite pass.
     alt : ArrayLike
         Altitude of the satellite during pass.
     angular_sep : ArrayLike
         Angular separation of the satellite during pass from target.
-
+    idx: ArrayLike
+        Index locations of the window.
     Returns
     -------
     dict
@@ -292,10 +283,10 @@ def make_window(times: list[Time], alt: ArrayLike, angular_sep: ArrayLike) -> di
     """
 
     window = {
-        "start_time": times[0].datetime.strftime(f"%Y-%m-%d-%H:%M:%S {times.scale.upper()}"),
-        "end_time": times[-1].datetime.strftime(f"%Y-%m-%d-%H:%M:%S {times.scale.upper()}"),
-        "min_ang_sep": np.min(angular_sep),
-        "max_elevation": np.max(alt),
+        "start_time": times[idx][0].datetime.strftime(f"%Y-%m-%d-%H:%M:%S {times.scale.upper()}"),
+        "end_time": times[idx][-1].datetime.strftime(f"%Y-%m-%d-%H:%M:%S {times.scale.upper()}"),
+        "min_ang_sep": np.min(angular_sep[idx]),
+        "max_elevation": np.max(alt[idx]),
     }
 
     return window
@@ -374,7 +365,7 @@ def check_visibility(tle_line1: str, tle_line2: str, times: list[Time], observer
     break_idx = np.where(np.diff(vis_idx)>1)[0]
     if len(break_idx)>0 or len(vis_idx)>0:
         break_idx = np.concatenate([[0], break_idx, [len(times)]])
-        windows = [make_window(times[vis_idx[break_idx[i]:break_idx[i+1]]], alt.degrees[vis_idx[break_idx[i]:break_idx[i+1]]], angular_sep[vis_idx[break_idx[i]:break_idx[i+1]]]) for i in range(len(break_idx)-1)]
+        windows = [make_window(times, alt.degrees, angular_sep, vis_idx[break_idx[i]:break_idx[i+1]]) for i in range(len(break_idx)-1)]
     else:
         windows = []
     
@@ -433,7 +424,7 @@ def check_satellite_visibilibities(norad_ids: list[int], tles_line1: list[str], 
     windows.
     """
 
-    all_windows = {}
+    all_windows = []
     for i in tqdm(range(len(norad_ids))):
         windows = check_visibility(
             tles_line1[i], tles_line2[i], times, 
@@ -442,8 +433,8 @@ def check_satellite_visibilibities(norad_ids: list[int], tles_line1: list[str], 
             max_ang_sep, min_elev
         )
         if len(windows)>0:
-            all_windows[norad_ids[i]] = windows
-    return all_windows
+            all_windows += [{"norad_id": norad_ids[i], **window} for window in windows]
+    return pd.DataFrame(all_windows)
 
 
 def get_satellite_positions(tles: list, times: list) -> ArrayLike:
@@ -557,3 +548,25 @@ def get_sat_pos(norad_id: int|str, times_jd: float) -> ArrayLike:
     sat_pos = get_sat_pos_tle(sathub_resp["tle_line1"], sathub_resp["tle_line2"], sathub_resp["satellite_name"], times_jd)
 
     return sat_pos.T 
+
+
+def get_visible_sats(norad_id: int, times_jd, latitude, longitude, elevation: float=0.0):
+
+    jd_step = np.diff(times_jd)[0]
+    
+    url = 'https://satchecker.cps.iau.org/ephemeris/catalog-number-jdstep/'
+    params = {
+        'catalog': str(norad_id),
+        'latitude': latitude,
+        'longitude': longitude,
+        'elevation': elevation,
+        'startjd': np.min(times_jd),
+        'stopjd': np.max(times_jd),
+        'stepjd': jd_step,
+        'min_altitude': 0
+    }
+    r = requests.get(url, params=params).json()
+    if "count" in r.keys():
+        return pd.DataFrame([{key: val for key, val in zip(r["fields"], r["data"][i])} for i in range(r["count"])])
+    else:
+        return pd.DataFrame()
