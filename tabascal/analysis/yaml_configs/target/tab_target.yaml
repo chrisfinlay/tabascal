@@ -15,7 +15,7 @@ inference:
 
 opt:
   epsilon: 1e-2
-  max_iter: 100
+  max_iter: 500
   dual_run: True
   guide: map
 
@@ -26,8 +26,8 @@ fisher:
 # Priors and Initialization
 ast:
   # init: est
-  init: prior
-  # init: truth
+  # init: prior
+  init: truth
   mean: 0
   # mean: est
   # mean: truth
@@ -38,8 +38,8 @@ ast:
 
 rfi:
   # init: est
-  init: prior
-  # init: truth
+  # init: prior
+  init: truth
   mean: 0
   # mean: est
   # mean: truth

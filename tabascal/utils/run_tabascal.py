@@ -293,11 +293,9 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     # Calculate True Values
     if jnp.any(truth_cond) :
         ### Define True Parameters
-        gains_true = vmap(jnp.interp, in_axes=(None, None, 1))(
-            times, times_fine, gains_ants
-        ).T
-        vis_ast_true = vis_ast.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
-        vis_rfi_true = vis_rfi.reshape(N_time, N_int_samples, N_bl).mean(axis=1)
+        gains_true = gains_ants
+        vis_ast_true = vis_ast
+        vis_rfi_true = vis_rfi
 
         xds = xr.open_zarr(zarr_path)
 
@@ -324,7 +322,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         )
 
         gains_induce = vmap(jnp.interp, in_axes=(None, None, 1))(
-            g_times, times_fine, gains_ants
+            g_times, times, gains_ants
         )
         rfi_induce = jnp.array(
             [

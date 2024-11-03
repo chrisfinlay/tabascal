@@ -13,6 +13,8 @@ observation:
   ra: 27.0
   dec: -30.0
   start_time: 440.0
+  start_time_jd: None
+  start_time_isot: None
   int_time: 2.0
   n_time: 450
   n_int: 256
@@ -28,7 +30,7 @@ ast_sources:
   point:
     random: 
       n_src: 100
-      min_I: 3sigma
+      min_I: 5sigma
       max_I: 1.0
       I_pow_law: 1.6
       si_mean: 0.7
@@ -58,7 +60,7 @@ gains:
   random_seed: 999
 
 output:
-  path: ../../data/
+  path: ../../data/pnt_src_10_seed_truth_init
   prefix: tab1
   overwrite: True
   zarr: True

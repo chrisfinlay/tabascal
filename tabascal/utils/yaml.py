@@ -46,7 +46,7 @@ def get_base_sim_config():
     norm_ast.update({"pow_spec": {"path": None, "random": {"type": None, "random_seed": 1234}}})
 
     norm_rfi = {
-        "satellite": {"tle_dir": "./tles", "norad_ids": [], "norad_ids_path": None, "sat_names": [], 
+        "satellite": {"tle_dir": "./tles", "norad_ids": [], "norad_ids_path": None, "sat_names": [], "norad_spec_model": None,
                       "sat_ids": None, "circ_path": None, 
                       "power_scale": 1, "spec_model": None},
         "stationary": {"loc_ids": None, "geo_path": None, "power_scale": 1, "spec_model": None}
@@ -63,10 +63,12 @@ def get_base_sim_config():
 
     norm_dask = {"max_chunk_MB": 100.0}
 
+    norm_st = {"username": None, "password": None}
+
     sim_keys = ["telescope", "observation", "ast_sources", "rfi_sources", 
-                "gains", "output", "diagnostics", "dask"]
+                "gains", "output", "diagnostics", "dask", "spacetrack"]
     sim_dicts = [norm_tel, norm_obs, norm_ast, norm_rfi, 
-                 norm_gains, norm_out, norm_diag, norm_dask]
+                 norm_gains, norm_out, norm_diag, norm_dask, norm_st]
 
     base_config = {key: value for key, value in zip(sim_keys, sim_dicts)}
 
@@ -393,18 +395,18 @@ def load_obs(obs_spec: dict) -> Observation:
     elif obs_["start_time_jd"]:
         from astropy.time import Time
         start_time_jd = Time(obs_["start_time_jd"], format="jd", scale="ut1")
-        start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
+        # start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
         start_time_jd = start_time_jd.jd
     elif obs_["start_time_isot"]:
         from astropy.time import Time
         start_time_jd = Time(obs_["start_time_isot"], format="isot", scale="ut1")
-        start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
+        # start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
         start_time_jd = start_time_jd.jd
     else:
         ValueError("A start time must be given in either the observation: start_time: or observation: start_time_jd:")
 
     time_range = arange(0, obs_["int_time"], obs_["n_time"])
-    times = start_time + time_range
+    # times = start_time + time_range
     times_jd = start_time_jd + time_range/(24*3600)
     freqs = arange(obs_["start_freq"], obs_["chan_width"], obs_["n_freq"])
 
@@ -414,9 +416,10 @@ def load_obs(obs_spec: dict) -> Observation:
         elevation=tel_["elevation"],
         ra=obs_["ra"],
         dec=obs_["dec"],
-        times=times,
+        # times=times,
         times_jd=times_jd,
         freqs=freqs,
+        chan_width=obs_["chan_width"],
         SEFD=obs_["SEFD"],
         ENU_path=tel_["enu_path"],
         ITRF_path=tel_["itrf_path"], 
@@ -591,6 +594,8 @@ def add_tle_satellite_sources(obs: Observation, obs_spec: dict) -> None:
             sat_["max_angular_separation"], sat_["min_elevation"], 
             sat_["sat_names"], norad_ids, sat_["tle_dir"]
             )
+        
+        print(norad_ids)
 
         sat_spec = pd.read_csv(sat_["norad_spec_model"])
         sat_spec = sat_spec[sat_spec["norad_id"].isin(norad_ids)]
@@ -607,11 +612,7 @@ def add_tle_satellite_sources(obs: Observation, obs_spec: dict) -> None:
                     obs.addTLESatelliteRFI(Pv, [uid], tle)
                 else:
                     print()
-                    print(f"norad_id: {uid} multiply-defined.")
-
-    else:
-        raise ValueError("Either of {'norad_ids_path', 'norad_ids', 'sat_names'} must be populated to include TLE satellites.")
-        
+                    print(f"norad_id: {uid} multiply-defined.")  
 
 
 def add_stationary_sources(obs: Observation, obs_spec: dict) -> None:

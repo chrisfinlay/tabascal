@@ -38,6 +38,8 @@ from tabascal.utils.tle import get_satellite_positions
 
 config.update("jax_enable_x64", True)
 
+from astropy.time import Time
+
 jd0 = 2460362.08057535 # 2024-02-21T13:56:01.710, GMST=0
 
 class Telescope(object):
@@ -227,7 +229,7 @@ class Observation(Telescope):
         n_int_samples = n_int_samples + 1 if n_int_samples%2==0 else n_int_samples
 
         times_jd = times/24/3600 if times_jd is None else times_jd
-        times = times_jd*24*3600 if times is None else times
+        times = Time(times_jd, format="jd").sidereal_time("mean", "greenwich").hour*3600
         
         self.target_name = target_name
         self.auto_corrs = auto_corrs
@@ -266,9 +268,9 @@ class Observation(Telescope):
         self.t_idx = da.arange(self.n_int_samples//2, self.n_time_fine, self.n_int_samples).rechunk(self.time_chunk)
 
         self.altaz = da.asarray(alt_az_of_source(gmst_to_lst(self.times_fine.compute(), longitude), latitude, ra, dec))
-        self.gsa = da.asarray(lst_sec2deg(self.times_fine.compute()), chunks=(self.time_fine_chunk,))
-        self.gha = self.gsa - self.ra
-        self.lha = da.asarray(gmst_to_lst(self.times_fine.compute(), longitude)) - self.ra
+        self.gsa = da.asarray(lst_sec2deg(self.times_fine.compute()), chunks=(self.time_fine_chunk,)) % 360
+        self.gha = (self.gsa - self.ra) % 360
+        self.lha = (da.asarray(gmst_to_lst(self.times_fine.compute(), longitude)) - self.ra) % 360
 
         self.freqs = da.asarray(freqs).rechunk((self.freq_chunk,))
         self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else chan_width
