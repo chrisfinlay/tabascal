@@ -356,6 +356,40 @@ def gmst_to_lst(gmst: Array, lon: float) -> Array:
 
     return lst
 
+def jd_to_gmst(jd: float) -> float:
+    """
+    Convert Julian Day (JD) to Greenwich Mean Sidereal Time (GAST).
+
+    This function calculates the GMST based on the JD and nutation.
+
+    Args:
+        jd (float): The Julian Day.
+        nutation (float): The nutation in degrees.
+
+    Returns:
+        float: The GMST in degrees.
+    """
+    # Approximate Delta T (in days)
+    delta_t_days = 32.184 / (24 * 60 * 60)
+
+    # Convert JD(UT) to JD(TT)
+    jd_tt = jd + delta_t_days
+    # Julian centuries since J2000.0
+    t = (jd_tt - 2451545.0) / 36525.0
+
+    # Greenwich Mean Sidereal Time (GMST) at 0h UT
+    theta_gmst = (
+        280.46061837
+        + 360.98564736629 * (jd - 2451545.0)
+        + 0.000387933 * t**2
+        - t**3 / 38710000.0
+    )
+
+    # Wrap GMST to [0, 360) range
+    theta_gmst = theta_gmst % 360
+
+    return theta_gmst
+
 def gmst_from_jd(jd: float) -> float:
     """Get the Greenwich Mean Sidereal Time in seconds from the Julian Day (UT1).
     Calculated using https://aa.usno.navy.mil/faq/GAST

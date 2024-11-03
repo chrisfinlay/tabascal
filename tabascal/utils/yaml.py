@@ -17,8 +17,11 @@ from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
 from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
 from tabascal.jax.coordinates import calculate_fringe_frequency, lst_deg2sec
+from tabascal.utils.tle import get_visible_satellite_tles
 
 from daskms import xds_from_ms
+
+from tqdm import tqdm
 
 # Define normalized yaml simulation config
 def get_base_sim_config():
@@ -43,7 +46,9 @@ def get_base_sim_config():
     norm_ast.update({"pow_spec": {"path": None, "random": {"type": None, "random_seed": 1234}}})
 
     norm_rfi = {
-        "satellite": {"sat_ids": None, "tle_path": None, "circ_path": None, "power_scale": 1, "spec_model": None},
+        "satellite": {"tle_dir": "./tles", "norad_ids": [], "norad_ids_path": None, "sat_names": [], 
+                      "sat_ids": None, "circ_path": None, 
+                      "power_scale": 1, "spec_model": None},
         "stationary": {"loc_ids": None, "geo_path": None, "power_scale": 1, "spec_model": None}
         }
     
@@ -382,20 +387,25 @@ def load_obs(obs_spec: dict) -> Observation:
         x = da.arange(start, start + n * delta, delta)
         return x
 
-    if obs_["start_time"] is not None:
+    if obs_["start_time"]:
         start_time = obs_["start_time"]
-    elif obs_["start_time_jd"] is not None:
+        start_time_jd = 2460362.08057535 + start_time/(24*3600)
+    elif obs_["start_time_jd"]:
         from astropy.time import Time
         start_time_jd = Time(obs_["start_time_jd"], format="jd", scale="ut1")
         start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
-    elif obs_["start_time_isot"] is not None:
+        start_time_jd = start_time_jd.jd
+    elif obs_["start_time_isot"]:
         from astropy.time import Time
         start_time_jd = Time(obs_["start_time_isot"], format="isot", scale="ut1")
         start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
+        start_time_jd = start_time_jd.jd
     else:
         ValueError("A start time must be given in either the observation: start_time: or observation: start_time_jd:")
 
-    times = arange(start_time, obs_["int_time"], obs_["n_time"])
+    time_range = arange(0, obs_["int_time"], obs_["n_time"])
+    times = start_time + time_range
+    times_jd = start_time_jd + time_range/(24*3600)
     freqs = arange(obs_["start_freq"], obs_["chan_width"], obs_["n_freq"])
 
     obs = Observation(
@@ -405,6 +415,7 @@ def load_obs(obs_spec: dict) -> Observation:
         ra=obs_["ra"],
         dec=obs_["dec"],
         times=times,
+        times_jd=times_jd,
         freqs=freqs,
         SEFD=obs_["SEFD"],
         ENU_path=tel_["enu_path"],
@@ -529,42 +540,78 @@ def generate_spectra(spec_df: pd.DataFrame, freqs: da.Array, id_key: str) -> tup
 def add_satellite_sources(obs: Observation, obs_spec: dict) -> None:
 
     sat_ = obs_spec["rfi_sources"]["satellite"]
+
+    # Circular path based Satellites
     if sat_["sat_ids"] is not None:
-        ids = sat_["sat_ids"]
-        path_ids = []
-        if sat_["circ_path"] is None and sat_["tle_path"] is None:
-            raise ValueError("'circ_path' or 'tle_path' must be populated to include satellites.")
-        # Not yet implemented
-        # if sat_["tle_path"] is not None:
-        #     tles = read_tle(sat_["tle_path"])
-        #     tles = tles[tles["sat_id"].isin(ids)]
-        #     path_ids.append(tles["sat_id"].values)
         if sat_["circ_path"] is not None:
             oles = pd.read_csv(sat_["circ_path"])
-            oles = oles[oles["sat_id"].isin(ids)]
-            path_ids.append(oles["sat_id"].values)
-
-        path_ids = np.concatenate(path_ids)
+            oles = oles[oles["sat_id"].isin(sat_["sat_ids"])]
+            path_ids = oles["sat_id"].values
+        else:
+            raise ValueError("'circ_path' must be populated to include satellites with circular orbits.")
 
         sat_spec = pd.read_csv(sat_["spec_model"])
         sat_spec = sat_spec[sat_spec["sat_id"].isin(path_ids)]
 
         if len(sat_spec) > 0:
-            ids, spectra = generate_spectra(sat_spec, obs.freqs, "sat_id")
-            uids = np.unique(ids)
+            spec_ids, spectra = generate_spectra(sat_spec, obs.freqs, "sat_id")
+            uids = np.unique(spec_ids)
             for uid in uids:
-                Pv = sat_["power_scale"] * da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
+                Pv = sat_["power_scale"] * da.sum(spectra[spec_ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
                 ole = oles[oles["sat_id"]==uid]
                 if len(ole)==1:
                     print()
                     print("Adding satellite RFI source ...")
                     obs.addSatelliteRFI(Pv, ole["elevation"].values, ole["inclination"].values, ole["lon_asc_node"].values, ole["periapsis"].values)
-                # tle = tles[tles["sat_id"]==uid]
-                # elif len(tle)==1:
-                #     obs.addSatelliteRFI_TLE(Pv, tle)
                 else:
                     print()
                     print(f"sat_id: {uid} multiply-defined.")
+
+def add_tle_satellite_sources(obs: Observation, obs_spec: dict) -> None:
+
+    sat_ = obs_spec["rfi_sources"]["satellite"]
+    st_ = obs_spec["spacetrack"]
+
+    # TLE path based Satellites
+    tle_cond = [sat_["norad_ids_path"], len(sat_["norad_ids"])>0, len(sat_["sat_names"])>0]
+    if np.any(tle_cond):
+        
+        if sat_["norad_ids_path"] is None:
+            norad_ids = sat_["norad_ids"]
+        else:
+            norad_ids = np.concatenate([sat_["norad_ids"], np.loadtxt(sat_["norad_ids_path"], usecols=0)])
+        
+        from astropy.time import Time
+        times_check = Time(np.arange(obs.times_jd[0], obs.times_jd[-1], sat_["vis_step"]/(24*60)), format="jd")
+
+        norad_ids, tles = get_visible_satellite_tles(
+            st_["username"], st_["password"], times_check, 
+            obs.latitude, obs.longitude, obs.elevation,
+            obs.ra, obs.dec, 
+            sat_["max_angular_separation"], sat_["min_elevation"], 
+            sat_["sat_names"], norad_ids, sat_["tle_dir"]
+            )
+
+        sat_spec = pd.read_csv(sat_["norad_spec_model"])
+        sat_spec = sat_spec[sat_spec["norad_id"].isin(norad_ids)]
+
+        if len(sat_spec) > 0:
+            print()
+            print("Adding TLE-based satellite RFI sources ...")
+            ids, spectra = generate_spectra(sat_spec, obs.freqs, "norad_id")
+            uids = np.unique(ids)
+            for uid in tqdm(uids):
+                Pv = sat_["power_scale"] * da.sum(spectra[ids==uid], axis=0)[None,None,:] * da.ones((1, 1, obs.n_freq))
+                tle = tles[norad_ids==uid]
+                if len(tle)==1:
+                    obs.addTLESatelliteRFI(Pv, [uid], tle)
+                else:
+                    print()
+                    print(f"norad_id: {uid} multiply-defined.")
+
+    else:
+        raise ValueError("Either of {'norad_ids_path', 'norad_ids', 'sat_names'} must be populated to include TLE satellites.")
+        
 
 
 def add_stationary_sources(obs: Observation, obs_spec: dict) -> None:
@@ -701,8 +748,8 @@ def save_inputs(obs_spec: dict, save_path: str) -> None:
         if path is not None:
             shutil.copy(path, save_path)
 
-    key = 3*["satellite",] + 2*["stationary",]
-    subkey = ["tle_path", "circ_path", "spec_model", "geo_path", "spec_model"]
+    key = 4*["satellite",] + 2*["stationary",]
+    subkey = ["norad_ids_path", "norad_spec_model", "circ_path", "spec_model", "geo_path", "spec_model"]
     for key1, key2 in zip(key, subkey):
         path = obs_spec["rfi_sources"][key1][key2]
         if path is not None:
@@ -711,6 +758,42 @@ def save_inputs(obs_spec: dict, save_path: str) -> None:
     with open(os.path.join(save_path, "sim_config.yaml"), "w") as fp:
         yaml.dump(obs_spec, fp)
 
+
+def print_fringe_freq_sat(obs: Observation):
+    fringe_params = [{
+        "times": obs.times_fine[::obs.n_int_samples].compute(),
+        "freq": obs.freqs.max().compute(),
+        "rfi_xyz": da.concatenate(obs.rfi_satellite_xyz, axis=0)[i,::obs.n_int_samples].compute(),
+        "ants_itrf": obs.ITRF.compute(),
+        "ants_u": obs.ants_uvw[::obs.n_int_samples,:,0].compute(),
+        "dec": obs.dec.compute(),
+    } for i in range(obs.n_rfi_satellite)]
+    fringe_freq = [calculate_fringe_frequency(**f_params) for f_params in fringe_params]
+    f_sample = np.pi * np.max(np.abs(fringe_freq)) * np.max(obs.rfi_satellite_A_app) / np.sqrt(6 * obs.noise_std.mean()).compute()
+    n_int = np.ceil(obs.int_time.compute() * f_sample)
+
+    print()
+    print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
+    print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
+    print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples} used)")
+
+def print_fringe_freq_tle_sat(obs: Observation):
+    fringe_params = [{
+        "times": obs.times_fine[::obs.n_int_samples].compute(),
+        "freq": obs.freqs.max().compute(),
+        "rfi_xyz": da.concatenate(obs.rfi_tle_satellite_xyz, axis=0)[i,::obs.n_int_samples].compute(),
+        "ants_itrf": obs.ITRF.compute(),
+        "ants_u": obs.ants_uvw[::obs.n_int_samples,:,0].compute(),
+        "dec": obs.dec.compute(),
+    } for i in range(obs.n_rfi_tle_satellite)]
+    fringe_freq = [calculate_fringe_frequency(**f_params) for f_params in fringe_params]
+    f_sample = np.pi * np.max(np.abs(fringe_freq)) * np.max(obs.rfi_tle_satellite_A_app) / np.sqrt(6 * obs.noise_std.mean()).compute()
+    n_int = np.ceil(obs.int_time.compute() * f_sample)
+
+    print()
+    print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
+    print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
+    print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples} used)")
 
 def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
 
@@ -730,27 +813,15 @@ def run_sim_config(obs_spec: dict=None, path: str=None) -> Observation:
     obs = load_obs(obs_spec)
     add_astro_sources(obs, obs_spec)
     add_satellite_sources(obs, obs_spec)
+    add_tle_satellite_sources(obs, obs_spec)
     add_stationary_sources(obs, obs_spec)
     add_gains(obs, obs_spec)
 
     # Change this for calculating all RFI sources
     if obs.n_rfi_satellite>0:
-        fringe_params = {
-            "times": obs.times_fine[::obs.n_int_samples].compute(),
-            "freq": obs.freqs.max().compute(),
-            "rfi_xyz": obs.rfi_satellite_xyz[0][0,::obs.n_int_samples].compute(),
-            "ants_itrf": obs.ITRF.compute(),
-            "ants_u": obs.ants_uvw[::obs.n_int_samples,:,0].compute(),
-            "dec": obs.dec.compute(),
-        }
-        fringe_freq = calculate_fringe_frequency(**fringe_params)
-        f_sample = np.pi * np.max(np.abs(fringe_freq)) * np.max(obs.rfi_satellite_A_app) / np.sqrt(6 * obs.noise_std.mean()).compute()
-        n_int = np.ceil(obs.int_time.compute() * f_sample)
-
-        print()
-        print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
-        print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
-        print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples} used)")
+        print_fringe_freq_sat(obs)
+    if obs.n_rfi_tle_satellite>0:
+        print_fringe_freq_tle_sat(obs)
 
     print(obs)
 

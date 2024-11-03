@@ -53,6 +53,9 @@ def plot_angular_seps(obs: Observation, save_path: str) -> None:
     if obs.n_rfi_stationary>0:
         ang_seps = np.concatenate(obs.rfi_stationary_ang_sep, axis=0).mean(axis=-1).T
         plt.plot(times, ang_seps, label="Stationary")
+    if obs.n_rfi_tle_satellite>0:
+        ang_seps = np.concatenate(obs.rfi_tle_satellite_ang_sep, axis=0).mean(axis=-1).T
+        plt.plot(times, ang_seps, label="TLE Satellite")
     plt.xlabel(f"Time [{scale}]")
     plt.ylabel("Angular Separation [deg]")
     plt.legend()

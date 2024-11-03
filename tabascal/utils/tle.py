@@ -31,6 +31,7 @@ def get_tles_by_id(username: str, password: str, norad_ids: list[int], epoch_jd:
     n_ids_start = len(norad_ids)
     epoch_str = Time(epoch_jd, format="jd", scale="ut1").strftime("%Y-%m-%d")
 
+    tles_local = pd.DataFrame()
     if tle_dir:
         tle_dir = os.path.abspath(tle_dir)
         tle_paths = glob(os.path.join(tle_dir, f"{epoch_str}-*.json"))
@@ -68,8 +69,6 @@ def get_tles_by_id(username: str, password: str, norad_ids: list[int], epoch_jd:
             remote_ids = tles["NORAD_CAT_ID"].unique()
         else:
             tles = pd.DataFrame()
-        
-        
 
     print(f"Remote TLEs loaded : {len(remote_ids)}")
     print(f"TLEs not found     : {n_ids_start - len(remote_ids) - len(local_ids)}")
@@ -91,6 +90,7 @@ def get_tles_by_id(username: str, password: str, norad_ids: list[int], epoch_jd:
     if len(tles)>0:
         tles.reset_index(drop=True, inplace=True)
         tles["EPOCH_JD"] = tles["EPOCH"].apply(lambda x: Time(spacetrack_time_to_isot(x)).jd)
+        tles = type_cast_tles(tles)
         tles = get_closest_times(tles, epoch_jd)
     
     return tles
@@ -114,17 +114,18 @@ def get_tles_by_name(username: str, password: str, names: list[str], epoch_jd: f
     remote_ids = 0
     tles = [0] * len(names)
     for i, name in enumerate(names):
-        try:
-            tle = pd.read_json(os.path.join(tle_dir, f"{epoch_str}-{name}.json"))
+        tle_path = os.path.join(tle_dir, f"{epoch_str}-{name}.json")
+        if os.path.isfile(tle_path):
+            tle = pd.read_json(tle_path)
             tles[i] = tle
             local_ids += len(tle["NORAD_CAT_ID"].unique())
-        except:
+        else:
             tle = pd.DataFrame(ast.literal_eval(st.tle(object_name=names_op[i], epoch=drange, limit=limit, format='json')))
             tle["Fetch_Timestamp"] = Time.now().strftime("%Y-%m-%d %H:%M:%S")
             tles[i] = tle
-            remote_ids += len(tle["NORAD_CAT_ID"].unique())
-            if len(tles)>0:
-                tles[i].to_json(os.path.join(tle_dir, f"{epoch_str}-{name}.json"))
+            if len(tle)>0:
+                remote_ids += len(tle["NORAD_CAT_ID"].unique())
+                tles[i].to_json(tle_path)
         
     print(f"Local TLEs loaded   : {local_ids}")
     print(f"Remote TLEs loaded  : {remote_ids}")
@@ -133,6 +134,7 @@ def get_tles_by_name(username: str, password: str, names: list[str], epoch_jd: f
     if len(tles)>0:
         tles.reset_index(drop=True, inplace=True)
         tles["EPOCH_JD"] = tles["EPOCH"].apply(lambda x: Time(spacetrack_time_to_isot(x)).jd)
+        tles = type_cast_tles(tles)
         tles = get_closest_times(tles, epoch_jd)
 
     return tles
@@ -190,7 +192,7 @@ def get_closest_times(df: pd.DataFrame, target_time_jd: float, id_col: str="NORA
 
 
 def get_visible_satellite_tles(username: str, password: str, times: ArrayLike, observer_lat: float, observer_lon: float, observer_elevation: float,
-    target_ra: float, target_dec: float, max_angular_separation: float, min_elevation: float, names: list, norad_ids: ArrayLike=None, tle_dir: str="./tles") -> tuple:
+    target_ra: float, target_dec: float, max_angular_separation: float, min_elevation: float, names: ArrayLike=[], norad_ids: ArrayLike=[], tle_dir: str="./tles") -> tuple:
     """Get the TLEs corresponding to satellites that satisfy the conditions given. 
 
     Parameters
@@ -230,21 +232,24 @@ def get_visible_satellite_tles(username: str, password: str, times: ArrayLike, o
     """
 
     tles = pd.DataFrame()
-    if norad_ids is not None:
+    if len(norad_ids)>0:
         tles = get_tles_by_id(username, password, norad_ids, np.mean(times.jd), tle_dir=tle_dir)
-    if names is not None:
+    if len(names)>0:
         tles = pd.concat([tles, get_tles_by_name(username, password, names, np.mean(times.jd), tle_dir=tle_dir)])
 
-    windows = check_satellite_visibilibities(
-        tles["NORAD_CAT_ID"].values, tles["TLE_LINE1"].values, tles["TLE_LINE2"].values, 
-        times, observer_lat, observer_lon, observer_elevation,
-        target_ra, target_dec, max_angular_separation, min_elevation)
+    if len(tles)>0:
+        windows = check_satellite_visibilibities(
+            tles["NORAD_CAT_ID"].values, tles["TLE_LINE1"].values, tles["TLE_LINE2"].values, 
+            times, observer_lat, observer_lon, observer_elevation,
+            target_ra, target_dec, max_angular_separation, min_elevation)
 
-    if len(windows)>0:
-        tles_ = tles[tles["NORAD_CAT_ID"].isin(windows["norad_id"])][["NORAD_CAT_ID", "TLE_LINE1", "TLE_LINE2"]].values
-        return tles_[:,0], tles_[:,1:]
+        if len(windows)>0:
+            tles_ = tles[tles["NORAD_CAT_ID"].isin(windows["norad_id"])][["NORAD_CAT_ID", "TLE_LINE1", "TLE_LINE2"]].values
+            return tles_[:,0], tles_[:,1:]
+        else:
+            return [], None
     else:
-        return None, None
+        return [], None
     
 
 def type_cast_tles(tles: pd.DataFrame) -> pd.DataFrame:
@@ -424,6 +429,8 @@ def check_satellite_visibilibities(norad_ids: list[int], tles_line1: list[str], 
     windows.
     """
 
+    print()
+    print(f"Searching which satellites satisfy max_ang_sep: {max_ang_sep:.0f} and min_elev: {min_elev:.0f}")
     all_windows = []
     for i in tqdm(range(len(norad_ids))):
         windows = check_visibility(
@@ -434,10 +441,12 @@ def check_satellite_visibilibities(norad_ids: list[int], tles_line1: list[str], 
         )
         if len(windows)>0:
             all_windows += [{"norad_id": norad_ids[i], **window} for window in windows]
+
+    print(f"Found {len(all_windows)} matching satellites")
     return pd.DataFrame(all_windows)
 
 
-def get_satellite_positions(tles: list, times: list) -> ArrayLike:
+def get_satellite_positions(tles: list, times_jd: list) -> ArrayLike:
     """Calculate the ICRS positions of satellites by propagating their TLEs over the given times.
 
     Parameters
@@ -445,16 +454,16 @@ def get_satellite_positions(tles: list, times: list) -> ArrayLike:
     tles : Array (n_sat, 2)
         TLEs usind to propagate positions.
     times : Array (n_time,)
-        Astropy times to calculate positions at.
+        Times to calculate positions at in Julian date.
 
     Returns
     -------
     Array (n_sat, n_time, 3)
         Satellite positions over time
     """
-    
+
     ts = load.timescale()
-    sf_times = ts.ut1_jd(times.jd)
+    sf_times = ts.ut1_jd(times_jd)
     
     sat_pos = np.array([EarthSatellite(tle_line1, tle_line2, ts=ts).at(sf_times).position.km.T*1e3 for tle_line1, tle_line2 in tles])
 

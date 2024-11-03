@@ -28,16 +28,17 @@ from tabascal.dask.interferometry import (
     int_sample_times,
     generate_gains,
     apply_gains,
-    time_avg,
 )
 
 from tabascal.jax.coordinates import lst_sec2deg, gmst_to_lst, itrf_to_geo, alt_az_of_source
 from tabascal.utils.tools import beam_size
 from tabascal.utils.write import construct_observation_ds, write_ms
 from tabascal.utils.dask_extras import get_chunksizes
+from tabascal.utils.tle import get_satellite_positions
 
 config.update("jax_enable_x64", True)
 
+jd0 = 2460362.08057535 # 2024-02-21T13:56:01.710, GMST=0
 
 class Telescope(object):
     """
@@ -189,9 +190,10 @@ class Observation(Telescope):
         elevation: float,
         ra: float,
         dec: float,
-        times: Array,
         freqs: Array,
         SEFD: Array,
+        times: Array=None,
+        times_jd: Array=None,
         chan_width: float=209e3,
         ENU_array: Array=None,
         ENU_path: str=None,
@@ -219,8 +221,14 @@ class Observation(Telescope):
             n_ant,
         )
 
+        if times is None and times_jd is None:
+            ValueError("'times' or 'times_jd' must be specified.")
+
         n_int_samples = n_int_samples + 1 if n_int_samples%2==0 else n_int_samples
 
+        times_jd = times/24/3600 if times_jd is None else times_jd
+        times = times_jd*24*3600 if times is None else times
+        
         self.target_name = target_name
         self.auto_corrs = auto_corrs
 
@@ -244,9 +252,13 @@ class Observation(Telescope):
         self.freq_chunk = chunksize["freq"]
 
         self.times = da.asarray(times).rechunk(self.time_chunk)
+        self.times_jd = da.asarray(times_jd).rechunk(self.time_chunk)
         self.int_time = da.abs(da.diff(times)[0]) if len(times) > 1 else 2.0
         self.n_int_samples = n_int_samples
         self.times_fine = int_sample_times(self.times, n_int_samples).rechunk(
+            self.time_fine_chunk
+        )
+        self.times_jd_fine = int_sample_times(self.times_jd, n_int_samples).rechunk(
             self.time_fine_chunk
         )
         self.n_time = len(times)
@@ -314,6 +326,7 @@ class Observation(Telescope):
         self.n_rfi = 0
         self.n_rfi_satellite = 0
         self.n_rfi_stationary = 0
+        self.n_rfi_tle_satellite = 0
 
         self.create_source_dicts()
 
@@ -370,8 +383,9 @@ Number of stationary RFI :  {n_stat}"""
         params.update(
             {
                 "n_ast": self.n_ast,
-                "n_rfi": self.n_rfi_satellite + self.n_rfi_stationary,
+                "n_rfi": self.n_rfi,
                 "n_sat": self.n_rfi_satellite,
+                "n_tle_sat": self.n_rfi_tle_satellite,
                 "n_stat": self.n_rfi_stationary,
             }
         )
@@ -399,6 +413,11 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_satellite_orbit = []
         self.rfi_satellite_ang_sep = []
         self.rfi_satellite_A_app = []
+
+        self.rfi_tle_satellite_xyz = []
+        self.rfi_tle_satellite_orbit = []
+        self.rfi_tle_satellite_ang_sep = []
+        self.rfi_tle_satellite_A_app = []
 
         self.rfi_stationary_xyz = []
         self.rfi_stationary_geo = []
@@ -633,6 +652,76 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_satellite_A_app.append(rfi_A_app)
         self.n_rfi_satellite += len(I)
         self.n_rfi += len(I)
+
+    def addTLESatelliteRFI(
+        self,
+        Pv: Array,
+        norad_ids: list[int],
+        tles: Array,
+    ):
+        """
+        Add a satellite-based source of RFI to the observation.
+
+        Parameters
+        ----------
+        Pv: ndarray (n_src, n_time_fine, n_freq)
+            Specific Emission Power in W/Hz. If Pv.ndim==1, it is assumed to be
+            of shape (n_freq,) and is the spectrum of a single RFI source. If
+            Pv.ndim==2, it is assumed to be of shape (n_time_fine, n_freq) and
+            is the spectrogram of a single RFI source.
+        norad_ids: list[int] (n_src,)
+            NORAD IDs for the satellites to include.
+        tles: Array (n_src, 2)
+            TLEs of the satellites corresponding to the NORAD IDs.
+        """
+        Pv = da.atleast_2d(Pv)
+        if Pv.ndim == 2:
+            Pv = da.expand_dims(Pv, axis=0)
+        Pv = (
+            Pv
+            * da.ones(
+                shape=(1, self.n_time_fine, self.n_freq),
+            )
+        ).rechunk((-1, self.time_fine_chunk, self.freq_chunk))
+        norad_ids = da.asarray(da.atleast_1d(norad_ids), chunks=(-1,))
+
+        rfi_xyz = da.asarray(get_satellite_positions(tles, self.times_jd_fine.compute()), chunks=(-1, self.time_fine_chunk, 3))
+        tles = da.asarray(da.atleast_2d(tles), chunks=(-1,))  
+        # rfi_xyz is shape (n_src,n_time_fine,3)
+        # self.ants_xyz is shape (n_time_fine,n_ant,3)
+        distances = da.linalg.norm(
+            self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
+        )
+        # distances is shape (n_src,n_time_fine,n_ant)
+        I = Pv_to_Sv(Pv, distances)
+        # I is shape (n_src,n_time_fine,n_ant,n_freq)
+
+        angular_seps = angular_separation(rfi_xyz, self.ants_xyz, self.ra, self.dec)
+
+        # angular_seps is shape (n_src,n_time_fine,n_ant)
+        rfi_A_app = da.sqrt(da.abs(I)) * airy_beam(
+            angular_seps, self.freqs, self.dish_d
+        )
+        # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
+        # distances is shape (n_src,n_time_fine,n_ant)
+        # self.ants_uvw is shape (n_time_fine,n_ant,3)
+
+        vis_rfi = rfi_vis(
+            rfi_A_app.reshape((-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)),
+            (distances + self.ants_uvw[None, :, :, -1]).reshape((-1, self.n_time, self.n_int_samples, self.n_ant)),
+            self.freqs,
+            self.a1,
+            self.a2,
+        )
+        self.vis_rfi += vis_rfi
+
+        self.rfi_tle_satellite_xyz.append(rfi_xyz)
+        self.rfi_tle_satellite_orbit.append(tles)
+        self.rfi_tle_satellite_ang_sep.append(angular_seps)
+        self.rfi_tle_satellite_A_app.append(rfi_A_app)
+        self.n_rfi_tle_satellite += len(I)
+        self.n_rfi += len(I)
+
 
     def addStationaryRFI(
         self,

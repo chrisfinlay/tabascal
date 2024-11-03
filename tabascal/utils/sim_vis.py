@@ -38,7 +38,7 @@ def main():
     if rfi_amp is not None:
         obs_spec["rfi_sources"]["satellite"]["power_scale"] = rfi_amp
         obs_spec["rfi_sources"]["stationary"]["power_scale"] = rfi_amp
-    elif obs_spec["rfi_sources"]["satellite"]["power_scale"] is None:
+    elif obs_spec["rfi_sources"]["satellite"]["power_scale"] is not None:
          rfi_amp = obs_spec["rfi_sources"]["satellite"]["power_scale"]
     else:
         obs_spec["rfi_sources"]["satellite"]["power_scale"] = 1.0
