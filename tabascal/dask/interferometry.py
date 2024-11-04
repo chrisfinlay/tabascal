@@ -398,9 +398,21 @@ def SEFD_to_noise_std(SEFD, chan_width, t_int):
     return noise_std
 
 
-def int_sample_times(times, n_int_samples):
-    times_fine = da.from_array(
-        itf.int_sample_times(times, n_int_samples), chunks=times.chunksize
+# def int_sample_times(times, n_int_samples, int_time):
+#     times_fine = da.from_array(
+#         itf.int_sample_times(times, n_int_samples, int_time), chunks=times.chunksize
+#     )
+#     return times_fine
+def int_sample_times(times, n_int_samples, int_time=2):
+    if len(times)>1:
+        int_time = times[1] - times[0]
+    times_fine = (
+        int_time / (2 * n_int_samples)
+        + da.arange(
+            times[0] - int_time / 2,
+            times[-1] + int_time / 2,
+            int_time / n_int_samples,
+        )[: n_int_samples * len(times)]
     )
     return times_fine
 

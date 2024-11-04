@@ -414,6 +414,7 @@ def load_obs(obs_spec: dict) -> Observation:
         dec=obs_["dec"],
         times_jd=times_jd,
         freqs=freqs,
+        int_time=obs_["int_time"],
         chan_width=obs_["chan_width"],
         SEFD=obs_["SEFD"],
         ENU_path=tel_["enu_path"],
@@ -580,7 +581,8 @@ def add_tle_satellite_sources(obs: Observation, obs_spec: dict) -> None:
             norad_ids = np.concatenate([sat_["norad_ids"], np.loadtxt(sat_["norad_ids_path"], usecols=0)])
         
         from astropy.time import Time
-        times_check = Time(np.arange(obs.times_jd[0], obs.times_jd[-1], sat_["vis_step"]/(24*60)), format="jd")
+        jd_step = sat_["vis_step"] / (24*60)
+        times_check = Time(np.arange(obs.times_jd[0], obs.times_jd[-1]+jd_step, jd_step), format="jd")
 
         norad_ids, tles = get_visible_satellite_tles(
             st_["username"], st_["password"], times_check, 
@@ -756,17 +758,23 @@ def save_inputs(obs_spec: dict, save_path: str) -> None:
 
 
 def print_fringe_freq_sat(obs: Observation):
+    if len(obs.times_fine)==obs.n_int_samples:
+        n_int = int(obs.n_int_samples) - 1
+    elif obs.times[-1] - obs.times[0]>120:
+        n_int = int(60 / obs.int_time) * int(obs.n_int_samples)
+    else:
+        n_int = obs.n_int_samples
     fringe_params = [{
-        "times": obs.times_fine[::obs.n_int_samples].compute(),
+        "times": obs.times_fine[::n_int].compute(),
         "freq": obs.freqs.max().compute(),
-        "rfi_xyz": da.concatenate(obs.rfi_satellite_xyz, axis=0)[i,::obs.n_int_samples].compute(),
+        "rfi_xyz": da.concatenate(obs.rfi_satellite_xyz, axis=0)[i,::n_int].compute(),
         "ants_itrf": obs.ITRF.compute(),
-        "ants_u": obs.ants_uvw[::obs.n_int_samples,:,0].compute(),
+        "ants_u": obs.ants_uvw[::n_int,:,0].compute(),
         "dec": obs.dec.compute(),
     } for i in range(obs.n_rfi_satellite)]
     fringe_freq = [calculate_fringe_frequency(**f_params) for f_params in fringe_params]
     f_sample = np.pi * np.max(np.abs(fringe_freq)) * np.max(obs.rfi_satellite_A_app) / np.sqrt(6 * obs.noise_std.mean()).compute()
-    n_int = np.ceil(obs.int_time.compute() * f_sample)
+    n_int = int(np.ceil(obs.int_time * f_sample))
 
     print()
     print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
@@ -774,17 +782,23 @@ def print_fringe_freq_sat(obs: Observation):
     print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples} used)")
 
 def print_fringe_freq_tle_sat(obs: Observation):
+    if len(obs.times_fine)==obs.n_int_samples:
+        n_int = obs.n_int_samples - 1
+    elif obs.times[-1] - obs.times[0]>120:
+        n_int = int(60 / obs.int_time) * obs.n_int_samples
+    else:
+        n_int = obs.n_int_samples
     fringe_params = [{
-        "times": obs.times_fine[::obs.n_int_samples].compute(),
+        "times": obs.times_fine[::n_int].compute(),
         "freq": obs.freqs.max().compute(),
-        "rfi_xyz": da.concatenate(obs.rfi_tle_satellite_xyz, axis=0)[i,::obs.n_int_samples].compute(),
+        "rfi_xyz": da.concatenate(obs.rfi_tle_satellite_xyz, axis=0)[i,::n_int].compute(),
         "ants_itrf": obs.ITRF.compute(),
-        "ants_u": obs.ants_uvw[::obs.n_int_samples,:,0].compute(),
+        "ants_u": obs.ants_uvw[::n_int,:,0].compute(),
         "dec": obs.dec.compute(),
     } for i in range(obs.n_rfi_tle_satellite)]
     fringe_freq = [calculate_fringe_frequency(**f_params) for f_params in fringe_params]
     f_sample = np.pi * np.max(np.abs(fringe_freq)) * np.max(obs.rfi_tle_satellite_A_app) / np.sqrt(6 * obs.noise_std.mean()).compute()
-    n_int = np.ceil(obs.int_time.compute() * f_sample)
+    n_int = int(np.ceil(obs.int_time * f_sample))
 
     print()
     print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
