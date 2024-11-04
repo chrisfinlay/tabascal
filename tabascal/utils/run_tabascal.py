@@ -30,6 +30,7 @@ from tabascal.jax.coordinates import calculate_sat_corr_time, orbit, itrf_to_uvw
 from tabascal.jax.interferometry import int_sample_times
 
 from astropy.time import Time
+import numpy as np
 
 from tab_opt.data import extract_data
 from tab_opt.opt import run_svi, svi_predict, f_model_flat, flatten_obs, post_samples
@@ -197,13 +198,15 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     int_time = jnp.diff(times)[0]
 
     if len(config["satellites"]["norad_ids"])>0:
-        ids, tles = get_tles_by_id(
+        tles_df = get_tles_by_id(
             config["spacetrack"]["username"], 
             config["spacetrack"]["password"], 
             config["satellites"]["norad_ids"],
             jnp.mean(times_jd),
             tle_dir=config["satellites"]["tle_dir"],
             )
+        tles = np.atleast_2d(tles_df[["TLE_LINE1", "TLE_LINE2"]].values)
+        
 
     #######################
     # Check the required sampling rate of the RFI by checking the 
@@ -211,12 +214,12 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     #######################
 
     jd_minute = 1 / (24*60)
-    times_jd_coarse =  jnp.arange(times_jd[0], times_jd[-1], jd_minute)
+    times_jd_coarse =  jnp.arange(times_jd[0], times_jd[-1]+jd_minute, jd_minute)
     times_coarse = times_jd_coarse * 24 * 3600
     # times_coarse = Time(times_jd_coarse, format="jd").sidereal_time("mean", "greenwich").hour*3600 # Convert hours to seconds
 
     if len(config["satellites"]["norad_ids"])>0:
-        rfi_xyz = get_satellite_positions(tles, times_jd_coarse)
+        rfi_xyz = get_satellite_positions(tles, np.array(times_jd_coarse))
     if len(config["satellites"]["sat_ids"])>0:
         rfi_xyz = jnp.array([orbit(times_coarse, *rfi_orb) for rfi_orb in rfi_orbit])
 
@@ -245,10 +248,10 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     #####################
 
     times_fine = int_sample_times(times, n_int_samples)
-    times_fine_jd = int_sample_times(times_jd, n_int_samples)
+    times_jd_fine = int_sample_times(times_jd, n_int_samples)
 
     ra, dec = jnp.rad2deg(xds_src.DIRECTION.data[0].compute())
-    gsa = Time(times_fine_jd, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
+    gsa = Time(times_jd_fine, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
     gh0 = (gsa - ra) % 360
 
     ants_uvw = itrf_to_uvw(ants_itrf, gh0, dec)#[:,:,2] # We need the uvw-coordinates at the fine sampling rate for the RFI
@@ -257,23 +260,26 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     # To be replaced with TLE code for real data
     # phi_i = -2pi (|r_rfi_s - r_ant_i| + w_ant_i) / lambda
 
-    # def get_rfi_phase_from_pos(rfi_xyz, ants_w, ants_xyz, freqs):
+    def get_rfi_phase_from_pos(rfi_xyz, ants_w, ants_xyz, freqs):
 
-    #     c = 299792458.0
-    #     lam = c / freqs
-    #     c_dist = jnp.linalg.norm(rfi_xyz[:,:,None,:] - ants_xyz[None,:,:,:], axis=-1) + ants_w[None,:,:]
-    #     phase = -2.0 * jnp.pi * c_dist[:,:,:,None] / lam[None,None,None,:]
+        c = 299792458.0
+        lam = c / freqs
+        c_dist = jnp.linalg.norm(rfi_xyz[:,:,None,:] - ants_xyz[None,:,:,:], axis=-1) + ants_w[None,:,:]
+        phase = -2.0 * jnp.pi * c_dist[:,:,:,None] / lam[None,None,None,:]
 
-    #     return phase
+        return phase
+    
+    if len(config["satellites"]["norad_ids"])>0:
+        rfi_xyz = get_satellite_positions(tles, np.array(times_jd_fine))
+        rfi_phase = jnp.transpose(get_rfi_phase_from_pos(rfi_xyz, ants_uvw[...,-1], ants_xyz, freqs)[...,0], axes=(0,2,1))
 
-    # rfi_phase = vmap(get_rfi_phase_from_pos, in_axes=())(rfi_xyz, ants_w, ants_xyz, freqs)
-
-    rfi_phase = jnp.array(
-        [
-            get_rfi_phase(times_fine, orbit, ants_uvw, ants_xyz, freqs).T
-            for orbit in rfi_orbit
-        ]
-    )
+    if len(config["satellites"]["sat_ids"])>0:
+        rfi_phase = jnp.array(
+            [
+                get_rfi_phase(times_fine, orbit, ants_uvw, ants_xyz, freqs).T
+                for orbit in rfi_orbit
+            ]
+        )
 
     print()
     print(f"Number of Antennas   : {n_ant: 4}")
@@ -379,18 +385,56 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         vis_ast = xds.vis_ast.data[:,:,0].compute()
         vis_rfi = xds.vis_rfi.data[:,:,0].compute()
         gains_ants = xds.gains_ants[:,:,0].data.compute()
-        rfi_A_app = xds.rfi_sat_A[:,:,:,0].data.compute()
 
-        corr_time_params = [{
-            "sat_xyz": xds.rfi_sat_xyz.data[i,xds.time_idx].compute(),
-            "ants_xyz": xds.ants_xyz.data[xds.time_idx].compute(),
-            "orbit_el": xds.rfi_sat_orbit.data[i,0].compute(),
-            "lat": xds.tel_latitude,
-            "dish_d": xds.dish_diameter,
-            "freqs": freqs,
-        } for i in range(n_rfi)]
+        if len(config["satellites"]["sat_ids"])>0:
+            corr_time_params = [{
+                "sat_xyz": xds.rfi_sat_xyz.data[i,xds.time_idx].compute(),
+                "ants_xyz": xds.ants_xyz.data[xds.time_idx].compute(),
+                "orbit_el": xds.rfi_sat_orbit.data[i,0].compute(),
+                "lat": xds.tel_latitude,
+                "dish_d": xds.dish_diameter,
+                "freqs": freqs,
+            } for i in range(n_rfi)]
 
-        l = jnp.min(jnp.array([calculate_sat_corr_time(**corr_time_params[i]) for i in range(n_rfi)]))
+            l = jnp.min(jnp.array([calculate_sat_corr_time(**corr_time_params[i]) for i in range(n_rfi)]))
+
+            rfi_induce = jnp.array(
+                [
+                    vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
+                        rfi_times, xds.time_fine.data, xds.rfi_sat_A[:,:,:,0].data.compute()[i]
+                    )
+                    for i in range(n_rfi)
+                ]
+            )
+
+
+        def get_orbit_elevation(rfi_xyz, latitude):
+            from tabascal.jax.coordinates import earth_radius
+            R_rfi = jnp.max(jnp.linalg.norm(rfi_xyz, axis=-1))
+            R_e = earth_radius(latitude)
+            return R_rfi - R_e
+
+        if len(config["satellites"]["norad_ids"])>0:
+            corr_time_params = [{
+                "sat_xyz": xds.rfi_tle_sat_xyz.data[i,xds.time_idx].compute(),
+                "ants_xyz": xds.ants_xyz.data[xds.time_idx].compute(),
+                "orbit_el": get_orbit_elevation(xds.rfi_tle_sat_xyz.data[i,xds.time_idx].compute(), xds.tel_latitude),
+                "lat": xds.tel_latitude,
+                "dish_d": xds.dish_diameter,
+                "freqs": freqs,
+            } for i in range(n_rfi)]
+
+            l = jnp.min(jnp.array([calculate_sat_corr_time(**corr_time_params[i]) for i in range(n_rfi)]))
+
+            rfi_induce = jnp.array(
+                [
+                    vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
+                        rfi_times, xds.time_fine.data, xds.rfi_tle_sat_A[:,:,:,0].data.compute()[i]
+                    )
+                    for i in range(n_rfi)
+                ]
+            )
+
 
         print()
         print(f"Minimum expected RFI correlation time : {l:.0f} s ({rfi_l:.0f} s used)")
@@ -407,15 +451,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         gains_induce = vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
             g_times, times, gains_ants
         )
-        rfi_induce = jnp.array(
-            [
-                vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
-                    rfi_times, xds.time_fine.data, rfi_A_app[i]
-                )
-                for i in range(n_rfi)
-            ]
-        )
-
+        
         true_params = {
             **{f"g_amp_induce": jnp.abs(gains_induce)},
             **{f"g_phase_induce": jnp.angle(gains_induce[:-1])},
@@ -435,7 +471,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         del vis_ast
         del vis_rfi
         del gains_ants
-        del rfi_A_app
         ################
 
     ###################################
