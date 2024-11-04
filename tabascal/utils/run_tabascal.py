@@ -25,7 +25,12 @@ from numpyro.infer import MCMC, NUTS, Predictive
 import matplotlib.pyplot as plt
 
 from tabascal.utils.yaml import Tee, load_config
-from tabascal.jax.coordinates import calculate_sat_corr_time, orbit
+from tabascal.utils.tle import get_satellite_positions
+from tabascal.jax.coordinates import calculate_sat_corr_time, orbit, itrf_to_uvw, itrf_to_xyz
+from tabascal.dask.interferometry import int_sample_times
+
+from astropy.time import Time
+
 from tab_opt.data import extract_data
 from tab_opt.opt import run_svi, svi_predict, f_model_flat, flatten_obs, post_samples
 from tab_opt.gp import (
@@ -42,6 +47,7 @@ from tab_opt.models import (
 from tab_opt.transform import affine_transform_full_inv, affine_transform_diag_inv
 
 import xarray as xr
+from daskms import xds_from_ms, xds_from_table
 
 def reduced_chi2(pred, true, noise):
     rchi2 = ((jnp.abs(pred - true) / noise) ** 2).sum() / (2 * true.size)
@@ -154,9 +160,9 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     fisher_path = os.path.join(results_dir, f"fisher_results_{results_name}.zarr")
 
     (
-        N_int_samples,
-        N_ant,
-        N_bl,
+        n_int_samples,
+        n_ant,
+        n_bl,
         a1,
         a2,
         times,
@@ -177,22 +183,101 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         rfi_orbit,
     ) = extract_data(zarr_path, sampling=config["data"]["sampling"])
 
-    N_rfi = len(rfi_orbit)
-    N_time = len(times)
-
     ################
     del bl_uvw
     del vis_cal
     del noise_data
     #################
 
+    # n_rfi = len(config["satelllites"]["norad_ids"]) + len(config["satelllites"]["sat_ids"])
+    n_rfi = len(rfi_orbit)
+    n_time = len(times)
+
+    #####################################################
+    # Calculate parameters from MS file
+    #####################################################
+    
+    # xds = xds_from_ms(ms_path)
+    # xds_ant = xds_from_table(ms_path+"::ANTENA")
+    # xds_spec = xds_from_table(ms_path+"::SPECTRAL_WINDOW")
+    # xds_src = xds_from_table(ms_path+"::SOURCE")
+
+    # ants_itrf = xds_ant.POSITION.data.compute()
+
+    # n_ant = ants_itrf.shape[0]
+    # n_time = len(jnp.unique(xds.TIME.data.compute()))
+    # n_bl = xds.DATA.data.shape[0] // n_time
+    # n_freq, n_corr = xds.DATA.data.shape[1:]
+
+    # vis_obs = xds.DATA.data.reshape().compute()
+    # noise = xds.SIGMA.data.mean().compute()
+
+    # times_jd = xds.TIME.data.reshape(n_time, n_bl)[:,0].compute()
+    # times = (times_jd - times_jd[0]) * 24 * 3600 # Convert Julian date in days to seconds
+    # int_time = jnp.diff(times)[0]
+
+    #######################
+    # Check the required sampling rate of the RFI by checking the 
+    # fringe frequency at a low sampling rate. Every minute is enough.
+    #######################
+
+    # times_coarse = 
+    # rfi_xyz = get_satellite_positions(tles, times_jd)
+    # rfi_xyz = jnp.array([orbit(times_coarse, *orbit) for orbit in rfi_orbit])
+    # ra, dec = jnp.rad2deg(xds_src.DIRECTION.data[0])
+    # gsa = Time(times_fine_jd, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
+    # gh0 = (gsa - ra) % 360
+    # ants_u = itrf_to_uvw(ants_itrf, gh0, dec)[:,:,0] # We want the uvw-coordinates at the coarse sampling rate for the fringe frequency prediction
+
+    # fringe_params = [{
+    #     "times": times_coarse,
+    #     "freq": freqs.max(),
+    #     "rfi_xyz": rfi_xyz[i],
+    #     "ants_itrf": ants_itrf,
+    #     "ants_u": ants_u,
+    #     "dec": dec,
+    # } for i in range(obs.n_rfi_satellite)]
+
+    # fringe_freq = jnp.array([calculate_fringe_frequency(**f_params) for f_params in fringe_params])
+
+    # sample_freq = np.pi * jnp.max(jnp.abs(fringe_freq)) * jnp.sqrt(jnp.max(vis_obs) / (6 * noise))
+    # n_int_samples = jnp.ceil(int_time * sample_freq)
+    
+    #####################
+    # Now the required sampling rate has been determined we can create the times_fine array
+    #####################
+
+    # times_fine = int_sample_times(times, n_int_samples)
+    # times_fine_jd = int_sample_times(times_jd, n_int_samples)
+
+    # ra, dec = jnp.rad2deg(xds_src.DIRECTION.data[0])
+    # gsa = Time(times_fine_jd, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
+    # gh0 = (gsa - ra) % 360
+
+    # ants_w = itrf_to_uvw(ants_itrf, gh0, dec)[:,:,2] # We need the uvw-coordinates at the fine sampling rate for the RFI
+    # ants_xyz = itrf_to_xyz(ants_itrf, gsa)
+
+    # freqs = xds_spec.CHAN_FREQ.data[0].compute()
+
+    # To be replaced with TLE code for real data
+    # phi_ij = -2pi (|r_rfi_s - r_ant_i| - |r_rfi_s - r_ant_i| + w_ant_i - w_ant_j) / lambda
+
+    # rfi_phase = vmap(get_rfi_phase_from_pos, in_axes=())(rfi_xyz, ants_w, ants_xyz, freqs)
+
+    rfi_phase = jnp.array(
+        [
+            get_rfi_phase(times_fine, orbit, ants_uvw, ants_xyz, freqs).T
+            for orbit in rfi_orbit
+        ]
+    )
+
     print()
-    print(f"Number of Antennas   : {N_ant: 4}")
-    print(f"Number of Time Steps : {N_time: 4}")
+    print(f"Number of Antennas   : {n_ant: 4}")
+    print(f"Number of Time Steps : {n_time: 4}")
 
     # Square root of the power spectrum in the time axis for the astronomical visibilities
     @jit
-    def pow_spec(k, P0=1e3, k0=1e-3, gamma=1.0):
+    def pow_spec_sqrt(k, P0=1e3, k0=1e-3, gamma=1.0):
         k_ = (k / k0) ** 2
         return P0 * 0.5 * (jnp.exp(-0.5 * k_) + 1.0 / ((1.0 + k_) ** (gamma / 2)))
 
@@ -208,50 +293,43 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         rfi_var = config["rfi"]["var"]
     else:
         rfi_var = jnp.max(jnp.abs(vis_obs))
+    # rfi_l can be calculated based on RFI positions. Check True value definitions
     rfi_l = config["rfi"]["corr_time"]
 
     ### Gain Sampling Times
     g_times = get_times(times, g_l)
-    N_g_times = len(g_times)
+    n_g_times = len(g_times)
 
     ### RFI Sampling Times
     rfi_times = get_times(times, rfi_l)
-    N_rfi_times = len(rfi_times)
+    n_rfi_times = len(rfi_times)
 
     print()
     print("Number of parameters per antenna/baseline")
-    print(f"Gains : {N_g_times: 4}")
-    print(f"RFI   : {N_rfi_times: 4}")
-    print(f"AST   : {N_time: 4}")
+    print(f"Gains : {n_g_times: 4}")
+    print(f"RFI   : {n_rfi_times: 4}")
+    print(f"AST   : {n_time: 4}")
     print()
     print(
-        f"Number of parameters : {((2 * N_ant - 1) * N_g_times) + (2 * N_time * N_bl) + (2 * N_ant * N_rfi_times)}"
+        f"Number of parameters : {((2 * n_ant - 1) * n_g_times) + (2 * n_time * n_bl) + (2 * n_ant * n_rfi_times)}"
     )
-    print(f"Number of data points: {2* N_bl * N_time}")
-
-    # To be replaced with TLE code for real data
-    rfi_phase = jnp.array(
-        [
-            get_rfi_phase(times_fine, orbit, ants_uvw, ants_xyz, freqs).T
-            for orbit in rfi_orbit
-        ]
-    )
+    print(f"Number of data points: {2* n_bl * n_time}")
 
     ##############################################
     # Only include estimates derived from MS available data
     ##############################################
     # Astronomical and RFI estimates from observed data
 
-    vis_ast_est = jnp.mean(vis_obs.T, axis=1, keepdims=True) * jnp.ones((N_bl, N_time))
+    vis_ast_est = jnp.mean(vis_obs.T, axis=1, keepdims=True) * jnp.ones((n_bl, n_time))
     ast_k_est = jnp.fft.fft(vis_ast_est, axis=1)
-    k_ast = jnp.fft.fftfreq(N_time, int_time)
+    k_ast = jnp.fft.fftfreq(n_time, int_time)
 
     rfi_induce_est = (
         jnp.interp(rfi_times, times, jnp.sqrt(jnp.max(jnp.abs(vis_obs - vis_ast_est.T), axis=1)))[
             None, None, :
-        ] # shape is now (1, 1, N_rfi_times)
-        * jnp.ones((N_rfi, N_ant, N_rfi_times))
-        / N_rfi
+        ] # shape is now (1, 1, n_rfi_times)
+        * jnp.ones((n_rfi, n_ant, n_rfi_times))
+        / n_rfi
     )
 
     # Stack observed data into real-valued array
@@ -260,19 +338,18 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     # Set Constant Parameters
     args = {
         "noise": noise if noise > 0 else 0.2,
-        "vis_ast_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex), 
-        "vis_rfi_true": jnp.nan * jnp.zeros((N_bl, N_time), dtype=complex),
-        "gains_true": jnp.nan * jnp.zeros((N_ant, N_time), dtype=complex),
+        "vis_ast_true": jnp.nan * jnp.zeros((n_bl, n_time), dtype=complex), 
+        "vis_rfi_true": jnp.nan * jnp.zeros((n_bl, n_time), dtype=complex),
+        "gains_true": jnp.nan * jnp.zeros((n_ant, n_time), dtype=complex),
         "times": times,
         "times_fine": times_fine,
         "g_times": g_times,
-        "N_time": N_time,
-        "N_ants": N_ant,
-        "N_bl": N_bl,
+        "n_time": n_time,
+        "n_ants": n_ant,
+        "n_bl": n_bl,
         "a1": a1,
         "a2": a2,
-        "bl": jnp.arange(N_bl),
-        "n_int": int(N_int_samples),
+        "bl": jnp.arange(n_bl),
     }
 
     # Condition array if anything needs access to the truth
@@ -289,47 +366,50 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             config["ast"]["init"]=="truth_mean",
         ]
     )
-
-    # Calculate True Values
+    #############################
+    # Calculate True Parameter Values
+    #############################
     if jnp.any(truth_cond) :
-        ### Define True Parameters
-        gains_true = gains_ants
-        vis_ast_true = vis_ast
-        vis_rfi_true = vis_rfi
-
         xds = xr.open_zarr(zarr_path)
 
-        corr_time_params = {
-            "sat_xyz": orbit(times, *rfi_orbit[0]),
-            "ants_xyz": ants_xyz[N_int_samples//2::N_int_samples],
-            "orbit_el": rfi_orbit[0,0],
+        vis_ast = xds.vis_ast.data[:,:,0].compute()
+        vis_rfi = xds.vis_rfi.data[:,:,0].compute()
+        gains_ants = xds.gains_ants[:,:,0].data.compute()
+        rfi_A_app = xds.rfi_sat_A[:,:,:,0].data.compute()
+        times_fine = xds.time_fine.data
+
+        corr_time_params = [{
+            "sat_xyz": xds.rfi_sat_xyz.data[i,xds.time_idx].compute(),
+            "ants_xyz": xds.ants_xyz.data[xds.time_idx].compute(),
+            "orbit_el": xds.rfi_sat_orbit.data[i,0].compute(),
             "lat": xds.tel_latitude,
             "dish_d": xds.dish_diameter,
             "freqs": freqs,
-        }
-        l = calculate_sat_corr_time(**corr_time_params)
+        } for i in range(n_rfi)]
+
+        l = jnp.min(jnp.array([calculate_sat_corr_time(**corr_time_params[i]) for i in range(n_rfi)]))
 
         print()
         print(f"Minimum expected RFI correlation time : {l:.0f} s ({rfi_l:.0f} s used)")
         print()
-        print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi_true)):.1f} Jy")
-        print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast_true)):.1f} Jy")
+        print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi)):.1f} Jy")
+        print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast)):.1f} Jy")
 
-        ast_k = jnp.fft.fft(vis_ast_true, axis=0).T
+        ast_k = jnp.fft.fft(vis_ast, axis=0).T
 
         ast_k_mean = jnp.fft.fft(
-            vis_ast_true.mean(axis=0)[:, None] * jnp.ones((N_bl, N_time)), axis=1
+            vis_ast.mean(axis=0)[:, None] * jnp.ones((n_bl, n_time)), axis=1
         )
 
-        gains_induce = vmap(jnp.interp, in_axes=(None, None, 1))(
+        gains_induce = vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
             g_times, times, gains_ants
         )
         rfi_induce = jnp.array(
             [
-                vmap(jnp.interp, in_axes=(None, None, 1))(
+                vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
                     rfi_times, times_fine, rfi_A_app[i]
                 )
-                for i in range(N_rfi)
+                for i in range(n_rfi)
             ]
         )
 
@@ -343,29 +423,40 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         }
 
         args.update({
-            "vis_ast_true": vis_ast_true.T,
-            "vis_rfi_true": vis_rfi_true.T,
-            "gains_true": gains_true.T,
+            "vis_ast_true": vis_ast.T,
+            "vis_rfi_true": vis_rfi.T,
+            "gains_true": gains_ants.T,
         })
+
+        ################
+        del vis_ast
+        del vis_rfi
+        del gains_ants
+        del rfi_A_app
+        ################
+
+    ###################################
+    # End of True Parameter Definition
+    ###################################
 
     # Set Gain Prior Mean
     if config["gains"]["amp_mean"] == "truth":
         g_amp_prior_mean = true_params["g_amp_induce"]
     elif isinstance(config["gains"]["amp_mean"], numbers.Number):
-        g_amp_prior_mean = config["gains"]["amp_mean"] * jnp.ones((N_ant, N_g_times))
+        g_amp_prior_mean = config["gains"]["amp_mean"] * jnp.ones((n_ant, n_g_times))
     else:
         ValueError("gains: amp_mean: must be a number or 'truth'.")
 
     if config["gains"]["phase_mean"] == "truth":
         g_phase_prior_mean = true_params["g_phase_induce"]
     elif isinstance(config["gains"]["phase_mean"], numbers.Number):
-        g_phase_prior_mean = jnp.deg2rad(config["gains"]["phase_mean"]) * jnp.ones((N_ant-1, N_g_times))
+        g_phase_prior_mean = jnp.deg2rad(config["gains"]["phase_mean"]) * jnp.ones((n_ant-1, n_g_times))
     else:
         ValueError("gains: phase_mean: must be a number or 'truth'.")
 
     # Set Astronomical Prior Mean
     if config["ast"]["mean"]==0:
-        ast_k_prior_mean = jnp.zeros((N_bl, N_time), dtype=complex)
+        ast_k_prior_mean = jnp.zeros((n_bl, n_time), dtype=complex)
     elif config["ast"]["mean"]=="est":
         ast_k_prior_mean = ast_k_est
     elif config["ast"]["mean"]=="truth":
@@ -377,7 +468,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     # Set RFI Prior Mean
     if config["rfi"]["mean"]==0:
-        rfi_prior_mean = jnp.zeros((N_rfi, N_ant, N_rfi_times), dtype=complex)
+        rfi_prior_mean = jnp.zeros((n_rfi, n_ant, n_rfi_times), dtype=complex)
     elif config["rfi"]["mean"]=="est":
         rfi_prior_mean = rfi_induce_est
     elif config["rfi"]["mean"]=="truth":
@@ -398,7 +489,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
             "L_G_phase": jnp.linalg.cholesky(
                 kernel(g_times, g_times, g_phase_var, g_l, 1e-8)
             ),
-            "sigma_ast_k": jnp.array([pow_spec(k_ast, **config["ast"]["pow_spec"]) for _ in range(N_bl)]),
+            "sigma_ast_k": jnp.array([pow_spec_sqrt(k_ast, **config["ast"]["pow_spec"]) for _ in range(n_bl)]),
             "L_RFI": jnp.linalg.cholesky(kernel(rfi_times, rfi_times, rfi_var, rfi_l)),
             "resample_g_amp": resampling_kernel(g_times, times, g_amp_var, g_l, 1e-8),
             "resample_g_phase": resampling_kernel(g_times, times, g_phase_var, g_l, 1e-8),
@@ -441,11 +532,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
         "rfi_r_induce": rfi_induce_init.real,
         "rfi_i_induce": rfi_induce_init.imag,
     }
-
-    ################
-    del gains_ants
-    del rfi_A_app
-    ################
 
     inv_scaling = {
         "L_RFI": jnp.linalg.inv(args["L_RFI"]),

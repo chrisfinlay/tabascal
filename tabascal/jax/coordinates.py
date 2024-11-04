@@ -583,7 +583,7 @@ def itrf_to_xyz(itrf: Array, gsa: Array) -> Array:
     itrf : Array (n_ant, 3)
         ITRF coordinates in metres.
     gsa : Array (n_time,)
-        Greenwich sidereal time in degrees
+        Greenwich sidereal angle in degrees.
 
     Returns
     -------
@@ -629,7 +629,7 @@ def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
     Calculate uvw coordinates from ITRF/ECEF coordinates,
     source hour angle and declination. Use the Greenwich hour 
     angle when using true ITRF coordinates such as those produced 
-    with 'enu_to_itrf'. Use local hour angle when using local 'xyz' 
+    with 'enu_to_itrf' or provided in an MS file. Use local hour angle when using local 'xyz' 
     coordinates as defined in most radio interferometry textbooks 
     or those produced with 'enu_to_xyz_local'.
 

@@ -193,6 +193,7 @@ def get_observation_attributes(obs: Observation):
 def get_coordinates(obs: Observation):
     coords = {
         "time": obs.times,
+        "time_jd": obs.times_jd,
         "time_fine": obs.times_fine,
         "freq": obs.freqs,
         "bl": np.arange(obs.n_bl),
@@ -204,6 +205,8 @@ def get_coordinates(obs: Observation):
         "enu": np.array(["east", "north", "up"]),
         "radec": np.array(["ra", "dec"]),
         "geo": np.array(["latitude", "longitude", "elevation"]),
+        "orbit": np.array(["elevation", "inclination", "lon_asc_node", "periapsis"]),
+        "tle": np.array(["tle_line1", "tle_line2"])
     }
     
     return coords
@@ -270,8 +273,8 @@ def get_astromonical_source_data(obs: Observation):
 
 def get_satellite_rfi_data(obs: Observation):
     if obs.n_rfi_satellite > 0:
+        # Circular Satellite RFI parameters
         rfi_sat = {
-            # Satellite RFI parameters
             "rfi_sat_A": (
                 ["sat_src", "time_fine", "ant", "freq"],
                 da.concatenate(obs.rfi_satellite_A_app, axis=0).rechunk('auto'),
@@ -291,7 +294,32 @@ def get_satellite_rfi_data(obs: Observation):
         }
     else:
         rfi_sat = {}
-    return rfi_sat
+
+    if obs.n_rfi_tle_satellite > 0:
+        # TLE Satellite RFI parameters
+        rfi_tle_sat = {
+            "rfi_tle_sat_A": (
+                ["tle_sat_src", "time_fine", "ant", "freq"],
+                da.concatenate(obs.rfi_tle_satellite_A_app, axis=0).rechunk('auto'),
+            ),
+            "rfi_tle_sat_xyz": (
+                ["sat_src", "time_fine", "xyz"],
+                da.concatenate(obs.rfi_tle_satellite_xyz, axis=0).rechunk('auto'),
+            ),
+            "rfi_tle_sat_ang_sep": (
+                ["sat_src", "time_fine", "ant"],
+                da.concatenate(obs.rfi_tle_satellite_ang_sep, axis=0).rechunk('auto'),
+            ),
+            "rfi_tle_sat_orbit": (
+                ["sat_src", "tle"],
+                da.concatenate(obs.rfi_tle_satellite_orbit, axis=0).rechunk('auto'),
+            ),
+        }
+    else:
+        rfi_tle_sat = {}
+
+    
+    return {**rfi_sat, **rfi_tle_sat}
 
 
 def get_stationary_rfi_data(obs: Observation):
@@ -375,7 +403,7 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
         flags = da.asarray(flags).reshape(n_row, n_freq, n_corr)
 
     row_times = da.asarray(
-        (ds.coords["time"].data[:, None] * da.ones(shape=(1, n_bl))).flatten()
+        (ds.coords["time_jd"].data[:, None] * da.ones(shape=(1, n_bl))).flatten()
     )
     ant1 = (
         (ds.antenna1.data[None, :] * da.ones(shape=(n_time, 1)))
@@ -559,6 +587,7 @@ def construct_ms_spectral_window_table(ds: Dataset, ms_path: str):
         "CHAN_FREQ": (("row", "chan"), chan_freq),
         "CHAN_WIDTH": (("row", "chan"), chan_width),
         "EFFECTIVE_BW": (("row", "chan"), chan_width),
+        "EFFECTIVE_BW": (("row", "chan"), n_freq * chan_width),
         "FLAG_ROW": (("row"), zero),
         "FREQ_GROUP": (("row"), zero),
         # 'FREQ_GROUP_NAME': (('row'), zero),
