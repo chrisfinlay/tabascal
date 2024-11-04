@@ -5,7 +5,7 @@ telescope:
   elevation: 1050.0
   dish_d: 13.5
   enu_path: /nfs/chris/projects/tabascal/tabascal/tabascal/data/Meerkat.enu.txt
-  itrf_path:
+  # itrf_path: /nfs/chris/projects/tab_dev/tabascal/tabascal/data/MeerKAT.itrf.txt
   n_ant: 16
 
 observation:
@@ -17,7 +17,7 @@ observation:
   start_time_isot: None
   int_time: 2.0
   n_time: 450
-  n_int: 256
+  n_int: 8
   start_freq: 1.227e9
   chan_width: 209e3
   n_freq: 1
@@ -60,7 +60,7 @@ gains:
   random_seed: 999
 
 output:
-  path: ../../data/pnt_src_10_seed_truth_init
+  path: ../../data/
   prefix: tab1
   overwrite: True
   zarr: True

@@ -416,7 +416,7 @@ def generate_gains(
     random_seed: int,
 ) -> da.Array:
     rng = np.random.default_rng(random_seed)
-    times = times[:, None, None]
+    times = times[:, None, None] - times[0]
 
     # Generate the initial gain values
     G0 = G0_mean * da.exp(

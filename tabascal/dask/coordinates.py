@@ -367,66 +367,6 @@ def ITRF_to_UVW(
 
 ITRF_to_UVW.__doc__ = coord.itrf_to_uvw.__doc__
 
-def ENU_to_UVW(
-    enu: da.Array,
-    latitude: da.Array,
-    longitude: da.Array,
-    elevation: da.Array,
-    ra: da.Array,
-    dec: da.Array,
-    times: da.Array,
-) -> da.Array:
-    n_ant = enu.shape[0]
-    n_time = times.shape[0]
-
-    ant_chunk = enu.chunksize[0]
-    time_chunk = times.chunksize[0]
-
-    input = xr.Dataset(
-        {
-            "enu": (["ant", "space"], enu),
-            "latitude": (["geo_space_0"], da.from_array([latitude])),
-            "longitude": (["geo_space_1"], da.from_array([longitude])),
-            "elevation": (["geo_space_1"], da.from_array([elevation])),
-            "ra": (["cel_space_0"], da.from_array([ra])),
-            "dec": (["cel_space_1"], da.from_array([dec])),
-            "times": (["time"], times),
-        }
-    )
-
-    output = xr.Dataset(
-        {
-            "uvw": (
-                ["time", "ant", "space"],
-                da.zeros(
-                    shape=(n_time, n_ant, 3),
-                    chunks=(time_chunk, ant_chunk, 3),
-                    dtype=float,
-                ),
-            )
-        }
-    )
-
-    def _ENU_to_UVW(ds):
-        uvw = delayed(coord.enu_to_uvw, pure=True)(
-            ds.enu.data,
-            ds.latitude.data,
-            ds.longitude.data,
-            ds.elevation.data,
-            ds.ra.data,
-            ds.dec.data,
-            ds.times.data,
-        ).compute()
-        ds_out = xr.Dataset({"uvw": (["time", "ant", "space"], uvw)})
-        return ds_out
-
-    ds = xr.map_blocks(_ENU_to_UVW, input, template=output)
-
-    return ds.uvw.data
-
-
-ENU_to_UVW.__doc__ = coord.enu_to_uvw.__doc__
-
 
 def angular_separation(
     rfi_xyz: da.Array, ants_xyz: da.Array, ra: da.Array, dec: da.Array

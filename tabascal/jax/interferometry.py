@@ -549,7 +549,7 @@ def generate_gains(
     G0_std = jnp.asarray(G0_std)
     Gt_std_amp = jnp.asarray(Gt_std_amp)
     Gt_std_phase = jnp.asarray(Gt_std_phase)
-    times = jnp.asarray(times)
+    times = jnp.asarray(times) - jnp.asarray(times[0])
     n_ant = jnp.asarray(n_ant)
     n_freq = jnp.asarray(n_freq)
     key = jnp.asarray(key)

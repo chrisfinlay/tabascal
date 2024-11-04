@@ -16,12 +16,14 @@ from tabascal.dask.observation import Observation
 from tabascal.utils.sky import generate_random_sky
 from tabascal.utils.plot import plot_uv, plot_src_alt, plot_angular_seps
 from tabascal.utils.write import write_ms, mk_obs_name, mk_obs_dir
-from tabascal.jax.coordinates import calculate_fringe_frequency, lst_deg2sec
+from tabascal.jax.coordinates import calculate_fringe_frequency
 from tabascal.utils.tle import get_visible_satellite_tles
 
 from daskms import xds_from_ms
 
 from tqdm import tqdm
+
+JD0 = 2459997.079914223 # GMSA = 0 2023-02-21 13:55:04.589 UTC
 
 # Define normalized yaml simulation config
 def get_base_sim_config():
@@ -391,22 +393,16 @@ def load_obs(obs_spec: dict) -> Observation:
 
     if obs_["start_time"]:
         start_time = obs_["start_time"]
-        start_time_jd = 2460362.08057535 + start_time/(24*3600)
+        start_time_jd = JD0 + start_time/(24*3600)
     elif obs_["start_time_jd"]:
-        from astropy.time import Time
-        start_time_jd = Time(obs_["start_time_jd"], format="jd", scale="ut1")
-        # start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
-        start_time_jd = start_time_jd.jd
+        start_time_jd = obs_["start_time_jd"]
     elif obs_["start_time_isot"]:
         from astropy.time import Time
-        start_time_jd = Time(obs_["start_time_isot"], format="isot", scale="ut1")
-        # start_time = lst_deg2sec(start_time_jd.sidereal_time("mean", longitude=tel_["latitude"]).deg)
-        start_time_jd = start_time_jd.jd
+        start_time_jd = Time(obs_["start_time_isot"], format="isot", scale="ut1").jd
     else:
         ValueError("A start time must be given in either the observation: start_time: or observation: start_time_jd:")
 
     time_range = arange(0, obs_["int_time"], obs_["n_time"])
-    # times = start_time + time_range
     times_jd = start_time_jd + time_range/(24*3600)
     freqs = arange(obs_["start_freq"], obs_["chan_width"], obs_["n_freq"])
 
@@ -416,7 +412,6 @@ def load_obs(obs_spec: dict) -> Observation:
         elevation=tel_["elevation"],
         ra=obs_["ra"],
         dec=obs_["dec"],
-        # times=times,
         times_jd=times_jd,
         freqs=freqs,
         chan_width=obs_["chan_width"],

@@ -1,7 +1,6 @@
 import argparse
 import subprocess
 import os
-from tabascal.utils.tools import str2bool
 
 def main():
 
@@ -18,7 +17,7 @@ def main():
         "-n", "--name_suffix", default=None, type=str, help="Image name suffix. Iamge name will be '{--data_col}_{--name_suffix}-image.fits'."
     )
     parser.add_argument(
-        "-w", "--wsclean_opts", default="-size 2048 2048 -scale 2asec -niter 50000 -mgain 0.3 -auto-threshold 1 -pol xx -weight briggs -0.5 -auto-mask 3", help="WSclean options."
+        "-w", "--wsclean_opts", default="-size 2048 2048 -scale 2asec -niter 50000 -mgain 0.3 -auto-threshold 1 -pol xx -weight briggs -0.5 -auto-mask 3", help="WSclean options. default is '-size 2048 2048 -scale 2asec -niter 50000 -mgain 0.3 -auto-threshold 1 -pol xx -weight briggs -0.5 -auto-mask 3'"
     )
     parser.add_argument(
         "-b", "--bash_exec", default="/bin/bash", help="Path to the bash exectuable used to run docker. Default is /bin/bash."

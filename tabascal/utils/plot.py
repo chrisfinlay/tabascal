@@ -3,7 +3,7 @@ import numpy as np
 from numpy.typing import ArrayLike
 
 from tabascal.dask.observation import Observation
-from tabascal.jax.coordinates import alt_az_of_source, gmst_to_lst
+from tabascal.jax.coordinates import alt_az_of_source
 import os
 
 plt.rcParams["font.size"] = 18
@@ -74,8 +74,8 @@ def plot_src_alt(obs: Observation, save_path: str) -> None:
     """
 
     times, scale = time_units(obs.times)
-    lst = gmst_to_lst(obs.times.compute(), obs.longitude.compute())
-    alt = alt_az_of_source(lst, *[x.compute() for x in [obs.latitude, obs.ra, obs.dec]])[:,0]
+    lsa = obs.lsa.compute()
+    alt = alt_az_of_source(lsa[obs.t_idx], *[x.compute() for x in [obs.latitude, obs.ra, obs.dec]])[:,0]
     plt.figure(figsize=(10,7))
     plt.plot(times, alt, '.-')
     plt.xlabel(f"Time [{scale}]")

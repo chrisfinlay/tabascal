@@ -251,14 +251,14 @@ def GEO_to_XYZ_vmap1(geo: Array, times: Array) -> Array:
 
 
 @jit_with_doc
-def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
+def alt_az_of_source(lsa: Array, lat: float, ra: float, dec: float) -> Array:
     """Calculate the altitude and azimuth of a given source direction over time. 
     Taken from https://astronomy.stackexchange.com/questions/14492/need-simple-equation-for-rise-transit-and-set-time
 
     Parameters
     ----------
     lst : Array (n_time,)
-        Local sidereal time in degrees.
+        Local sidereal angle in degrees.
     lat : float
         Latitude of the observer in degrees.
     ra : float
@@ -272,7 +272,7 @@ def alt_az_of_source(lst: Array, lat: float, ra: float, dec: float) -> Array:
         Altitude and azimuth of the source in degrees relative to the observer.
     """
 
-    h0 = jnp.atleast_1d(lst) - ra 
+    h0 = jnp.atleast_1d(lsa) - ra 
     ones = jnp.ones_like(h0)
     lat, h0, dec = jnp.deg2rad(jnp.array([lat*ones, h0, dec*ones]))
 
@@ -331,67 +331,8 @@ def lst_sec2deg(lst: Array) -> Array:
 
     return lst / T_s * 360
 
-
-@jit_with_doc
-def gmst_to_lst(gmst: Array, lon: float) -> Array:
-    """Calculate the local sidereal time at a given longitude in degrees.
-
-    Parameters
-    ----------
-    gmst : Array
-        Greenwich Mean Sidereal Time in seconds.
-    lon : float
-        Longitude of the location in degrees
-
-    Returns
-    -------
-    Array
-        Local Sidereal Time at the location in degrees.
-    """
-
-    gmst = jnp.asarray(gmst)
-    lon = jnp.asarray(lon)
-
-    lst = lst_sec2deg(gmst) + lon
-
-    return lst
-
-def jd_to_gmst(jd: float) -> float:
-    """
-    Convert Julian Day (JD) to Greenwich Mean Sidereal Time (GAST).
-
-    This function calculates the GMST based on the JD and nutation.
-
-    Args:
-        jd (float): The Julian Day.
-        nutation (float): The nutation in degrees.
-
-    Returns:
-        float: The GMST in degrees.
-    """
-    # Approximate Delta T (in days)
-    delta_t_days = 32.184 / (24 * 60 * 60)
-
-    # Convert JD(UT) to JD(TT)
-    jd_tt = jd + delta_t_days
-    # Julian centuries since J2000.0
-    t = (jd_tt - 2451545.0) / 36525.0
-
-    # Greenwich Mean Sidereal Time (GMST) at 0h UT
-    theta_gmst = (
-        280.46061837
-        + 360.98564736629 * (jd - 2451545.0)
-        + 0.000387933 * t**2
-        - t**3 / 38710000.0
-    )
-
-    # Wrap GMST to [0, 360) range
-    theta_gmst = theta_gmst % 360
-
-    return theta_gmst
-
-def gmst_from_jd(jd: float) -> float:
-    """Get the Greenwich Mean Sidereal Time in seconds from the Julian Day (UT1).
+def gmsa_from_jd(jd: float) -> float:
+    """Get the Greenwich Mean Sidereal Angle in degrees from the Julian Day (UT1).
     Calculated using https://aa.usno.navy.mil/faq/GAST
 
     Parameters
@@ -402,14 +343,14 @@ def gmst_from_jd(jd: float) -> float:
     Returns
     -------
     float
-        Greenwich Mean Sidereal Time in seconds. 
+        Greenwich Mean Sidereal Angle in degrees. 
     """
 
     gmst_hours = 18.697375 + 24.065709824279 * (jd - 2451545.0)
 
-    gmst = gmst_hours * 3600
+    gmsa = gmst_hours * 15
 
-    return gmst
+    return gmsa 
 
 
 def jd_from_gmst(gmst: float) -> float:
@@ -666,59 +607,6 @@ def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
 
     return uvw
 
-@jit_with_doc
-def enu_to_uvw(enu: Array,
-    latitude: float,
-    longitude: float,
-    elevation: float,
-    ra: float,
-    dec: float,
-    times: Array,
-) -> Array:
-    """
-    Convert antenna coordinates in the ENU frame to the UVW coordinates, where
-    w points at the phase centre defined by (ra,dec), at specific times for a
-    telescope at a specifc latitude and longitude.
-
-    Parameters
-    ----------
-    enu: ndarray (n_ant, 3)
-        The East, North, Up coordindates of each antenna relative to the
-        position defined by the latitude and longitude.
-    latitude: float
-        Latitude of the telescope.
-    longitude: float
-        Longitude of the telescope.
-    ra: float
-        Right Ascension of the phase centre.
-    dec: float
-        Declination of the phase centre.
-    times: ndarray (n_time,)
-        Times, in seconds, at which to calculate the UVW coordinates.
-
-    Returns
-    -------
-    uvw: ndarray (n_time, n_ant, 3)
-        UVW coordinates, in metres, of the individual antennas at each time.
-    """
-
-    enu = jnp.atleast_2d(jnp.asarray(enu))
-    latitude = jnp.asarray(latitude).flatten()[0]
-    longitude = jnp.asarray(longitude).flatten()[0]
-    elevation = jnp.asarray(elevation).flatten()[0]
-    ra = jnp.asarray(ra).flatten()[0]
-    dec = jnp.asarray(dec).flatten()[0]
-    times = jnp.atleast_1d(times)
-
-    # xyz = enu_to_xyz_local(enu, latitude)
-    # lh0 = lst_sec2deg(times) + longitude - ra # local hour angle
-    # uvw = itrf_to_uvw(xyz, lh0, dec)
-
-    itrf = enu_to_itrf(enu, latitude, longitude, elevation)
-    gh0 = lst_sec2deg(times) - ra # Greenwich hour angle
-    uvw = itrf_to_uvw(itrf, gh0, dec)
-
-    return uvw
 
 
 @jit_with_doc
