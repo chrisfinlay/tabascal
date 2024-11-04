@@ -27,7 +27,7 @@ import matplotlib.pyplot as plt
 from tabascal.utils.yaml import Tee, load_config
 from tabascal.utils.tle import get_satellite_positions
 from tabascal.jax.coordinates import calculate_sat_corr_time, orbit, itrf_to_uvw, itrf_to_xyz
-from tabascal.dask.interferometry import int_sample_times
+from tabascal.jax.interferometry import int_sample_times
 
 from astropy.time import Time
 
@@ -161,25 +161,25 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
     (
         n_int_samples,
-        n_ant,
-        n_bl,
-        a1,
-        a2,
-        times,
-        times_fine,
-        bl_uvw,
-        ants_uvw,
-        ants_xyz,
-        vis_ast,
-        vis_rfi,
-        vis_obs,
-        vis_cal,
-        noise,
-        noise_data,
-        int_time,
-        freqs,
-        gains_ants,
-        rfi_A_app,
+        n_ant,#
+        n_bl,#
+        a1,#
+        a2,#
+        times,#
+        times_fine,#
+        bl_uvw,#
+        ants_uvw,#
+        ants_xyz,#
+        vis_ast,#
+        vis_rfi,#
+        vis_obs,#
+        vis_cal,#
+        noise,#
+        noise_data,#
+        int_time,#
+        freqs,#
+        gains_ants,#
+        rfi_A_app,#
         rfi_orbit,
     ) = extract_data(zarr_path, sampling=config["data"]["sampling"])
 
@@ -197,35 +197,40 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     # Calculate parameters from MS file
     #####################################################
     
-    # xds = xds_from_ms(ms_path)
-    # xds_ant = xds_from_table(ms_path+"::ANTENA")
-    # xds_spec = xds_from_table(ms_path+"::SPECTRAL_WINDOW")
-    # xds_src = xds_from_table(ms_path+"::SOURCE")
+    xds = xds_from_ms(ms_path)[0]
+    xds_ant = xds_from_table(ms_path+"::ANTENNA")[0]
+    xds_spec = xds_from_table(ms_path+"::SPECTRAL_WINDOW")[0]
+    xds_src = xds_from_table(ms_path+"::SOURCE")[0]
 
-    # ants_itrf = xds_ant.POSITION.data.compute()
+    ants_itrf = xds_ant.POSITION.data.compute()
 
-    # n_ant = ants_itrf.shape[0]
-    # n_time = len(jnp.unique(xds.TIME.data.compute()))
-    # n_bl = xds.DATA.data.shape[0] // n_time
-    # n_freq, n_corr = xds.DATA.data.shape[1:]
+    n_ant = ants_itrf.shape[0]
+    n_time = len(jnp.unique(xds.TIME.data.compute()))
+    n_bl = xds.DATA.data.shape[0] // n_time
+    n_freq, n_corr = xds.DATA.data.shape[1:]
 
-    # vis_obs = xds.DATA.data.reshape().compute()
-    # noise = xds.SIGMA.data.mean().compute()
+    a1 = xds.ANTENNA1.data.reshape(n_time, n_bl)[0,:].compute()
+    a2 = xds.ANTENNA2.data.reshape(n_time, n_bl)[0,:].compute()
 
-    # times_jd = xds.TIME.data.reshape(n_time, n_bl)[:,0].compute()
-    # times = (times_jd - times_jd[0]) * 24 * 3600 # Convert Julian date in days to seconds
-    # int_time = jnp.diff(times)[0]
+    vis_obs = xds.DATA.data.reshape(n_time, n_bl, n_freq, n_corr).compute()[:,:,0,0]
+    noise = xds.SIGMA.data.mean().compute()
+
+    times_jd = xds.TIME.data.reshape(n_time, n_bl)[:,0].compute()
+    times = times_jd * 24 * 3600 # Convert Julian date in days to seconds
+    int_time = jnp.diff(times)[0]
 
     #######################
     # Check the required sampling rate of the RFI by checking the 
     # fringe frequency at a low sampling rate. Every minute is enough.
     #######################
 
-    # times_coarse = 
+    # jd_minute = 1 / (24*3600)
+    # times_jd_coarse =  jnp.arange(times_jd[0], time_jd[-1]+jd_minute, jd_minute)
+    # times_coarse = Time(times_jd_coarse, format="jd").sidereal_time("mean", "greenwich").hour*3600 # Convert hours to seconds
     # rfi_xyz = get_satellite_positions(tles, times_jd)
     # rfi_xyz = jnp.array([orbit(times_coarse, *orbit) for orbit in rfi_orbit])
     # ra, dec = jnp.rad2deg(xds_src.DIRECTION.data[0])
-    # gsa = Time(times_fine_jd, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
+    # gsa = Time(times_coarse_jd, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
     # gh0 = (gsa - ra) % 360
     # ants_u = itrf_to_uvw(ants_itrf, gh0, dec)[:,:,0] # We want the uvw-coordinates at the coarse sampling rate for the fringe frequency prediction
 
@@ -247,20 +252,29 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     # Now the required sampling rate has been determined we can create the times_fine array
     #####################
 
-    # times_fine = int_sample_times(times, n_int_samples)
-    # times_fine_jd = int_sample_times(times_jd, n_int_samples)
+    times_fine = int_sample_times(times, n_int_samples)
+    times_fine_jd = int_sample_times(times_jd, n_int_samples)
 
-    # ra, dec = jnp.rad2deg(xds_src.DIRECTION.data[0])
-    # gsa = Time(times_fine_jd, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
-    # gh0 = (gsa - ra) % 360
+    ra, dec = jnp.rad2deg(xds_src.DIRECTION.data[0].compute())
+    gsa = Time(times_fine_jd, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
+    gh0 = (gsa - ra) % 360
 
-    # ants_w = itrf_to_uvw(ants_itrf, gh0, dec)[:,:,2] # We need the uvw-coordinates at the fine sampling rate for the RFI
-    # ants_xyz = itrf_to_xyz(ants_itrf, gsa)
+    ants_uvw = itrf_to_uvw(ants_itrf, gh0, dec)#[:,:,2] # We need the uvw-coordinates at the fine sampling rate for the RFI
+    ants_xyz = itrf_to_xyz(ants_itrf, gsa)
 
-    # freqs = xds_spec.CHAN_FREQ.data[0].compute()
+    freqs = xds_spec.CHAN_FREQ.data[0].compute()
 
     # To be replaced with TLE code for real data
-    # phi_ij = -2pi (|r_rfi_s - r_ant_i| - |r_rfi_s - r_ant_i| + w_ant_i - w_ant_j) / lambda
+    # phi_i = -2pi (|r_rfi_s - r_ant_i| + w_ant_i) / lambda
+
+    # def get_rfi_phase_from_pos(rfi_xyz, ants_w, ants_xyz, freqs):
+
+    #     c = 299792458.0
+    #     lam = c / freqs
+    #     c_dist = jnp.linalg.norm(rfi_xyz[:,:,None,:] - ants_xyz[None,:,:,:], axis=-1) + ants_w[None,:,:]
+    #     phase = -2.0 * jnp.pi * c_dist[:,:,:,None] / lam[None,None,None,:]
+
+    #     return phase
 
     # rfi_phase = vmap(get_rfi_phase_from_pos, in_axes=())(rfi_xyz, ants_w, ants_xyz, freqs)
 
@@ -743,6 +757,10 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
 
         plt.semilogy(vi_results.losses)
         plt.savefig(os.path.join(plot_dir, f"{model_name}_opt_loss.pdf"), format="pdf")
+
+        print()
+        print("Copying tabascal results to MS file in TAB_DATA column")
+        subprocess.run(f"tab2MS -m {ms_path} -z {map_path}", shell=True, executable="/bin/bash") 
         
         del vi_pred
         del vi_results
@@ -806,11 +824,7 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     mem_i += 1
     jax.profiler.save_device_memory_profile(
         os.path.join(mem_dir, f"memory_{mem_i}.prof")
-    )
-
-    print()
-    print("Copying tabascal results to MS file in TAB_DATA column")
-    subprocess.run(f"tab2MS -m {ms_path} -z {map_path}", shell=True, executable="/bin/bash")    
+    )   
 
     log.close()
     shutil.copy("log_tab.txt", sim_dir)
