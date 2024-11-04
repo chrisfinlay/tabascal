@@ -312,7 +312,7 @@ def get_satellite_rfi_data(obs: Observation):
             ),
             "rfi_tle_sat_orbit": (
                 ["sat_src", "tle"],
-                da.concatenate(obs.rfi_tle_satellite_orbit, axis=0).rechunk('auto'),
+                da.asarray(np.concatenate(obs.rfi_tle_satellite_orbit, axis=0).astype("<U69")).rechunk("auto"),
             ),
         }
     else:
