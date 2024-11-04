@@ -6,11 +6,15 @@ plots:
   init: True
   truth: True
   prior: True
+  # init: False
+  # truth: False
+  # prior: False
   prior_samples: 100
 
 inference:
   mcmc: False
   opt: True
+  # opt: False
   fisher: False
 
 opt:
@@ -45,6 +49,12 @@ rfi:
   # mean: truth
   # var: 100        # Jy
   corr_time: 24   # seconds
+
+satellites:
+  norad_ids: [] 
+  sat_ids: [1]
+  ole_path: ../aux_data/satellite.ole
+  tle_dir: ../aux_data/tles
 
 # True gains
 gains:

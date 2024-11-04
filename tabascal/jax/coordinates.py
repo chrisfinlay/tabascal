@@ -623,7 +623,7 @@ def calculate_fringe_frequency(times: Array, freq: float, rfi_xyz: Array, ants_i
         Position of the RFI source in the ECI frame in metres.
     ants_itrf : Array (n_ant, 3)
         Antenna positions in the ITRF (ECEF) frame in metres. 
-    ants_u : Array (n_time,)
+    ants_u : Array (n_time, n_ant)
         U component of the antennas in UVW frame in metres.
     dec : float
         Phase centre declination in degrees.
@@ -635,7 +635,7 @@ def calculate_fringe_frequency(times: Array, freq: float, rfi_xyz: Array, ants_i
     """
 
     lam = C / freq
-    gsa = lst_sec2deg(times)
+    gsa = gmsa_from_jd(times/(24*3600))
 
     r_ecef = xyz_to_itrf(rfi_xyz, gsa)
     s_ecef = r_ecef - jnp.mean(ants_itrf, axis=0)
