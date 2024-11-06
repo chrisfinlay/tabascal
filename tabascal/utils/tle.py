@@ -1,4 +1,5 @@
 from astropy.time import Time
+from astropy.coordinates import EarthLocation
 from datetime import datetime
 from skyfield.api import load, wgs84, EarthSatellite
 from skyfield.positionlib import position_of_radec
@@ -20,6 +21,51 @@ from glob import glob
 import string
 import random
 
+from spacetrack import SpaceTrackClient
+from astropy.time import Time
+import pandas as pd
+from spacetrack import operators as op
+import ast
+
+def get_space_track_client(username, password):
+    return SpaceTrackClient(identity=username, password=password)
+
+def fetch_tle_data(st_client: SpaceTrackClient, norad_ids: list[int], epoch_jd: float, window_days: float=1.0, limit: int=2000):
+    """
+    Fetch TLE data for given NORAD IDs around a specific epoch.
+    
+    Parameters
+    ----------
+    st_client : SpaceTrackClient
+        SpaceTrackClient instance
+    norad_ids : list[int]
+        List of NORAD IDs
+    epoch_jd : float
+        Julian date for the epoch
+    window_days : int
+        Window size in days around the epoch
+    limit : int
+        Maximum number of results to return
+    
+    Returns :
+        pandas.DataFrame containing TLE data
+    """
+    start_time = Time(epoch_jd - window_days, format="jd", scale="ut1").datetime
+    end_time = Time(epoch_jd + window_days, format="jd", scale="ut1").datetime
+    date_range = op.inclusive_range(start_time, end_time)
+    
+    try:
+        raw_data = st_client.tle(
+            norad_cat_id=norad_ids,
+            epoch=date_range,
+            limit=limit,
+            format='json'
+        )
+        return pd.DataFrame(ast.literal_eval(raw_data))
+    except Exception as e:
+        print(f"Error fetching TLE data: {str(e)}")
+        raise
+
 
 def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
     return ''.join(random.choice(chars) for _ in range(size))
@@ -27,7 +73,7 @@ def id_generator(size=6, chars=string.ascii_uppercase + string.digits):
 
 def get_tles_by_id(username: str, password: str, norad_ids: list[int], epoch_jd: float, window_days: float=1.0, limit: int=2000, tle_dir: str=None) -> pd.DataFrame:
 
-    norad_ids = list(set(norad_ids))
+    norad_ids = list(np.array(list(set(norad_ids))).astype(int))
     n_ids_start = len(norad_ids)
     epoch_str = Time(epoch_jd, format="jd", scale="ut1").strftime("%Y-%m-%d")
 
@@ -39,7 +85,6 @@ def get_tles_by_id(username: str, password: str, norad_ids: list[int], epoch_jd:
         if len(tle_paths)>0:
             tles_local = pd.concat([pd.read_json(tle_path) for tle_path in tle_paths])
             tles_local = tles_local[tles_local["NORAD_CAT_ID"].isin(norad_ids)]
-            # tles_local.reset_index(drop=True, inplace=True)
             local_ids = tles_local["NORAD_CAT_ID"].unique()
             norad_ids = list(set(norad_ids) - set(local_ids))
         print(f"Local TLEs loaded  : {len(local_ids)}")
@@ -50,19 +95,14 @@ def get_tles_by_id(username: str, password: str, norad_ids: list[int], epoch_jd:
     n_ids = len(norad_ids)
     
     n_req = n_ids // max_ids + 1 if n_ids%max_ids>0 else n_ids // max_ids
-    
-    # Calculate the date threshold
-    start_time = Time(epoch_jd - window_days, format="jd", scale="ut1").datetime
-    end_time = Time(epoch_jd + window_days, format="jd", scale="ut1").datetime
-    drange = op.inclusive_range(start_time, end_time)
 
     remote_ids = []
     tles = pd.DataFrame()
     if len(norad_ids)>0:
-        st = SpaceTrackClient(identity=username, password=password)
+        client = get_space_track_client(username, password)
         tles = [0]*n_req
         for i in range(n_req):
-            tles[i] = pd.DataFrame(ast.literal_eval(st.tle(norad_cat_id=norad_ids[max_ids*i:max_ids*(i+1)], epoch=drange, limit=limit, format='json')))
+            tles[i] = fetch_tle_data(client, norad_ids, epoch_jd, window_days, limit)
         if sum([len(tle) for tle in tles])>0:
             tles = pd.concat(tles)
             tles["Fetch_Timestamp"] = Time.now().fits
@@ -468,6 +508,39 @@ def get_satellite_positions(tles: list, times_jd: list) -> ArrayLike:
     sat_pos = np.array([EarthSatellite(tle_line1, tle_line2, ts=ts).at(sf_times).position.km.T*1e3 for tle_line1, tle_line2 in tles])
 
     return sat_pos
+
+
+def ant_pos(ant_itrf: ArrayLike, times_jd: ArrayLike) -> ArrayLike:
+    
+    ts = load.timescale()
+    t = ts.ut1_jd(times_jd)
+    
+    location = EarthLocation(x=ant_itrf[0], y=ant_itrf[1], z=ant_itrf[2], unit="m")
+    observer = wgs84.latlon(location.lat.degree, location.lon.degree, location.height.value)
+
+    return (observer.at(t).position.km*1e3).T
+
+
+def ants_pos(ants_itrf: ArrayLike, times_jd: ArrayLike) -> ArrayLike:
+
+    return np.transpose(np.array([ant_pos(ant_itrf, times_jd) for ant_itrf in ants_itrf]), axes=(1,0,2))
+
+
+def sat_distance(tle: list[str], times_jd: ArrayLike, obs_itrf: ArrayLike) -> ArrayLike:
+    
+    ts = load.timescale()
+
+    t = ts.ut1_jd(times_jd)
+
+    satellite = EarthSatellite(tle[0], tle[1], ts=ts)
+    
+    location = EarthLocation(x=obs_itrf[0], y=obs_itrf[1], z=obs_itrf[2], unit="m")
+    
+    observer = wgs84.latlon(location.lat.degree, location.lon.degree, location.height)
+
+    topo = (satellite - observer).at(t)
+
+    return topo.distance().m
 
 
 def sathub_time_to_isot(sathub_time: str) -> str:

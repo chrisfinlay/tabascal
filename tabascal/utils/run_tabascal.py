@@ -258,9 +258,6 @@ def tabascal_subtraction(conf_path: str, sim_dir: str, spacetrack_path: str=None
     ants_uvw = itrf_to_uvw(ants_itrf, gh0, dec)#[:,:,2] # We need the uvw-coordinates at the fine sampling rate for the RFI
     ants_xyz = itrf_to_xyz(ants_itrf, gsa)
 
-    # To be replaced with TLE code for real data
-    # phi_i = -2pi (|r_rfi_s - r_ant_i| + w_ant_i) / lambda
-
     def get_rfi_phase_from_pos(rfi_xyz, ants_w, ants_xyz, freqs):
 
         c = 299792458.0

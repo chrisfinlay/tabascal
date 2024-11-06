@@ -33,7 +33,7 @@ from tabascal.jax.coordinates import itrf_to_geo, alt_az_of_source, gmsa_from_jd
 from tabascal.utils.tools import beam_size
 from tabascal.utils.write import construct_observation_ds, write_ms
 from tabascal.utils.dask_extras import get_chunksizes
-from tabascal.utils.tle import get_satellite_positions
+from tabascal.utils.tle import get_satellite_positions, ants_pos, sat_distance
 
 config.update("jax_enable_x64", True)
 
@@ -676,9 +676,12 @@ Number of stationary RFI :  {n_stat}"""
         tles = da.asarray(da.atleast_2d(tles), chunks=(-1,))  
         # rfi_xyz is shape (n_src,n_time_fine,3)
         # self.ants_xyz is shape (n_time_fine,n_ant,3)
-        distances = da.linalg.norm(
-            self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
-        )
+        # distances = da.linalg.norm(
+        #     self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
+        # )
+        distances = da.asarray(da.linalg.norm(
+            ants_pos(self.ITRF.compute(), self.times_jd_fine.compute())[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
+        ), chunks=(-1, self.time_fine_chunk, self.n_ant))
         # distances is shape (n_src,n_time_fine,n_ant)
         I = Pv_to_Sv(Pv, distances)
         # I is shape (n_src,n_time_fine,n_ant,n_freq)
