@@ -27,7 +27,7 @@ from pathlib import Path
 pkg_dir = Path(__file__).parent.absolute()
 
 sim_base_config_path = os.path.join(pkg_dir, "../data/sim_config_base.yaml")
-# tab_base_config_path = os.path.join(pkg_dir, "../data/tab_config_base.yaml")
+tab_base_config_path = os.path.join(pkg_dir, "../data/tab_config_base.yaml")
 # extract_base_config_path = os.path.join(pkg_dir, "../data/extract_config_base.yaml")
 # pow_spec_base_config_path = os.path.join(pkg_dir, "../data/pow_spec_config_base.yaml")
 
@@ -92,60 +92,6 @@ def get_base_extract_config():
 
     return extract_config
 
-
-def get_base_tab_config():
-
-    tab_config = {
-        "data": {
-            "sim_dir": None,
-            "sampling": 1,
-        },
-        "plots": {
-            "init": True,
-            "truth": True,
-            "prior": True,
-            "prior_samples": 100,
-        },
-        "inference": {
-            "mcmc": False,
-            "opt": True,
-            "fisher": False
-        },
-        "opt": {
-            "epsilon": 1e-1,
-            "max_iter": 100,
-            "dual_run": True,
-            "guide": "map",
-        },
-        "fisher": {
-            "n_samples": 1,
-            "max_cg_iter": 10000,
-        },
-        "ast":{
-            "init": "prior",    # Options are truth, prior, est, truth_mean
-            "mean": 0,          # Options include truth, est, 0, truth_mean
-            "pow_spec": {
-                "P0": 1e3,
-                "k0": 1e-3,
-                "gamma": 1.0,
-            },
-        },
-        "rfi": {
-            "init": "prior",    # Options are truth, prior, est
-            "mean": 0,          # Options are truth, est, 0
-            "var": None,        # Jy
-            "corr_time": 15,    # seconds
-        },
-        "gains": {
-            "amp_mean": "truth",
-            "phase_mean": "truth",
-            "amp_std": 1.0,      # %
-            "phase_std": 1.0,    # degrees
-            "corr_time": 180,    # minutes
-        },
-    }
-
-    return tab_config
 
 def get_base_pow_spec_config():
     
@@ -263,7 +209,7 @@ def load_config(path: str, config_type: str="sim") -> dict:
     if config_type=="sim":
         base_config = yaml_load(sim_base_config_path)#get_base_sim_config()
     elif config_type=="tab":
-        base_config = get_base_tab_config()
+        base_config = yaml_load(tab_base_config_path)#get_base_tab_config()
     elif config_type=="extract":
         base_config = get_base_extract_config()
     elif config_type=="pow_spec":
