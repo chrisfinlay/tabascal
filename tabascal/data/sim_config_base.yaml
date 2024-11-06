@@ -60,12 +60,15 @@ ast_sources:
   pow_spec:
     path: null                # Optional - Path to skymodel
     random:
-      type: null              # Optional - Type of power spectrum to use. Currently only "Cl" is available which is a power law spectrum
+      type: null              # Optional - Type of power spectrum to use. Currently only 'Cl' or 'Pk' is available which is a power law spectrum and power law with a knee respectively
       random_seed: 1234       # Required if type is specified - Random seed used for drawing Gaussian field realization
-      A: 0.000513             # Required if type is specified - Amplitude of power spectrum at k=0 in mK^2
-      beta: 1.34              # Required if type is specified - Exponent of the power law spectrum
       fov_f: 1.2              # Required if type is specified - Fraction of the field of view to model (based on minimum frequency and dish diameter)
       n_side: 128             # Required if type is specified - Number of pixel/point sources per sideof the sky image
+      A: 0.000513             # Required if type 'Cl' is specified - Amplitude of power spectrum at k=0 in mK^2
+      beta: 1.34              # Required if type 'Cl' is specified - Exponent of the power law spectrum
+      P0: 1e12                # Required if type 'Pk' is specified - Amplitude of power spectrum for k below 'k0'
+      k0: 1e1                 # Required if type 'Pk' is specified - Change point where the power spectrum changes from flat to a power law
+      gamma: 2.34             # Required if type 'Pk' is specified - Exponent of the power law portion of the power spectrum
 ##################
 # Dask parameters
 ##################

@@ -1,0 +1,44 @@
+##################
+# Data parameters
+##################
+data:
+  sim_dir:              # Optional - Simulation directory containing MS file. Can be specified at runtime
+######################################
+# Flagging and data column parameters
+######################################
+ideal:                  # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: AST_DATA    # Required - Data column to extract from the MS file. 'AST_DATA' is only available from simulation
+  flag:
+    type: perfect       # Required - Type of flagging to apply. 'perfect' is only available from simulation
+    thresh: 0           # Required - Sigma threshold for flagging based on visibility noise. 0 indicates no flagging
+######################################
+# Flagging and data column parameters
+######################################
+tab:                    # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: TAB_DATA    # Required - Data column to extract from the MS file. 'TAB_DATA' is only available after running tabascal
+  flag: 
+    type: perfect       # Required - Type of flagging to apply. 'perfect' is only available from simulation
+    thresh: 0           # Required - Sigma threshold for flagging based on visibility noise. 0 indicates no flagging
+######################################
+# Flagging and data column parameters
+######################################
+flag1:                  # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: CAL_DATA    # Required - Data column to extract from the MS file. 'CAL_DATA' is only available from simulation
+  flag: 
+    type: perfect       # Required - Type of flagging to apply. 'perfect' is only available from simulation
+    thresh: 3           # Required - Sigma threshold for flagging based on visibility noise
+######################################
+# Flagging and data column parameters
+######################################
+flag2:                  # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: CAL_DATA    # Required - Data column to extract from the MS file. 'CAL_DATA' is only available from simulation
+  flag:
+    type: aoflagger     # Required - Type of flagging to apply
+    sif_path:           # Optional - Path to the AOFLAGGER singularity container. Docker will be used if not specified 
+    strategies: []      # Optional - Paths to AOFLAGGER strategies to use. Strategies are run in order given
+###############################################
+# Angular power spectrum estimation parameters
+###############################################
+tge:
+  n_grid: null          # Required - The number of bins to use on each side of the uv-grid
+  n_bins: null          # Required - The number of l-bins to use when constructing the 1D angular power spectrum

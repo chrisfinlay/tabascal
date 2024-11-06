@@ -1,6 +1,5 @@
 data:
   sim_dir: 
-  sampling: 1
   
 plots:
   init: True
@@ -29,9 +28,9 @@ fisher:
 
 # Priors and Initialization
 ast:
-  # init: est
+  init: est
   # init: prior
-  init: truth
+  # init: truth
   mean: 0
   # mean: est
   # mean: truth
@@ -41,9 +40,9 @@ ast:
     gamma: 1.2
 
 rfi:
-  # init: est
+  init: est
   # init: prior
-  init: truth
+  # init: truth
   mean: 0
   # mean: est
   # mean: truth

@@ -13,8 +13,8 @@ observation:
   ra: 27.0
   dec: -30.0
   start_time: 440.0
-  start_time_jd: None
-  start_time_isot: None
+  start_time_jd: 
+  start_time_isot:
   int_time: 2.0
   n_time: 450
   n_int: 8
@@ -47,7 +47,7 @@ rfi_sources:
     power_scale: 1
     spec_model: ../aux_data/satellite.rfimodel
   stationary:
-    loc_ids: 
+    loc_ids: []
     geo_path: ../aux_data/stationary.loc
     power_scale: 1
     spec_model: ../aux_data/stationary.rfimodel

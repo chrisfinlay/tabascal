@@ -1,0 +1,61 @@
+##################
+# Data parameters
+##################
+data:
+  sim_dir:              # Optional - Simulation directory containing MS file. Can be specified at runtime
+######################################
+# Flagging and data column parameters
+######################################
+ideal:                  # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: AST_DATA    # Required - Data column to extract from the MS file. 'AST_DATA' is only available from simulation
+  flag:
+    type: perfect       # Required - Type of flagging to apply. 'perfect' is only available from simulation
+    thresh: 0           # Required - Sigma threshold for flagging based on visibility noise. 0 indicates no flagging
+######################################
+# Flagging and data column parameters
+######################################
+tab:                    # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: TAB_DATA    # Required - Data column to extract from the MS file. 'TAB_DATA' is only available after running tabascal
+  flag: 
+    type: perfect       # Required - Type of flagging to apply. 'perfect' is only available from simulation
+    thresh: 0           # Required - Sigma threshold for flagging based on visibility noise. 0 indicates no flagging
+######################################
+# Flagging and data column parameters
+######################################
+flag1:                  # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: CAL_DATA    # Required - Data column to extract from the MS file. 'CAL_DATA' is only available from simulation
+  flag: 
+    type: perfect       # Required - Type of flagging to apply. 'perfect' is only available from simulation
+    thresh: 3           # Required - Sigma threshold for flagging based on visibility noise
+######################################
+# Flagging and data column parameters
+######################################
+flag2:                  # Optional - Required if specified at runtime with --data flag. Can be anything
+  data_col: CAL_DATA    # Required - Data column to extract from the MS file. 'CAL_DATA' is only available from simulation
+  flag:
+    type: aoflagger     # Required - Type of flagging to apply
+    sif_path:           # Optional - Path to the AOFLAGGER singularity container. Docker will be used if not specified 
+    strategies: []      # Optional - Paths to AOFLAGGER strategies to use. Strategies are run in order given
+#############################
+# WSCLEAN imaging parameters
+#############################
+image:                  # Required - WSCLEAN imaging parameters. All parameters in 'params' are fed directly to WSCLEAN
+  sif_path:             # Optional - Path to the WSCLEAN singularity container. Docker will be used if not specified
+  params:
+    pol: xx             # Required - Polarization component to image. Only 'xx' is provided in the simulation
+    size: 256 256       # Required - Image size in pixels
+    scale: 20asec       # Required - Pixel size
+    niter: 100000       # Required - Number of CLEAN iterations
+    mgain: 0.3          # Required - CLEAN gain factor
+    # auto-threshold: 0.3 # Required - Final iteration threshold based on residual image noise
+    # weight: natural     # Required - Imaging weighting scheme
+    # auto-mask: 1.0      # Required - Masked iteration threshold based on residual image noise
+    # no-negative: ""     # Required - Only include positive source in the model image 
+######################################
+# PYBDSF source extraction parameters
+######################################
+extract:                # Required - PYBDSF source extraction parameters. Can only be run in conjunction with a simulation zarr file
+  sigma_cut: 3.0        # Optional - Source intensity threshold to consider a positive detection. Measured relative to residual image noise
+  beam_cut: 1.0         # Optional - Source location threshold to consider a positive detection. Measured relative to the imaged synthesized beam width
+  thresh_isl: 1.5       # Optional - PYBDSF source detection threshold for islands
+  thresh_pix: 1.5       # Optional - PYBDSF source detection threshold for pixels

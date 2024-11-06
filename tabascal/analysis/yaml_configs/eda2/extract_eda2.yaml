@@ -1,0 +1,57 @@
+data:
+  sim_dir:
+
+all:
+  data_col: CAL_DATA
+  flag:
+    type: perfect
+    thresh: 0
+    
+ideal:
+  data_col: AST_DATA 
+  flag: 
+    type: perfect
+    thresh: 0
+
+tab:
+  data_col: TAB_DATA 
+  flag: 
+    type: perfect
+    thresh: 0
+
+flag1:
+  data_col: CAL_DATA 
+  flag: 
+    type: perfect
+    thresh: 3
+  
+flag2:
+  data_col: CAL_DATA
+  flag:
+    type: aoflagger
+    sif_path: 
+    strategies: 
+      - ../aux_data/firstpass.rfis
+      - ../aux_data/secondpass.rfis
+      - ../aux_data/thirdpass.rfis
+
+image: 
+  sif_path: 
+  params:
+    size: 256 256 
+    scale: 30amin 
+    niter: 100000
+    mgain: 0.3
+    auto-threshold: 0.3
+    pol: xx
+    # weight: briggs -0.5
+    weight: uniform
+    # weight: natural
+    auto-mask: 1.0
+    # no-negative: ""
+
+extract: 
+  sigma_cut: 3.0
+  beam_cut: 1.0
+  thresh_isl: 1.5
+  thresh_pix: 1.5

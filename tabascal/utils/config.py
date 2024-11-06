@@ -28,114 +28,11 @@ pkg_dir = Path(__file__).parent.absolute()
 
 sim_base_config_path = os.path.join(pkg_dir, "../data/sim_config_base.yaml")
 tab_base_config_path = os.path.join(pkg_dir, "../data/tab_config_base.yaml")
-# extract_base_config_path = os.path.join(pkg_dir, "../data/extract_config_base.yaml")
-# pow_spec_base_config_path = os.path.join(pkg_dir, "../data/pow_spec_config_base.yaml")
+extract_base_config_path = os.path.join(pkg_dir, "../data/extract_config_base.yaml")
+pow_spec_base_config_path = os.path.join(pkg_dir, "../data/extract_pow_spec_config_base.yaml")
 
-JD0 = 2459997.079914223 # GMSA = 0 2023-02-21 13:55:04.589 UTC
+JD0 = 2459997.079914223 # 2023-02-21 13:55:04.589 UTC => GMSA = 0
 
-
-def get_base_extract_config():
-
-    extract_config = {
-        "data": {
-            "sim_dir": None,
-        },
-        "ideal": {
-            "data_col": "AST_DATA",
-            "flag": {
-                "type": "perfect",
-                "thresh": 0,
-            },
-        },
-        "tab": {
-            "data_col": "TAB_DATA",
-            "flag": {
-                "type": "perfect",
-                "thresh": 0,
-            },
-        },
-        "flag1": {
-            "data_col": "CAL_DATA",
-            "flag": {
-                "type": "perfect",
-                "thresh": 3.0,
-            },
-        },
-        "flag2": {
-            "data_col": "CAL_DATA",
-            "flag": {
-                "type": "aoflagger",
-                "sif_path": None,
-                "strategies": None,
-            },
-        },
-        "image": {
-            "sif_path": None,
-            "params": {
-                "size": "256 256",
-                "scale": "20amin",
-                "niter": 100000,
-                "mgain": 0.1,
-                "auto-threshold": 0.3,
-                "auto_mask": 2.0,
-                "pol": "xx",
-                "weight": "natural",
-            },
-        },
-        "extract": {
-            "sigma_cut": 3.0,
-            "beam_cut": 1.0,
-            "thresh_isl": 1.5,
-            "thresh_pix": 1.5,
-        },
-    }
-
-    return extract_config
-
-
-def get_base_pow_spec_config():
-    
-    ps_config = {
-        "ideal": {
-            "data_col": "AST_DATA",
-            "suffix": "",
-            "flag": {
-                "type": "perfect",
-                "thresh": 0.0,
-            },
-        },
-        "tab": {
-            "data_col": "TAB_DATA",
-            "suffix": "",
-            "flag": {
-                "type": "perfect",
-                "thresh": 0.0,
-            },
-        },
-        "flag1": {
-            "data_col": "CAL_DATA",
-            "suffix": "perfect",
-            "flag": {
-                "type": "perfect",
-                "thresh": 3.0,
-            },
-        },
-        "flag2": {
-            "data_col": "CAL_DATA",
-            "suffix": "aoflagger",
-            "flag": {
-                "type": "aoflagger",
-                "sif_path": None,
-                "strategies": None,
-            },
-        },
-        "tge": {
-            "n_grid": 256,
-            "n_bins": 20,
-        },
-    }
-
-    return ps_config
 
 def deep_update(d: dict, u: dict) -> dict:
     """Recursively update a dictionary which includes subdictionaries.
@@ -172,6 +69,7 @@ loader.add_implicit_resolver(
     |\\.(?:nan|NaN|NAN))$''', re.X),
     list(u'-+0123456789.'))
 
+
 def yaml_load(path):
     config = yaml.load(open(path), Loader=loader)
     return config
@@ -207,13 +105,13 @@ def load_config(path: str, config_type: str="sim") -> dict:
 
     config = yaml_load(path)
     if config_type=="sim":
-        base_config = yaml_load(sim_base_config_path)#get_base_sim_config()
+        base_config = yaml_load(sim_base_config_path)
     elif config_type=="tab":
-        base_config = yaml_load(tab_base_config_path)#get_base_tab_config()
+        base_config = yaml_load(tab_base_config_path)
     elif config_type=="extract":
-        base_config = get_base_extract_config()
+        base_config = yaml_load(extract_base_config_path)
     elif config_type=="pow_spec":
-        base_config = get_base_pow_spec_config()
+        base_config = yaml_load(pow_spec_base_config_path)
     else:
         ValueError("A config type must be specified. Options are {sim, tab, extract, pow_spec}.")
     
@@ -336,6 +234,31 @@ def load_obs(obs_spec: dict) -> Observation:
 
     return obs
 
+def add_power_spectrum_sources(obs: Observation, ps_rand: dict) -> None:
+
+    from tge import simulate_sky, Cl, Pk, beam_constants, lm_to_radec
+
+    const = beam_constants(D=obs.dish_d.compute(), freq=obs.freqs[0].compute(), dBdT=None, f=1)
+    beam = lambda x: 1
+    cl_ps_keys = ["A", "beta"]
+    cl_ps_args = {key: value for key, value in ps_rand.items() if key in cl_ps_keys}
+    pk_ps_keys = ["Po", "k0", "gamma"]
+    pk_ps_args = {key: value for key, value in ps_rand.items() if key in pk_ps_keys}
+    non_ps_keys = ["n_side", "fov_f", "type", "random_seed"]
+    # ps_args = {key: value for key, value in ps_rand.items() if key not in non_ps_keys}
+
+    if ps_rand["type"] == "Cl":
+        I, lxy = simulate_sky(N_side=ps_rand["n_side"], fov=ps_rand["fov_f"]*const["thetaFWHM"], Cl=Cl, PS_args=cl_ps_args, beam=beam, seed=ps_rand["random_seed"])
+    elif ps_rand["type"] == "Pk":
+        I, lxy = simulate_sky(N_side=ps_rand["n_side"], fov=ps_rand["fov_f"]*const["thetaFWHM"], Pk=Pk, PS_args=pk_ps_args, beam=beam, seed=ps_rand["random_seed"])
+    else:
+        ValueError("Keyword 'type' in section pow_spec.random must be one of {Cl, Pk}")
+
+    ra, dec = lm_to_radec(lxy, obs.ra, obs.dec).T
+    I = const["dBdT"] * da.asarray(I.reshape(-1, 1))
+    obs.addAstro(I[:,None,:], ra, dec)
+
+
 def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
     """Add astronomical sources from the simulation config file to the observation object.
 
@@ -359,25 +282,8 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
             print(f"Adding {len(params[0])} {key} sources from {path} ...")
             methods[key](*params)
         
-        if key=="pow_spec" and ast_["pow_spec"]["random"]["type"] is not None:
-
-            from tge import simulate_sky, Cl, Pk, beam_constants, lm_to_radec
-
-            rand_ = ast_["pow_spec"]["random"]
-            const = beam_constants(D=obs.dish_d.compute(), freq=obs.freqs[0].compute(), dBdT=None, f=1)
-            beam = lambda x: 1
-            non_ps_keys = ["n_side", "fov_f", "type", "random_seed"]
-            ps_args = {key: value for key, value in rand_.items() if key not in non_ps_keys}
-            if rand_["type"] == "Cl":
-                I, lxy = simulate_sky(rand_["n_side"], rand_["fov_f"]*const["thetaFWHM"], Cl=Cl, PS_args=ps_args, beam=beam, seed=rand_["random_seed"])
-            elif rand_["type"] == "Pk":
-                I, lxy = simulate_sky(N_side=rand_["n_side"], fov=rand_["fov_f"]*const["thetaFWHM"], Pk=Pk, beam=beam, seed=rand_["random_seed"])
-            else:
-                ValueError("Keyword 'type' in section pow_spec.random must be one of {Cl, Pk}")
-            ra, dec = lm_to_radec(lxy, obs.ra, obs.dec).T
-            I = const["dBdT"] * da.asarray(I.reshape(-1, 1))
-            obs.addAstro(I[:,None,:], ra, dec)
-    
+        if ast_["pow_spec"]["random"]["type"]:
+            add_power_spectrum_sources(obs, ast_["pow_spec"]["random"])
 
         if "n_src" in ast_[key]["random"]:
             if ast_[key]["random"]["n_src"] > 0:

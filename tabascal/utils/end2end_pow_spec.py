@@ -22,7 +22,7 @@ def main():
         "-e", "--extract_config", required=True, help="Path to the extraction config file."
     )
     parser.add_argument(
-        "-r", "--rfi_amp", type=float, help="Path to the extraction config file."
+        "-r", "--rfi_amp", default=1.0, type=float, help="Path to the extraction config file."
     )
     parser.add_argument(
         "-rr", "--random_seed_offset", default=0, type=int, help="Offset to random seeds used."
@@ -32,9 +32,9 @@ def main():
     r_seed_offset = args.random_seed_offset
     config = load_config(config_path, config_type="sim")
 
-    if args.rfi_amp is not None:
-        config["rfi_sources"]["satellite"]["power_scale"] = args.rfi_amp
-        config["rfi_sources"]["stationary"]["power_scale"] = args.rfi_amp
+    config["rfi_sources"]["tle_satellite"]["power_scale"] *= args.rfi_amp
+    config["rfi_sources"]["satellite"]["power_scale"] *= args.rfi_amp
+    config["rfi_sources"]["stationary"]["power_scale"] *= args.rfi_amp
 
     config["observation"]["random_seed"] += r_seed_offset
     config["ast_sources"]["pow_spec"]["random"]["random_seed"] += r_seed_offset
