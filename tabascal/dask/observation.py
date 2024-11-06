@@ -404,6 +404,7 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_tle_satellite_orbit = []
         self.rfi_tle_satellite_ang_sep = []
         self.rfi_tle_satellite_A_app = []
+        self.norad_ids = []
 
         self.rfi_stationary_xyz = []
         self.rfi_stationary_geo = []
@@ -705,6 +706,7 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_tle_satellite_orbit.append(tles)
         self.rfi_tle_satellite_ang_sep.append(angular_seps)
         self.rfi_tle_satellite_A_app.append(rfi_A_app)
+        self.norad_ids.append(norad_ids)
         self.n_rfi_tle_satellite += len(I)
         self.n_rfi += len(I)
 

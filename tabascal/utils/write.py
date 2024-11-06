@@ -314,6 +314,10 @@ def get_satellite_rfi_data(obs: Observation):
                 ["sat_src", "tle"],
                 da.asarray(np.concatenate(obs.rfi_tle_satellite_orbit, axis=0).astype("<U69")).rechunk("auto"),
             ),
+            "norad_ids": (
+                ["sat_src"],
+                da.asarray(np.concatenate(obs.norad_ids, axis=0).astype(int)).rechunk("auto"),
+            ),
         }
     else:
         rfi_tle_sat = {}

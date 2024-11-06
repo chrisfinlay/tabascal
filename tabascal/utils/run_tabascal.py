@@ -24,7 +24,7 @@ from numpyro.infer import MCMC, NUTS, Predictive
 
 import matplotlib.pyplot as plt
 
-from tabascal.utils.yaml import Tee, load_config
+from tabascal.utils.config import Tee, load_config, yaml_load
 from tabascal.utils.tle import get_satellite_positions, get_tles_by_id
 from tabascal.jax.coordinates import calculate_sat_corr_time, orbit, itrf_to_uvw, itrf_to_xyz, calculate_fringe_frequency
 from tabascal.jax.interferometry import int_sample_times
@@ -101,7 +101,7 @@ def inv_transform(params, loc, inv_scaling):
     return params_trans
 
 
-def tabascal_subtraction(conf_path: str, sim_dir: str):
+def tabascal_subtraction(conf_path: str, sim_dir: str, spacetrack_path: str=None):
 
     log = open('log_tab.txt', 'w')
     backup = sys.stdout
@@ -197,10 +197,11 @@ def tabascal_subtraction(conf_path: str, sim_dir: str):
     times = times_jd * 24 * 3600 # Convert Julian date in days to seconds
     int_time = jnp.diff(times)[0]
 
-    if len(config["satellites"]["norad_ids"])>0:
+    if len(config["satellites"]["norad_ids"])>0 and spacetrack_path:
+        st_config = yaml_load(spacetrack_path)
         tles_df = get_tles_by_id(
-            config["spacetrack"]["username"], 
-            config["spacetrack"]["password"], 
+            st_config["username"], 
+            st_config["password"], 
             config["satellites"]["norad_ids"],
             jnp.mean(times_jd),
             tle_dir=config["satellites"]["tle_dir"],
@@ -871,11 +872,14 @@ def main():
     parser.add_argument(
         "-c", "--config", required=True, help="Path to the config file."
     )
+    parser.add_argument(
+        "-st", "--spacetrack", help="Path to Space-Track login details."
+    )
     args = parser.parse_args()
     sim_dir = args.sim_dir
     conf_path = args.config   
 
-    tabascal_subtraction(conf_path, sim_dir) 
+    tabascal_subtraction(conf_path, sim_dir, args.spacetrack) 
 
 if __name__=="__main__":
     main()

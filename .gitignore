@@ -21,3 +21,5 @@ tabascal/utils/ms.py
 tabascal/data/MeerKAT_real.ENU.txt
 .coverage
 *.sif
+*.json
+*.txt

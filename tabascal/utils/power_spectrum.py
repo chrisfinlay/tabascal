@@ -7,7 +7,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import os
 
-from tabascal.utils.yaml import load_config
+from tabascal.utils.config import load_config
 from tabascal.utils.flag_data import write_perfect_flags, run_aoflagger
 
 def extract_ms_data(ms_path: str, data_col: str) -> tuple:

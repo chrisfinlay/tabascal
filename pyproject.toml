@@ -21,16 +21,16 @@ requires-python = ">=3.9,<3.13"
 dependencies = [
     "jax", "dask", "xarray", "zarr", 
     "dask-ms>=0.2.21", "scipy", "tqdm", "pandas", 
-    "matplotlib",
+    "matplotlib", "astropy"
 ]
 
 [project.optional-dependencies]
 gpu = ["jax[cuda12]"]
-sat = ["astropy", "regions"]
+sat = ["regions"]
 astro = ["bdsf"]
 ps = ["TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
-all = ["jax[cuda12]", "astropy", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
-all_cpu = ["astropy", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+all = ["jax[cuda12]", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+all_cpu = ["regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
 
 [project.urls]
 # Homepage = "https://example.com"
@@ -45,11 +45,12 @@ find = {}
 
 [project.scripts]
 # Not Needed
-sim-target = "tabascal.examples.target_observation:main"
-sim-calib = "tabascal.examples.calibration_observation:main"
-sim-mixed = "tabascal.examples.mixed_source_observation:main"
-sim-low = "tabascal.examples.low_freq_obs:main"
+# sim-target = "tabascal.examples.target_observation:main"
+# sim-calib = "tabascal.examples.calibration_observation:main"
+# sim-mixed = "tabascal.examples.mixed_source_observation:main"
+# sim-low = "tabascal.examples.low_freq_obs:main"
 # Useful extras
+tle-region = "tabascal.utils.tle_sat_region:main"
 sat-region = "tabascal.utils.sat_region:main"
 ast-region = "tabascal.utils.ast_region:main"
 # Base scripts

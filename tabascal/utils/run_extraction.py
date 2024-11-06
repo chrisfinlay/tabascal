@@ -6,7 +6,7 @@ import sys
 import os
 import subprocess
 
-from tabascal.utils.yaml import load_config, Tee
+from tabascal.utils.config import load_config, Tee
 from tabascal.utils.extract import extract
 from tabascal.utils.flag_data import write_perfect_flags, run_aoflagger
 
