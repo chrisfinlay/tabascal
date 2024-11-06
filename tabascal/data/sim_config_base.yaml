@@ -1,0 +1,163 @@
+###############################################################################################
+# This is base simulation config that is loaded and then updated with your provided config.
+# Populated parameters here are the default values used if none are specified in your config.
+###############################################################################################
+ast_sources:
+##########################################
+# Exponential shaped astronomical sources
+##########################################
+  exp:
+    path: null                # Optional - Path to skymodel
+    random:
+      n_src: 0                # Optional - Number of exponentially shaped sources to include
+      I_pow_law: 1.6          # Required if n_src > 0 - Exponent for power law intensity distribution
+      max_I: 1.0              # Required if n_src > 0 - Maximum intensity of intensity distribution in Jy
+      max_sep: 50.0           # Required if n_src > 0 - Maximum angular separation between sources in arcseconds      
+      min_I: 3sigma           # Required if n_src > 0 - Minimum intensity of intensity distribution in Jy (3sigma calculated from theoretical image noise)
+      n_beam: 5               # Required if n_src > 0 - Maximum angular separation between sources based on the theoretical synthesized beam width
+      random_seed: 123456     # Required if n_src > 0 - Random seed used for drawing locations, intensities and shapes
+      si_mean: 0.7            # Required if n_src > 0 - Mean of the Gaussian distribution to draw spectral indices from
+      si_std: 0.2             # Required if n_src > 0 - Sandard deviation of the Gaussian distribution to draw spectral indices from
+      size_mean: 30.0         # Required if n_src > 0 - Mean of the Gaussian distribution to draw source sizes from in arcseconds
+      size_std: 5.0           # Required if n_src > 0 - Standard deviation of the Gaussian distribution to draw spectral indices from
+#######################################
+# Gaussian shaped astronomical sources
+#######################################
+  gauss:
+    path: null                # Optional - Path to skymodel
+    random:
+      n_src: 0                # Optional - Number of Gaussian shaped sources to include
+      I_pow_law: 1.6          # Required if n_src > 0 - Exponent for power law intensity distribution
+      major_mean: 30.0        # Required if n_src > 0 - Mean of the Gaussian distribution to draw source size major axes from in arcseconds
+      major_std: 5.0          # Required if n_src > 0 - Standard deviation of the Gaussian distribution to draw source sizes from in arcseconds
+      max_I: 1.0              # Required if n_src > 0 - Maximum intensity of intensity distribution in Jy
+      max_sep: 50.0           # Required if n_src > 0 - Maximum angular separation between sources in arcseconds
+      min_I: 3sigma           # Required if n_src > 0 - Minimum intensity of intensity distribution in Jy (3sigma calculated from theoretical image noise)
+      minor_mean: 30.0        # Required if n_src > 0 - Mean of the Gaussian distribution to draw source size minor axes from in arcseconds
+      minor_std: 5.0          # Required if n_src > 0 - Standard deviation of the Gaussian distribution to draw source sizes from in arcseconds
+      n_beam: 5               # Required if n_src > 0 - Maximum angular separation between sources based on the theoretical synthesized beam width
+      random_seed: 123456     # Required if n_src > 0 - Random seed used for drawing locations, intensities and shapes
+      si_mean: 0.7            # Required if n_src > 0 - Mean of the Gaussian distribution to draw spectral indices from
+      si_std: 0.2             # Required if n_src > 0 - Sandard deviation of the Gaussian distribution to draw spectral indices from
+####################################
+# Point shaped astronomical sources
+####################################
+  point:
+    path: null                # Optional - Path to skymodel
+    random:
+      n_src: 0                # Optional - Number of point sources to include
+      I_pow_law: 1.6          # Required if n_src > 0 - Exponent for power law intensity distribution
+      max_I: 1.0              # Required if n_src > 0 - Maximum intensity of intensity distribution in Jy
+      max_sep: 50.0           # Required if n_src > 0 - Maximum angular separation between sources in arcseconds
+      min_I: 3sigma           # Required if n_src > 0 - Minimum intensity of intensity distribution in Jy (3sigma calculated from theoretical image noise)
+      n_beam: 5               # Required if n_src > 0 - Maximum angular separation between sources based on the theoretical synthesized beam width
+      random_seed: 123456     # Required if n_src > 0 - Random seed used for drawing locations, intensities and shapes
+      si_mean: 0.7            # Required if n_src > 0 - Mean of the Gaussian distribution to draw spectral indices from
+      si_std: 0.2             # Required if n_src > 0 - Sandard deviation of the Gaussian distribution to draw spectral indices from
+#################################################
+# Gaussian field realization astronomical source
+#################################################
+  pow_spec:
+    path: null                # Optional - Path to skymodel
+    random:
+      type: null              # Optional - Type of power spectrum to use. Currently only "Cl" is available which is a power law spectrum
+      random_seed: 1234       # Required if type is specified - Random seed used for drawing Gaussian field realization
+      A: 0.000513             # Required if type is specified - Amplitude of power spectrum at k=0 in mK^2
+      beta: 1.34              # Required if type is specified - Exponent of the power law spectrum
+      fov_f: 1.2              # Required if type is specified - Fraction of the field of view to model (based on minimum frequency and dish diameter)
+      n_side: 128             # Required if type is specified - Number of pixel/point sources per sideof the sky image
+##################
+# Dask parameters
+##################
+dask:
+  max_chunk_MB: 100           # Required - Approximate size of the dask chunks to process in Megabytes
+###################
+# Diagnostoc plots
+###################
+diagnostics:
+  rfi_seps: True              # Optional - Whether to plot the angular separations, over time, between the pointing direction and the RFI sources.
+  src_alt: True               # Optional - Whether to plot the source altitude over time
+  uv_cov: True                # Optional - Whether to plot the uv distribution of the observation in metres
+##################
+# Gain parameters
+##################
+gains:
+  G0_mean: 1.0                # Optional - Mean of the Gaussian distribution for the starting gain amplitude (phase is uniformaly distributed when G0_mean!=1.0)
+  G0_std: 0.0                 # Optional - Standard deviation of the Gaussian distribution for the starting gain amplitude
+  Gt_std_amp: 0               # Optional - Standard deviation of the Gaussian distribution for the time variability of the gain amplitude
+  Gt_std_phase: 0             # Optional - Standard deviation of the Gaussian distribution for the time variability of the gain phase
+  random_seed: 999            # Optional - Random seed used for drawing of gain parameters
+#########################
+# Observation parameters
+#########################
+observation:
+  start_time_jd: null         # Required - Centroid of the starting time in Julian date
+  start_time_isot: null       # Required - Centroid of the starting time in ISOT format e.g. 2024-02-21T12:47:32.123
+  start_time: null            # Required - Centroid of the starting time in Greenwich mean sidereal time in seconds 
+  # Only one of the above is required to be specified, order of preference is start_time_jd, start_time_isot, start_time
+  SEFD: null                  # Required - System equivalent flux density of the antennas in Jy. Visibility noise is calculated from this, chan_width, and int_time
+  auto_corrs: False           # Optional - Whether to simulate the autocorrelations
+  chan_width: null            # Required if n_freq < 2 - The bandwidth of a single frequency channel in Hz
+  ra: null                    # Required - Right ascension of the target direction in decimal degrees
+  dec: null                   # Required - Declination of the target direction in decimal degrees
+  int_time: null              # Required - Integration time per time step in seconds
+  n_freq: null                # Required - Number of frequency channels to simulate
+  n_int: null                 # Required - Number of samples used to integrate within a single time step. 
+  n_time: null                # Required - Number of time steps to simulate
+  no_w: False                 # Optional - Whether to include the w-component in the baselines. Simulates a planar array at all times
+  random_seed: null           # Optional - Random seed to use for drawing the visibility noise
+  start_freq: null            # Required - Centroid of the starting frequency for the frequencies to simulate in Hz 
+  target_name: target         # Optional - Name of the target
+####################
+# Output parameters
+####################
+output:
+  zarr: True                  # Optional - Whether to save the output to a zarr file. This contains almost all inputs ot the simulation
+  ms: True                    # Optional - Whether to save the output to a Measurement Set file
+  overwrite: False            # Optional - Whether to overwrite a previous simulation with the same name
+  path: ./                    # Optional - Path to where the simulation should be saved
+  prefix: null                # Optional - Prefix used in the simulation file name
+  suffix: null                # Optional - Suffix used in the simulation file name
+rfi_sources:
+#######################################
+# Circular trajectory based satellites
+#######################################
+  satellite:
+    # These parameters are used for simulating satellites with a circular path
+    sat_ids: []               # Optional - IDs of satellites to include where the orbital parameters and spectral models are defined in the following files
+    circ_path: null           # Required if sat_ids != [] - Path to the csv '.ole' file containing the satellite orbital parameters per satellite ID
+    spec_model: null          # Required if sat_ids != [] - Path to the csv '.rfimodel' file of spectral models for each satellite ID 
+    power_scale: 1.0          # Optional - Fractional scale, of the spectral model, for the satellite emission power 
+##################################
+# TLE trajectory based satellites
+##################################
+  tle_satellite:
+    sat_names: []             # Optional - Names of satellites to include. A 'like' search is done e.g. starlink returns all starlink satellites
+    norad_ids: []             # Optional - NORAD IDs of the satellites to include
+    norad_ids_path: null      # Optional - Path to a file conating the NORAD IDs of satellites to include. Each ID is on a seaprate line
+    norad_spec_model: null    # Required if any TLE satellites are included - Path to the csv file of spectral models fo each satellite by NORAD ID
+    max_ang_sep: 90           # Optional - Maximum angular separation from the target direction, in degrees, of satellites to include
+    min_alt: 0                # Optional - Minimum altitude of satellites to include. 0 indicates above the horizon
+    tle_dir: ./tles           # Optional - Path to the directory where to save TLEs for future use
+    vis_step: 1.0             # Optional - Time step, in minutes, to check for satellites satisfying the given conditions
+    power_scale: 1.0          # Optional - Fractional scale, of the spectral model, for the satellite emission power 
+##################################################
+# Stationary RFI source relative to the telescope
+##################################################
+  stationary:
+    loc_ids: []               # Optional - IDs of stationary sources to include where the location parameters and spectral models are defined in the following files
+    geo_path: null            # Optional - Path to the (csv) '.loc' file where the stationary sources are positioned
+    spec_model: null          # Required if loc_ids != [] - Path to the csv '.rfimodel' file of spectral models for each stationary source by ID
+    power_scale: 1.0          # Optional - Fractional scale, of the spectral model, for the satellite emission power 
+#######################
+# Telescope parameters
+#######################
+telescope:
+  latitude: null              # Required - Latitude of the telescope location in decimal degrees. North is +ve
+  longitude: null             # Required - Longitude of the telescope in decimal degrees. East from Greenwich meridian
+  elevation: null             # Required - Elevation of the telescope above the WGS84 Earth ellipsoid model in metres.
+  dish_d: null                # Required - Dish diameter in metres
+  enu_path: null              # Required if itrf_path is null - Path to the csv file of the antennas in East, North, Up frame, in metres, relative to the telescope location 
+  itrf_path: null             # Required if enu_path is null - Path to the csv file contaning the antenna positions in International Terrestrial Reference Frame in metres.
+  n_ant: null                 # Required - Number of antennas to include. Takes the forst n_ant antennas in the given antenna files
+  name: MeerKAT               # Optional - Telescope name

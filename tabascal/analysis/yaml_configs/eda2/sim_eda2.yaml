@@ -1,0 +1,72 @@
+telescope:
+  name: EDA2
+  latitude: -26.70332832
+  longitude: 116.67080565
+  elevation: 375.03914756
+  dish_d: 0.1
+  enu_path: 
+  itrf_path: ../../../data/EDA2_.itrf.txt
+  n_ant: 256
+
+observation:
+  target_name: STARLINK-30064
+  ra: 149.3427
+  dec: -26.7033
+  start_time_jd: 2460120.831294924
+  int_time: 1.9801139831542969
+  n_time: 10
+  n_int: 4
+  start_freq: 160156300.0
+  chan_width: 781250.0
+  n_freq: 1
+  SEFD: 2062
+  auto_corrs: False
+  no_w: False
+  random_seed: 12345
+
+
+ast_sources:
+  point:
+    random: 
+      n_src: 100
+      min_I: 10sigma
+      max_I: 1.0
+      I_pow_law: 1.6
+      si_mean: 0.7
+      si_std: 0.2
+      n_beam: 5.0
+      max_sep: 7200 # arcseconds
+      random_seed: 123456
+
+rfi_sources:
+  tle_satellite:
+    norad_ids: [55700]
+    # sat_names: [starlink]
+    tle_dir: ../aux_data/tles
+    norad_spec_model: ../aux_data/norad_satellite.rfimodel
+    power_scale: 1e-9
+    max_angular_separation: 90  # degrees
+    min_elevation: 0            # degrees
+    vis_step: 1                 # minutes
+
+gains:
+  G0_mean: 1.0
+  G0_std: 0.0
+  Gt_std_amp: 0
+  Gt_std_phase: 0
+  random_seed: 999
+
+output:
+  path: ../../data/
+  prefix: eda2
+  overwrite: True
+  zarr: True
+  ms: True
+
+diagnostics:
+  uv_cov: True
+  src_alt: True
+  rfi_seps: True
+
+dask:
+  max_chunk_MB: 100

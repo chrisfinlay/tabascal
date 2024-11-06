@@ -1,0 +1,80 @@
+data:
+  sim_dir: 
+  sampling: 1
+  
+plots:
+  init: True
+  truth: True
+  prior: True
+  # init: False
+  # truth: False
+  # prior: False
+  prior_samples: 100
+
+inference:
+  mcmc: False
+  opt: True
+  # opt: False
+  fisher: False
+
+opt:
+  epsilon: 1e-2
+  max_iter: 500
+  dual_run: True
+  guide: map
+
+fisher:
+  n_samples: 1
+  max_cg_iter: 10_000
+
+# Priors and Initialization
+ast:
+  init: est
+  # init: prior
+  # init: truth
+  mean: 0
+  # mean: est
+  # mean: truth
+  pow_spec:
+    P0: 3e3
+    k0: 1e-3
+    gamma: 1.2
+
+rfi:
+  init: est
+  # init: prior
+  # init: truth
+  mean: 0
+  # mean: est
+  # mean: truth
+  # var: 100        # Jy
+  corr_time: 24   # seconds
+
+satellites:
+  norad_ids: [55700] 
+  sat_ids: []
+  ole_path: ../aux_data/satellite.ole
+  tle_dir: ../aux_data/tles
+
+# True gains
+gains:
+  amp_mean: 1.0
+  phase_mean: 0.0
+  # amp_mean: truth
+  # phase_mean: truth
+  amp_std: 1.0      # %
+  phase_std: 1.0    # degrees
+  corr_time: 180    # minutes
+
+# gains:
+#   amp_mean: 1.0
+#   phase_mean: 0.0   # degrees
+#   amp_std: 5.0      # %
+#   phase_std: 10.0    # degrees
+#   corr_time: 180    # minutes
+
+# pow_spec_args = {"P0": 2e3, "k0": 8e-4, "gamma": 1.1}
+# pow_spec_args = {"P0": 2e3, "k0": 2e-3, "gamma": 1.1}
+# pow_spec_args = {"P0": 2e3, "k0": 2e-3, "gamma": 1.5}
+# pow_spec_args = {"P0": 1e3, "k0": 8e-4, "gamma": 1.1}
+# pow_spec_args = {"P0": 2e3, "k0": 1e-3, "gamma": 5.0}

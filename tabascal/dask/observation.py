@@ -192,6 +192,7 @@ class Observation(Telescope):
         freqs: Array,
         SEFD: Array,
         times_jd: Array,
+        int_time: float=2.0,
         chan_width: float=209e3,
         ENU_array: Array=None,
         ENU_path: str=None,
@@ -249,10 +250,10 @@ class Observation(Telescope):
         self.times_jd = da.asarray(times_jd).rechunk(self.time_chunk)
         self.int_time = da.abs(da.diff(times)[0]) if len(times) > 1 else 2.0
         self.n_int_samples = n_int_samples
-        self.times_fine = int_sample_times(self.times, n_int_samples).rechunk(
+        self.times_fine = int_sample_times(self.times, n_int_samples, int_time).rechunk(
             self.time_fine_chunk
         )
-        self.times_jd_fine = int_sample_times(self.times_jd, n_int_samples).rechunk(
+        self.times_jd_fine = int_sample_times(self.times_jd, n_int_samples, int_time/(24*3600)).rechunk(
             self.time_fine_chunk
         )
         self.n_time = len(times)
@@ -403,6 +404,7 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_tle_satellite_orbit = []
         self.rfi_tle_satellite_ang_sep = []
         self.rfi_tle_satellite_A_app = []
+        self.norad_ids = []
 
         self.rfi_stationary_xyz = []
         self.rfi_stationary_geo = []
@@ -704,6 +706,7 @@ Number of stationary RFI :  {n_stat}"""
         self.rfi_tle_satellite_orbit.append(tles)
         self.rfi_tle_satellite_ang_sep.append(angular_seps)
         self.rfi_tle_satellite_A_app.append(rfi_A_app)
+        self.norad_ids.append(norad_ids)
         self.n_rfi_tle_satellite += len(I)
         self.n_rfi += len(I)
 

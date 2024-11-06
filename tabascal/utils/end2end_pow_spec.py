@@ -4,7 +4,7 @@ import os
 
 from datetime import datetime
 
-from tabascal.utils.yaml import load_config, run_sim_config
+from tabascal.utils.config import load_config, run_sim_config
 from tabascal.utils.run_tabascal import tabascal_subtraction
 
 def main():
