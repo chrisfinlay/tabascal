@@ -425,6 +425,8 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
     weight = da.ones(shape=(n_row, 1))
     a_id = da.zeros(n_row, dtype=np.int32)
 
+    interval = ds.int_time * da.ones(n_row)
+
     data_vars = {
         "DATA": (("row", "chan", "corr"), vis_obs),
         "ANTENNA1": (("row"), ant1),
@@ -438,6 +440,7 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
         "WEIGHT": (("row", "corr"), weight),
         "ARRAY_ID": (("row"), a_id),
         "FLAG": (("row", "chan", "corr"), flags),
+        "INTERVAL": (("row"), interval),
         "FLAG_CATEGORY": (("row", "chan", "corr", "flagcat"), da.expand_dims(flags, axis=3)),
     }
 
