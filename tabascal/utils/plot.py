@@ -174,7 +174,9 @@ def plot_comparison(
             )
 
         a[1].set_xlabel(f"Time [{units}]")
+        a[1].legend()
         a[2].set_xlabel(f"Time [{units}]")
+        a[2].legend()
 
 
 def plot_complex_real_imag(
