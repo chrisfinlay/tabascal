@@ -23,13 +23,14 @@ from tabascal.utils.tle import get_satellite_positions, get_tles_by_id
 # from tabascal.jax.interferometry import int_sample_times
 from tabascal.dask.interferometry import int_sample_times
 from tabascal.utils.config import yaml_load
+from tabascal.utils.plot import plot_predictions
 
 
 from tab_opt.transform import affine_transform_full_inv, affine_transform_diag_inv
 from tab_opt.gp import get_times, resampling_kernel
 from tab_opt.vis import get_rfi_phase
 from tab_opt.opt import run_svi, svi_predict, f_model_flat, flatten_obs, post_samples
-from tab_opt.plot import plot_predictions
+
 # from tab_opt.data import extract_data
 
 def print_rfi_signal_error(zarr_path, ms_params, true_params, gp_params):
@@ -214,7 +215,7 @@ def estimate_sampling(config: dict, ms_params: dict, n_rfi: int, norad_ids, tles
     sample_freq = jnp.pi * jnp.max(jnp.abs(fringe_freq)) * jnp.sqrt(jnp.max(jnp.abs(ms_params["vis_obs"])) / (6 * ms_params["noise"]))
     n_int_samples = int(jnp.ceil(config["rfi"]["n_int_factor"] * ms_params["int_time"] * sample_freq))
     # n_int_samples = 65
-    
+
     return n_int_samples
 
 
