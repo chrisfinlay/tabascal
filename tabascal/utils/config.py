@@ -192,17 +192,20 @@ def load_obs(obs_spec: dict) -> Observation:
     def arange(start: float, delta: float, n: int):
         x = da.arange(start, start + n * delta, delta)
         return x
-    
+
     if obs_["start_time_jd"]:
         start_time_jd = obs_["start_time_jd"]
     elif obs_["start_time_isot"]:
         from astropy.time import Time
         start_time_jd = Time(obs_["start_time_isot"], format="isot", scale="ut1").jd
-    elif obs_["start_time"]:
+    elif obs_["start_time_lha"] is not None:
+        gsa = obs_["start_time_lha"] - tel_["longitude"] + obs_["ra"]
+        start_time_jd = JD0 + (gsa / 360)
+    elif obs_["start_time"] is not None:
         start_time = obs_["start_time"]
         start_time_jd = JD0 + start_time/(24*3600)
     else:
-        ValueError("A start time must be given in either the observation: start_time: or observation: start_time_jd:")
+        ValueError("A start time must be given in either the 'start_time', 'start_time_jd', 'start_time_isot' or 'start_time_lha'")
 
     time_range = arange(0, obs_["int_time"], obs_["n_time"])
     times_jd = start_time_jd + time_range/(24*3600)
@@ -273,6 +276,9 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
     methods = {"point": obs.addAstro, "gauss": obs.addAstroGauss, "exp": obs.addAstroExp}
     ast_ = obs_spec["ast_sources"]
 
+    if ast_["pow_spec"]["random"]["type"]:
+        add_power_spectrum_sources(obs, ast_["pow_spec"]["random"])
+
     for key in ast_.keys():
         
         path = ast_[key]["path"]
@@ -281,9 +287,6 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
             print()
             print(f"Adding {len(params[0])} {key} sources from {path} ...")
             methods[key](*params)
-        
-        if ast_["pow_spec"]["random"]["type"]:
-            add_power_spectrum_sources(obs, ast_["pow_spec"]["random"])
 
         if "n_src" in ast_[key]["random"]:
             if ast_[key]["random"]["n_src"] > 0:
@@ -408,10 +411,12 @@ def add_tle_satellite_sources(obs: Observation, obs_spec: dict, spacetrack_path:
             sat_["sat_names"], norad_ids, sat_["tle_dir"]
             )
         
-        print(norad_ids)
+        print(f"NORAD IDs includeed : {norad_ids}")
 
         sat_spec = pd.read_csv(sat_["norad_spec_model"])
         sat_spec = sat_spec[sat_spec["norad_id"].isin(norad_ids)]
+        
+        print(f"Spectral models for {len(sat_spec)} TLE satellites found.")
 
         if len(sat_spec) > 0:
             print()
@@ -559,7 +564,7 @@ def save_data(obs: Observation, obs_spec: dict, zarr_path: str, ms_path: str) ->
         ValueError("No output format has been chosen. output: zarr: or output: ms: must be True.")
 
 
-def save_inputs(obs_spec: dict, save_path: str) -> None:
+def save_inputs(obs: Observation, obs_spec: dict, save_path: str) -> None:
 
     for key in ["enu_path", "itrf_path"]:
         path = obs_spec["telescope"][key]
@@ -577,6 +582,8 @@ def save_inputs(obs_spec: dict, save_path: str) -> None:
         path = obs_spec["rfi_sources"][key1][key2]
         if path is not None:
             shutil.copy(path, save_path)
+
+    np.savetxt(os.path.join(save_path, "norad_ids.yaml"), obs.norad_ids, fmt="%i")
 
     with open(os.path.join(save_path, "sim_config.yaml"), "w") as fp:
         yaml.dump(obs_spec, fp)
@@ -630,7 +637,7 @@ def print_fringe_freq_tle_sat(obs: Observation):
     print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
     print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples} used)")
 
-def run_sim_config(obs_spec: dict=None, path: str=None, spacetrack_path: str=None) -> Observation:
+def run_sim_config(obs_spec: dict=None, config_path: str=None, spacetrack_path: str=None) -> Observation:
 
     log = open('log_sim.txt', 'w')
     backup = sys.stdout
@@ -639,8 +646,8 @@ def run_sim_config(obs_spec: dict=None, path: str=None, spacetrack_path: str=Non
     start = datetime.now()
     print(datetime.now())
 
-    if path is not None:
-        obs_spec = load_config(path, config_type="sim")
+    if config_path is not None:
+        obs_spec = load_config(config_path, config_type="sim")
     elif obs_spec is None:
         print("obs_spec or path must be defined.")
         return None
@@ -666,7 +673,7 @@ def run_sim_config(obs_spec: dict=None, path: str=None, spacetrack_path: str=Non
     input_path = os.path.join(save_path, "input_data")
 
     os.makedirs(input_path, exist_ok=True)
-    save_inputs(obs_spec, input_path)
+    save_inputs(obs, obs_spec, input_path)
 
     print()
     print(f"Writing data to : {save_path}")

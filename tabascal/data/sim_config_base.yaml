@@ -96,6 +96,7 @@ gains:
 observation:
   start_time_jd: null         # Required - Centroid of the starting time in Julian date
   start_time_isot: null       # Required - Centroid of the starting time in ISOT format e.g. 2024-02-21T12:47:32.123
+  start_time_lha: null        # Required - Centroid of the starting time in local hour angle in degrees
   start_time: null            # Required - Centroid of the starting time in Greenwich mean sidereal time in seconds 
   # Only one of the above is required to be specified, order of preference is start_time_jd, start_time_isot, start_time
   SEFD: null                  # Required - System equivalent flux density of the antennas in Jy. Visibility noise is calculated from this, chan_width, and int_time
@@ -139,6 +140,7 @@ rfi_sources:
     norad_ids: []             # Optional - NORAD IDs of the satellites to include
     norad_ids_path: null      # Optional - Path to a file conating the NORAD IDs of satellites to include. Each ID is on a seaprate line
     norad_spec_model: null    # Required if any TLE satellites are included - Path to the csv file of spectral models fo each satellite by NORAD ID
+    spacetrack_path: null     # Required if any TLE satellites are included - Path to the Space-Track login config file
     max_ang_sep: 90           # Optional - Maximum angular separation from the target direction, in degrees, of satellites to include
     min_alt: 0                # Optional - Minimum altitude of satellites to include. 0 indicates above the horizon
     tle_dir: ./tles           # Optional - Path to the directory where to save TLEs for future use
