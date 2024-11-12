@@ -23,16 +23,17 @@ def time_units(times: ArrayLike) -> tuple:
     """
 
     time_range = times[-1] - times[0]
+    times = times - times[0]
     if time_range>3600:
-        scale = "hr"
+        units = "hr"
         times = times / 3600
     elif time_range>60:
-        scale = "min"
+        units = "min"
         times = times / 60
     else:
-        scale = "s"
+        units = "s"
 
-    return times, scale
+    return times, units
 
 def plot_angular_seps(obs: Observation, save_path: str) -> None:
     """Plot the angular separations between the RFI sources and pointing direction.
