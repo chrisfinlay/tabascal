@@ -1,7 +1,8 @@
+import os
 import argparse
 import subprocess
 from datetime import datetime
-from tabascal.utils.config import load_config, run_sim_config
+from tabascal.utils.config import yaml_load, load_config, run_sim_config
 from tabascal.utils.run_tabascal import tabascal_subtraction
 
 def main():
@@ -24,14 +25,24 @@ def main():
     parser.add_argument(
         "-rr", "--random_seed_offset", default=0, type=int, help="Offset to random seeds used."
     )
+    parser.add_argument(
+        "-ra", "--ra", type=float, help="Right Ascension of the observation."
+    )
     args = parser.parse_args()
     config_path = args.sim_config
+    rfi_amp = args.rfi_amp
     r_seed_offset = args.random_seed_offset
     config = load_config(config_path, config_type="sim")
 
-    if args.rfi_amp is not None:
-        config["rfi_sources"]["satellite"]["power_scale"] = args.rfi_amp
-        config["rfi_sources"]["stationary"]["power_scale"] = args.rfi_amp
+    if args.ra is not None:
+        config["observation"]["ra"] = args.ra
+
+    spacetrack_path = os.path.abspath(config["rfi_sources"]["tle_satellite"]["spacetrack_path"])
+    config["rfi_sources"]["tle_satellite"]["spacetrack_path"] = spacetrack_path
+
+    config["rfi_sources"]["tle_satellite"]["power_scale"] *= rfi_amp
+    config["rfi_sources"]["satellite"]["power_scale"] *= rfi_amp
+    config["rfi_sources"]["stationary"]["power_scale"] *= rfi_amp
 
     config["observation"]["random_seed"] += r_seed_offset
     config["ast_sources"]["point"]["random"]["random_seed"] += r_seed_offset
@@ -41,12 +52,15 @@ def main():
 
     times = {"t0": datetime.now(),}
 
-    obs, sim_dir = run_sim_config(obs_spec=config)
+    obs, sim_dir = run_sim_config(obs_spec=config, spacetrack_path=spacetrack_path)
 
     times["t1"] = datetime.now()
 
     print("======================================================================")
-    tabascal_subtraction(args.tab_config, sim_dir)
+    norad_path = os.path.join(sim_dir, "input_data/norad_ids.yaml")
+    norad_ids = [int(x) for x in yaml_load(norad_path).split()]
+    tab_config = load_config(args.tab_config, config_type="tab")
+    tabascal_subtraction(config=tab_config, sim_dir=sim_dir, spacetrack_path=spacetrack_path, norad_ids=norad_ids)
     # subprocess.run(f"tabascal -c {args.tab_config} -s {sim_dir}", shell=True, executable="/bin/bash")
 
     times["t2"] = datetime.now()

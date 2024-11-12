@@ -34,11 +34,17 @@ def main():
     parser.add_argument(
         "-st", "--spacetrack", help="Path to Space-Track login details."
     )
+    parser.add_argument(
+        "-ra", "--ra", help="Right Ascension of the observation."
+    )
     args = parser.parse_args()
     rfi_amp = args.rfi_amp
     spacetrack_path = args.spacetrack
     
     obs_spec = load_config(args.config_path, config_type="sim")
+
+    if args.ra is not None:
+        obs_spec["observation"]["ra"] = args.ra
 
     config_st_path = obs_spec["rfi_sources"]["tle_satellite"]["spacetrack_path"]
     if spacetrack_path:

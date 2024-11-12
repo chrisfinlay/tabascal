@@ -4,16 +4,14 @@ telescope:
   longitude: 21.0
   elevation: 1050.0
   dish_d: 13.5
-  # enu_path: ../../../data/Meerkat.enu.txt
   itrf_path: ../../../data/MeerKAT.itrf.txt
   n_ant: 16
 
 observation:
-  target_name: target1
+  target_name: target
   ra: 27.0
   dec: -30.0
   start_time_lha: 0.0
-  # start_time: 440.0
   start_time_jd: 
   start_time_isot:
   int_time: 2.0
@@ -73,8 +71,8 @@ gains:
   random_seed: 999
 
 output:
-  path: ../../data/target
-  prefix: target
+  path: ../../data/pnt_src
+  prefix: pnt_src
   overwrite: True
   zarr: True
   ms: True
