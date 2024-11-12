@@ -261,10 +261,10 @@ class Observation(Telescope):
         self.t_idx = da.arange(self.n_int_samples//2, self.n_time_fine, self.n_int_samples).rechunk(self.time_chunk)
 
         # self.gsa = da.asarray(Time(self.times_jd_fine.compute(), format="jd").sidereal_time("mean", "greenwich").hour*15, chunks=(self.time_fine_chunk,))
-        self.gsa = gmsa_from_jd(self.times_fine/(24*3600)) % 360
+        self.gsa = gmsa_from_jd(self.times_jd_fine) % 360
         self.gha = (self.gsa - self.ra) % 360
         self.lsa = (self.gsa + longitude) % 360
-        self.lha = (self.gha + longitude) % 360
+        self.lha = (((self.gha + longitude) % 360 - 180) % 360) - 180
         self.altaz = da.asarray(alt_az_of_source(self.lsa.compute(), latitude, ra, dec))
 
         self.freqs = da.asarray(freqs).rechunk((self.freq_chunk,))
@@ -676,12 +676,12 @@ Number of stationary RFI :  {n_stat}"""
         tles = da.asarray(da.atleast_2d(tles), chunks=(-1,))  
         # rfi_xyz is shape (n_src,n_time_fine,3)
         # self.ants_xyz is shape (n_time_fine,n_ant,3)
-        # distances = da.linalg.norm(
-        #     self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
-        # )
-        distances = da.asarray(da.linalg.norm(
-            ants_pos(self.ITRF.compute(), self.times_jd_fine.compute())[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
-        ), chunks=(-1, self.time_fine_chunk, self.n_ant))
+        distances = da.linalg.norm(
+            self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
+        )
+        # distances = da.asarray(da.linalg.norm(
+        #     ants_pos(self.ITRF.compute(), self.times_jd_fine.compute())[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
+        # ), chunks=(-1, self.time_fine_chunk, self.n_ant))
         # distances is shape (n_src,n_time_fine,n_ant)
         I = Pv_to_Sv(Pv, distances)
         # I is shape (n_src,n_time_fine,n_ant,n_freq)
@@ -692,6 +692,7 @@ Number of stationary RFI :  {n_stat}"""
         rfi_A_app = da.sqrt(da.abs(I)) * airy_beam(
             angular_seps, self.freqs, self.dish_d
         )
+        # rfi_A_app = da.ones((Pv.shape[0], self.n_time_fine, self.n_ant, self.n_freq), chunks=(-1, self.time_fine_chunk, self.n_ant, self.freq_chunk))
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # distances is shape (n_src,n_time_fine,n_ant)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)

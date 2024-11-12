@@ -1,4 +1,5 @@
 import argparse
+import os
 
 from tabascal.utils.config import load_config, run_sim_config
 
@@ -35,8 +36,17 @@ def main():
     )
     args = parser.parse_args()
     rfi_amp = args.rfi_amp
+    spacetrack_path = args.spacetrack
     
     obs_spec = load_config(args.config_path, config_type="sim")
+
+    config_st_path = obs_spec["rfi_sources"]["tle_satellite"]["spacetrack_path"]
+    if spacetrack_path:
+        obs_spec["rfi_sources"]["tle_satellite"]["spacetrack_path"] = os.path.abspath(spacetrack_path)
+    elif config_st_path:
+        config_st_path = os.path.abspath(config_st_path)
+        obs_spec["rfi_sources"]["tle_satellite"]["spacetrack_path"] = config_st_path
+        spacetrack_path = config_st_path
 
     obs_spec["rfi_sources"]["tle_satellite"]["power_scale"] *= rfi_amp
     obs_spec["rfi_sources"]["satellite"]["power_scale"] *= rfi_amp
@@ -66,7 +76,7 @@ def main():
     if args.n_time is not None:
         obs_spec["observation"]["n_time"] = args.n_time
     
-    return run_sim_config(obs_spec=obs_spec, spacetrack_path=args.spacetrack)
+    return run_sim_config(obs_spec=obs_spec, spacetrack_path=spacetrack_path)
 
 if __name__=="__main__":
     obs, obs_path = main()
