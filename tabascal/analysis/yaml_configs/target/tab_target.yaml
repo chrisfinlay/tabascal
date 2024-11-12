@@ -48,12 +48,17 @@ rfi:
   # mean: truth
   # var: 100        # Jy
   corr_time: 24   # seconds
+  n_int_factor: 2
 
 satellites:
-  norad_ids: [] 
-  sat_ids: [1]
-  ole_path: ../aux_data/satellite.ole
+  # norad_ids: [20452] # 10 degrees
+  # norad_ids: [20452,38833,45854] # 20 degrees
+  # norad_ids: [20452,38833,44506,45854] # 30 degrees
+  # norad_ids: [19802,20302,20452,26690,32260,38833,41019,44506,45854] # 45 degrees
+  spacetrack_path: ../eda2/spacetrack_login.yaml
   tle_dir: ../aux_data/tles
+  # sat_ids: []
+  # ole_path: ../aux_data/satellite.ole
 
 # True gains
 gains:

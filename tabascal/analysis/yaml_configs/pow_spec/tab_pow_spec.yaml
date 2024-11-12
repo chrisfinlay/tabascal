@@ -1,6 +1,5 @@
 data:
   sim_dir: 
-  sampling: 1
   
 plots:
   init: True
@@ -14,8 +13,8 @@ inference:
   fisher: False
 
 opt:
-  epsilon: 1e-1
-  max_iter: 200
+  epsilon: 1e-2
+  max_iter: 500
   dual_run: True
   guide: map
 
@@ -45,6 +44,14 @@ rfi:
   # mean: truth
   # var: 100        # Jy
   corr_time: 24   # seconds
+  n_int_factor: 2
+
+satellites:
+  norad_ids: [] 
+  spacetrack_path: ../eda2/spacetrack_login.yaml
+  sat_ids: [1]
+  ole_path: ../aux_data/satellite.ole
+  tle_dir: ../aux_data/tles
 
 # True gains
 gains:
