@@ -1,8 +1,16 @@
 #!/bin/bash
-#for rr in 0;
-for rr in 0 1 2 3 4 5 6 7 8 9;
-do for r in 1e-2 3e-2 1e-1 3e-1 1e0 3e0 1e1 3e1 1e2 3e2;
-# do for r in 3e2;
-do ps-end2end -s sim_pow_spec.yaml -t tab_pow_spec.yaml -e extract_pow_spec.yaml -r $r -rr $rr 2>&1 | tee log_end2end.txt ;
+
+# seeds=(0)
+# ras=(0)
+# powers=(1e-2)
+
+seeds=(0 1 2 3 4 5 6 7 8 9)
+ras=(0 36 72 108 144 180 216 252 288 324)
+
+powers=(1e-2 3e-2 1e-1 3e-1 1e0 3e0 1e1 3e1 1e2 3e2)
+
+for i in "${!seeds[@]}";
+do for j in "${!powers[@]}";
+do ps-end2end -s sim_pow_spec.yaml -t tab_pow_spec.yaml -e extract_pow_spec.yaml -r ${powers[j]} -rr ${seeds[i]} -ra ${ras[i]} 2>&1 | tee log_end2end.txt ;
 done;
 done;
