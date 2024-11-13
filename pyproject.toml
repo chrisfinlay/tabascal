@@ -22,7 +22,7 @@ dependencies = [
     "jax", "dask", "xarray", "zarr", 
     "dask-ms>=0.2.21", "scipy", "tqdm", "pandas", 
     "matplotlib", "astropy", "requests", "spacetrack",
-    "skyfield",
+    "skyfield", "numpy<2.0.0"
 ]
 
 [project.optional-dependencies]
