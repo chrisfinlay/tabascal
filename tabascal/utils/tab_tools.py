@@ -305,7 +305,7 @@ def calculate_true_values(zarr_path: str, config: dict, ms_params: dict, gp_para
         )
 
     print()
-    print(f"Minimum expected RFI correlation time : {l:.0f} s ({gp_params["rfi_l"]:.0f} s used)")
+    print(f"Minimum expected RFI correlation time : {l:.0f} s ({gp_params['rfi_l']:.0f} s used)")
     print()
     print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi)):.1f} Jy")
     print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast)):.1f} Jy")
@@ -752,10 +752,10 @@ def plot_truth(zarr_path, ms_params, args, model, model_name, subkey, true_param
     )
     true_pred = pred(subkey, args=args)
     # true_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
-    print(f"RMSE Gains      : {jnp.mean(true_pred["rmse_gains"]):.5f}")
-    print(f"RMSE RFI        : {jnp.mean(true_pred["rmse_rfi"]):.5f}")
+    print(f"RMSE Gains      : {jnp.mean(true_pred['rmse_gains']):.5f}")
+    print(f"RMSE RFI        : {jnp.mean(true_pred['rmse_rfi']):.5f}")
     print(f"RMSE RFI signal : {jnp.sqrt(jnp.mean(jnp.abs(rfi_A_true - rfi_A_pred)**2)):.5f}")
-    print(f"RMSE AST        : {jnp.mean(true_pred["rmse_ast"]):.5f}")
+    print(f"RMSE AST        : {jnp.mean(true_pred['rmse_ast']):.5f}")
 
     rchi2 = reduced_chi2(true_pred["vis_obs"][0], ms_params["vis_obs"].T, ms_params["noise"])
     print()

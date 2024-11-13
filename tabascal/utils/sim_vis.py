@@ -35,7 +35,7 @@ def main():
         "-st", "--spacetrack", help="Path to Space-Track login details."
     )
     parser.add_argument(
-        "-ra", "--ra", help="Right Ascension of the observation."
+        "-ra", "--ra", type=float, help="Right Ascension of the observation."
     )
     args = parser.parse_args()
     rfi_amp = args.rfi_amp

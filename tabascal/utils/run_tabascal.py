@@ -15,6 +15,8 @@ import jax.numpy as jnp
 
 # jax.config.update("jax_platform_name", "cpu")
 
+import numpy as np
+
 from tabascal.utils.config import Tee, load_config, yaml_load
 
 from tab_opt.gp import (
@@ -131,13 +133,13 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
 
     print(f"Using {n_int_samples} samples per time step for RFI prediction.")
     print()
-    print(f"Number of Antennas   : {ms_params["n_ant"]: 4}")
-    print(f"Number of Time Steps : {ms_params["n_time"]: 4}")
+    print(f"Number of Antennas   : {ms_params['n_ant']: 4}")
+    print(f"Number of Time Steps : {ms_params['n_time']: 4}")
     print()
     print("Number of parameters per antenna/baseline")
-    print(f"Gains : {gp_params["n_g_times"]: 4}")
-    print(f"RFI   : {gp_params["n_rfi_times"]: 4}")
-    print(f"AST   : {ms_params["n_time"]: 4}")
+    print(f"Gains : {gp_params['n_g_times']: 4}")
+    print(f"RFI   : {gp_params['n_rfi_times']: 4}")
+    print(f"AST   : {ms_params['n_time']: 4}")
     print()
     print(
         f"Number of parameters : {n_g_params + n_rfi_params + n_ast_params}"
@@ -332,7 +334,7 @@ def main():
         norad_path = os.path.join(sim_dir, "input_data/norad_ids.yaml")
 
     if norad_path:
-        norad_ids = [int(x) for x in yaml_load(norad_path).split()]
+        norad_ids = [int(x) for x in np.loadtxt(norad_path)]
     else:
         norad_ids = []
 
