@@ -1,8 +1,12 @@
 import os
 import argparse
 import subprocess
+
 from datetime import datetime
-from tabascal.utils.config import yaml_load, load_config, run_sim_config
+
+import numpy as np
+
+from tabascal.utils.config import load_config, run_sim_config
 from tabascal.utils.run_tabascal import tabascal_subtraction
 
 def main():
@@ -58,7 +62,7 @@ def main():
 
     print("======================================================================")
     norad_path = os.path.join(sim_dir, "input_data/norad_ids.yaml")
-    norad_ids = [int(x) for x in yaml_load(norad_path).split()]
+    norad_ids = [int(x) for x in np.loadtxt(norad_path)]
     tab_config = load_config(args.tab_config, config_type="tab")
     tabascal_subtraction(config=tab_config, sim_dir=sim_dir, spacetrack_path=spacetrack_path, norad_ids=norad_ids)
     # subprocess.run(f"tabascal -c {args.tab_config} -s {sim_dir}", shell=True, executable="/bin/bash")
@@ -70,11 +74,11 @@ def main():
 
     times["t3"] = datetime.now()
     print("\n==================================================================\n")
-    print(f"Simualtion time : {times["t1"]-times["t0"]}")
-    print(f"TABASCAL time   : {times["t2"]-times["t1"]}")
-    print(f"Extraction time : {times["t3"]-times["t2"]}")
+    print(f"Simualtion time : {times['t1']-times['t0']}")
+    print(f"TABASCAL time   : {times['t2']-times['t1']}")
+    print(f"Extraction time : {times['t3']-times['t2']}")
     print("========================================")
-    print(f"Total time      : {times["t3"]-times["t0"]}")
+    print(f"Total time      : {times['t3']-times['t0']}")
 
 if __name__=="__main__":
     main()
