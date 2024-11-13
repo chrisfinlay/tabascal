@@ -21,7 +21,8 @@ requires-python = ">=3.9,<3.13"
 dependencies = [
     "jax", "dask", "xarray", "zarr", 
     "dask-ms>=0.2.21", "scipy", "tqdm", "pandas", 
-    "matplotlib", "astropy"
+    "matplotlib", "astropy", "requests", "spacetrack",
+    "skyfield",
 ]
 
 [project.optional-dependencies]
