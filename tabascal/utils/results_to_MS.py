@@ -10,23 +10,41 @@ import dask
 
 import argparse
 
-def write_results(ms_path: str, zarr_path: str):
+
+def write_results(ms_path: str, results_zarr_path: str):
 
     xds_ms = xds_from_ms(ms_path)[0]
-    xds_tab = xr.open_zarr(zarr_path)
+    xds_tab = xr.open_zarr(results_zarr_path)
 
     dims = ["row", "chan", "corr"]
     chunks = {k: v for k, v in xds_ms.chunks.items() if k in dims}
 
     vis_ast = xds_tab.ast_vis.data.astype(np.complex64).mean(axis=0).T.flatten()
+    vis_ast = xr.DataArray(da.expand_dims(vis_ast, axis=(1, 2)), dims=dims).chunk(
+        chunks
+    )
 
-    vis_ast = xr.DataArray(da.expand_dims(vis_ast, axis=(1,2)), dims=dims).chunk(chunks)
+    vis_rfi = xds_tab.rfi_vis.data.astype(np.complex64).mean(axis=0).T.flatten()
+    vis_rfi = xr.DataArray(da.expand_dims(vis_rfi, axis=(1, 2)), dims=dims).chunk(
+        chunks
+    )
 
     xds_ms = xds_ms.assign(TAB_DATA=vis_ast)
+    xds_ms = xds_ms.assign(TAB_RFI_DATA=vis_rfi)
 
-    print("Writing tabascal results to 'TAB_DATA' column in MS file.")
+    cols = ["TAB_DATA", "TAB_RFI_DATA"]
 
-    dask.compute(xds_to_table([xds_ms,], ms_path, ["TAB_DATA"], column_keywords={"TAB_DATA": {"UNIT": "Jy"}}))
+    col_keywords = {
+        "TAB_DATA": {"UNIT": "Jy"},
+        "TAB_RFI_DATA": {"UNIT": "Jy"},
+    }
+
+    print(
+        "Writing tabascal results to 'TAB_DATA' and 'TAB_RFI_DATA' columns in MS file."
+    )
+
+    dask.compute(xds_to_table([xds_ms], ms_path, cols, column_keywords=col_keywords))
+
 
 def main():
 
@@ -37,12 +55,15 @@ def main():
         "-m", "--ms_path", required=True, help="File path to the Measurement Set."
     )
     parser.add_argument(
-        "-z", "--zarr_path", required=True, help="File path to the zarr file containing results."
+        "-z",
+        "--results_zarr_path",
+        required=True,
+        help="File path to the zarr file containing results.",
     )
 
     args = parser.parse_args()
-    write_results(ms_path=args.ms_path, zarr_path=args.zarr_path)
+    write_results(ms_path=args.ms_path, results_zarr_path=args.results_zarr_path)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     main()
