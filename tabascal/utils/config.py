@@ -294,8 +294,9 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
                 n_beam = rand_["n_beam"]
                 max_beam = rand_["max_sep"]/3600/n_beam
                 beam_width = np.min([obs.syn_bw, max_beam])
+                fov = np.min([obs.fov, 180.0])
                 print()
-                print(f"Generating {rand_['n_src']} sources within {obs.fov:.2f} deg FoV ({obs.fov/2:.2f} radius) ...") 
+                print(f"Generating {rand_['n_src']} sources within {fov:.2f} deg FoV ({fov/2:.2f} radius) ...") 
                 print(f"Minimum {n_beam*beam_width*3600:.1f} arcsec separation ...")
                 
                 I, d_ra, d_dec = generate_random_sky(
@@ -303,7 +304,7 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
                         min_I=sigma_value(rand_["min_I"], obs),
                         max_I=sigma_value(rand_["max_I"], obs),
                         freqs=obs.freqs,
-                        fov=obs.fov,
+                        fov=fov,
                         beam_width=beam_width,
                         random_seed=rand_["random_seed"],
                         n_beam=n_beam,
