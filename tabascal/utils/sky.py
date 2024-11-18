@@ -22,7 +22,7 @@ def uniform_points_disk(radius: float, n_src: int, random_seed: int = None):
         The coordinate positions of the random points centred on (0,0).
     """
     rng = np.random.default_rng(random_seed)
-    r = jnp.sqrt(rng.uniform(low=0.0, high=radius, size=(n_src,)))
+    r = jnp.sqrt(rng.uniform(low=0.0, high=radius**2, size=(n_src,)))
     theta = rng.uniform(low=0.0, high=2.0 * jnp.pi, size=(n_src,))
 
     return r * jnp.array([jnp.cos(theta), jnp.sin(theta)])
@@ -81,7 +81,7 @@ def generate_random_sky(
 ) -> tuple:
     """
     Generate uniformly distributed point sources inside the field of view with
-    an exponential intensity distribution. Setting the beam width will make
+    a power law intensity distribution. Setting the beam width will make
     sure souces are separated by 5 beam widths apart.
 
     Parameters:
