@@ -65,7 +65,15 @@ def print_rfi_signal_error(zarr_path, ms_params, true_params, gp_params):
 # @jit
 def reduced_chi2(pred, true, noise):
 
-    if isinstance(true.flatten()[0], np.complex64):
+    complex_types = [
+        complex,
+        np.complex64,
+        np.complex128,
+        jnp.complex64,
+        jnp.complex128,
+    ]
+    is_complex = jnp.any(jnp.array([true.dtype == c_type for c_type in complex_types]))
+    if is_complex:
         # print("Complex Data")
         norm = 2 * true.size
     else:
