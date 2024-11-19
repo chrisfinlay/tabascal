@@ -32,6 +32,9 @@ def main():
     parser.add_argument(
         "-ra", "--ra", type=float, help="Right Ascension of the observation."
     )
+    parser.add_argument(
+        "-dec", "--dec", type=float, help="Declination of the observation."
+    )
     args = parser.parse_args()
     config_path = args.sim_config
     r_seed_offset = args.random_seed_offset
@@ -39,6 +42,9 @@ def main():
 
     if args.ra is not None:
         config["observation"]["ra"] = args.ra
+
+    if args.dec is not None:
+        config["observation"]["dec"] = args.dec
 
     spacetrack_path = os.path.abspath(config["rfi_sources"]["tle_satellite"]["spacetrack_path"])
     config["rfi_sources"]["tle_satellite"]["spacetrack_path"] = spacetrack_path
