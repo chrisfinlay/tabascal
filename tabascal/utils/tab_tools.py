@@ -758,6 +758,13 @@ def run_opt(
     print(f"Optimize Plot Time : {datetime.now() - start}")
     print(f"{datetime.now()}")
 
+    if get_truth_conditional(config):
+
+        # vi_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
+        print(f"RMSE Gains      : {jnp.mean(vi_pred['rmse_gains']):.5f}")
+        print(f"RMSE RFI        : {jnp.mean(vi_pred['rmse_rfi']):.5f}")
+        print(f"RMSE AST        : {jnp.mean(vi_pred['rmse_ast']):.5f}")
+
     rchi2 = reduced_chi2(
         vi_pred["vis_obs"][0], ms_params["vis_obs"].T, ms_params["noise"]
     )
