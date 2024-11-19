@@ -438,9 +438,9 @@ def calculate_true_values(
     }
 
     truth_args = {
-        "vis_ast_true": vis_ast.T,
-        "vis_rfi_true": vis_rfi.T,
-        "gains_true": gains_ants.T,
+        "vis_ast_true": jnp.array(vis_ast.T),
+        "vis_rfi_true": jnp.array(vis_rfi.T),
+        "gains_true": jnp.array(gains_ants.T),
     }
 
     return true_params, truth_args
