@@ -286,7 +286,11 @@ def estimate_sampling(
 
     max_rfi_vis_est = estimate_max_rfi_vis(ms_params)
 
-    print(f"Max A : {jnp.sqrt(max_rfi_vis_est):.5f} Jy")
+    print(f"Estimated Max RFI A : {jnp.sqrt(max_rfi_vis_est):.5f} sqrt(Jy)")
+    
+    if get_truth_conditional(config):
+        xds = xr.open_zarr(config["data"]["zarr_path"])
+        print(f"True Max RFI A      : {np.max(xds.rfi_tle_sat_A.data).compute():.5f} sqrt(Jy)")
 
     sample_freq = (
         jnp.pi

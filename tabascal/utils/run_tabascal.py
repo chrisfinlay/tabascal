@@ -93,8 +93,14 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     print()
 
     zarr_path = os.path.join(sim_dir, f"{f_name}.zarr")
+    config["data"]["zarr_path"] = zarr_path
+    
     if not ms_path:
         ms_path = os.path.join(sim_dir, f"{f_name}.ms")
+    else:
+        ms_path = os.path.abspath(ms_path)
+
+    config["data"]["ms_path"] = ms_path
 
     plot_dir = os.path.join(sim_dir, "plots")
     results_dir = os.path.join(sim_dir, "results")

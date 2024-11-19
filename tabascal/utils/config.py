@@ -635,9 +635,11 @@ def print_fringe_freq_tle_sat(obs: Observation):
 
     print()
     print(f"Maximum Fringe Frequency is : {np.max(np.abs(fringe_freq)):.2f} Hz")
+    print(f"Maximum RFI Amplitude       : {np.max(obs.rfi_tle_satellite_A_app):.5f} sqrt(Jy)")
     print(f"Maximum sampling rate is    : {f_sample:.2f} Hz")
     print(f"Recommended n_int is >=     : {n_int:.0f} ({obs.n_int_samples} used)")
-
+    
+    
 def run_sim_config(obs_spec: dict=None, config_path: str=None, spacetrack_path: str=None) -> Observation:
 
     log = open('log_sim.txt', 'w')
