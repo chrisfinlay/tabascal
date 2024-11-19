@@ -15,7 +15,7 @@ def main():
         description="Process a simulation file that has potentially had tabascal run on it."
     )
     parser.add_argument(
-        "-c", "--config_path", help="File path to the source extraction config file."
+        "-c", "--config_path", required=True, help="File path to the source extraction config file."
     )
     parser.add_argument(
         "-s", "--sim_dir", help="Path to the directory of the simulation."
