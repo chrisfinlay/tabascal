@@ -215,6 +215,34 @@ def get_tles(config, ms_params, norad_ids, spacetrack_path):
     return n_rfi, norad_ids, tles
 
 
+def estimate_max_rfi_vis(ms_params: dict):
+    
+    # Assumes RFI is dominant in the visibilities
+    
+    return jnp.max(jnp.abs(ms_params['vis_obs']))
+
+def estimate_vis_ast(ms_params: dict):
+
+    # Assumes RFI will have fringing-winding loss when averaging
+    # visibilities over time to leave astronomical signal only 
+    
+    vis_ast_est = jnp.mean(ms_params["vis_obs"].T, axis=1, keepdims=True) * jnp.ones(
+        (ms_params["n_bl"], ms_params["n_time"])
+    )
+
+    return vis_ast_est
+
+
+def estimate_vis_rfi(ms_params: dict):
+
+    # Assumes accurate astronomical visibility estimate and
+    # returns only the magnitude estimate on the 'shortest' baselines
+
+    vis_ast_est = estimate_vis_ast(ms_params)
+    vis_rfi_est = jnp.max(jnp.abs(ms_params["vis_obs"] - vis_ast_est.T), axis=1)
+
+    return vis_rfi_est
+
 # def estimate_sampling(config: dict, ms_params: dict, n_rfi: int, norad_ids, tles: list[list[str]], rfi_orbit):
 def estimate_sampling(
     config: dict, ms_params: dict, n_rfi: int, norad_ids, tles: list[list[str]]
@@ -256,10 +284,14 @@ def estimate_sampling(
     )
     print(f"Max Fringe Freq: {jnp.max(jnp.abs(fringe_freq)):.2f} Hz")
 
+    max_rfi_vis_est = estimate_max_rfi_vis(ms_params)
+
+    print(f"Max A : {jnp.sqrt(max_rfi_vis_est):.5f} Jy")
+
     sample_freq = (
         jnp.pi
         * jnp.max(jnp.abs(fringe_freq))
-        * jnp.sqrt(jnp.max(jnp.abs(ms_params["vis_obs"])) / (6 * ms_params["noise"]))
+        * jnp.sqrt(max_rfi_vis_est / (6 * ms_params["noise"]))
     )
     n_int_samples = int(
         jnp.ceil(config["rfi"]["n_int_factor"] * ms_params["int_time"] * sample_freq)
@@ -412,18 +444,18 @@ def calculate_true_values(
 
 def calculate_estimates(ms_params, n_rfi, rfi_times):
 
-    vis_ast_est = jnp.mean(ms_params["vis_obs"].T, axis=1, keepdims=True) * jnp.ones(
-        (ms_params["n_bl"], ms_params["n_time"])
-    )
+    vis_ast_est = estimate_vis_ast(ms_params)
     ast_k_est = jnp.fft.fft(vis_ast_est, axis=1)
 
     n_rfi_times = len(rfi_times)
+
+    vis_rfi_est = estimate_vis_rfi(ms_params)
 
     rfi_induce_est = (
         jnp.interp(
             rfi_times,
             ms_params["times"],
-            jnp.sqrt(jnp.max(jnp.abs(ms_params["vis_obs"] - vis_ast_est.T), axis=1)),
+            jnp.sqrt(vis_rfi_est),
         )[
             None, None, :
         ]  # shape is now (1, 1, n_rfi_times)
@@ -564,7 +596,7 @@ def get_gp_params(config, ms_params):
     if config["rfi"]["var"] is not None:
         rfi_var = config["rfi"]["var"]
     else:
-        rfi_var = jnp.max(jnp.abs(ms_params["vis_obs"]))
+        rfi_var = estimate_max_rfi_vis(ms_params)
     # rfi_l can be calculated based on RFI positions. Check True value definitions
     rfi_l = config["rfi"]["corr_time"]
 
@@ -775,7 +807,7 @@ def run_opt(
     plt.savefig(os.path.join(plot_dir, f"{model_name}_opt_loss.pdf"), format="pdf")
 
     print()
-    print("Copying tabascal results to MS file in TAB_DATA column")
+    print("Copying tabascal results to MS file in 'TAB_DATA' and 'TAB_RFI_DATA' columns")
     subprocess.run(
         f"tab2MS -m {ms_path} -z {map_path}", shell=True, executable="/bin/bash"
     )
