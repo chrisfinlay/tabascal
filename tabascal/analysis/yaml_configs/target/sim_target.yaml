@@ -28,8 +28,8 @@ observation:
 ast_sources:
   point:
     random: 
-      n_src: 100
-      min_I: 5sigma
+      n_src: 50
+      min_I: 10sigma
       max_I: 1.0
       I_pow_law: 1.6
       si_mean: 0.7
