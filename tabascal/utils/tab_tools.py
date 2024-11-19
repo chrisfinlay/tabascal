@@ -267,6 +267,8 @@ def estimate_sampling(
         :, :, 0
     ]  # We want the uvw-coordinates at the coarse sampling rate for the fringe frequency prediction
 
+    max_rfi_vis_est = estimate_max_rfi_vis(ms_params)
+
     fringe_params = [
         {
             "times": times_coarse,
@@ -282,10 +284,8 @@ def estimate_sampling(
     fringe_freq = jnp.array(
         [calculate_fringe_frequency(**f_params) for f_params in fringe_params]
     )
+    print()
     print(f"Max Fringe Freq: {jnp.max(jnp.abs(fringe_freq)):.2f} Hz")
-
-    max_rfi_vis_est = estimate_max_rfi_vis(ms_params)
-
     print(f"Estimated Max RFI A : {jnp.sqrt(max_rfi_vis_est):.5f} sqrt(Jy)")
     
     if get_truth_conditional(config):
@@ -651,7 +651,60 @@ def get_rfi_phase_from_pos(rfi_xyz, ants_w, ants_xyz, freqs):
     return phase
 
 
-def get_rfi_phase(ms_params, norad_ids, tles, n_int_samples):
+def get_antenna_positions(ms_params: dict, n_int_samples: int):
+
+    times_jd_fine = int_sample_times(ms_params["times_jd"], n_int_samples).compute()
+
+    # gsa = Time(times_jd_fine, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
+    gsa = gmsa_from_jd(times_jd_fine) % 360
+    ants_xyz = itrf_to_xyz(ms_params["ants_itrf"], gsa)
+
+    return ants_xyz
+
+
+def get_sat_positions(ms_params: dict, n_int_samples: int, tles: list):
+
+    times_jd_fine = int_sample_times(ms_params["times_jd"], n_int_samples).compute()
+
+    rfi_xyz = get_satellite_positions(tles, np.array(times_jd_fine))
+
+    return rfi_xyz
+
+
+def check_antenna_and_satellite_positions(config: dict, ms_params: dict, tles: list):
+
+    xds = xr.open_zarr(config["data"]["zarr_path"])
+    n_int_samples = xds.n_int_samples
+    ants_xyz_true = xds.ants_xyz.data.compute()
+    sat_xyz_true = xds.rfi_tle_sat_xyz.data.compute()
+
+    ants_xyz = get_antenna_positions(ms_params, n_int_samples)
+    sat_xyz = get_sat_positions(ms_params, n_int_samples, tles)
+
+    ants_diff = jnp.sum(jnp.linalg.norm(ants_xyz_true - ants_xyz, axis=-1))
+    sat_diff = jnp.sum(jnp.linalg.norm(sat_xyz_true - sat_xyz, axis=-1))
+
+    print()
+    print(f"Antenna position differences   : {ants_diff:.3f} m")
+    print(f"Satellite position differences : {sat_diff:.3f} m")
+
+
+def get_antenna_uvw(ms_params: dict, n_int_samples: int):
+
+    times_jd_fine = int_sample_times(ms_params["times_jd"], n_int_samples).compute()
+
+    # gsa = Time(times_jd_fine, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
+    gsa = gmsa_from_jd(times_jd_fine) % 360
+    gh0 = (gsa - ms_params["ra"]) % 360
+
+    ants_uvw = itrf_to_uvw(
+        ms_params["ants_itrf"], gh0, ms_params["dec"]
+    )
+
+    return ants_uvw
+
+
+def get_rfi_phase(ms_params: dict, norad_ids: list, tles: list, n_int_samples: int):
 
     # Beware of time definitions can lead to RFI and antenna position inaccuracies
     times_fine = int_sample_times(ms_params["times"], n_int_samples).compute()

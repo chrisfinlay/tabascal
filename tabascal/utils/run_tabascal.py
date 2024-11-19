@@ -49,6 +49,7 @@ from tabascal.utils.tab_tools import (
     run_mcmc,
     run_opt,
     run_fisher,
+    check_antenna_and_satellite_positions,
 )
 
 
@@ -94,7 +95,7 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
 
     zarr_path = os.path.join(sim_dir, f"{f_name}.zarr")
     config["data"]["zarr_path"] = zarr_path
-    
+
     if not ms_path:
         ms_path = os.path.join(sim_dir, f"{f_name}.ms")
     else:
@@ -122,6 +123,13 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
         
     config["satellites"]["norad_ids"] = norad_ids
     config["satellites"]["norad_ids_path"] = None
+
+    ######################################################
+    # Check satellite and antenna positions to simulation
+    ######################################################
+    # if get_truth_conditional(config) and len(tles) > 0:
+    #     check_antenna_and_satellite_positions(config, ms_params, tles)
+    ######################################################
     #######################
     # Check the required sampling rate of the RFI by checking the 
     # fringe frequency at a low sampling rate. Every minute is enough.
