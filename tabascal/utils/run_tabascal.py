@@ -5,6 +5,8 @@ import os
 import sys
 import yaml
 
+from frozendict import frozendict
+
 # os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"  # add this
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
@@ -22,10 +24,14 @@ from tabascal.utils.config import Tee, load_config, yaml_load
 from tab_opt.gp import (
     kernel,
     resampling_kernel,
+    cholesky,
+    find_closest_factor_greater_than,
 )
 from tab_opt.models import (
     fixed_orbit_rfi_fft_standard,
     fixed_orbit_rfi_full_fft_standard_model,
+    fixed_orbit_rfi_full_fft_standard_model_otf,
+    fixed_orbit_rfi_full_fft_standard_model_otf_fft,
 )
 
 from tabascal.utils.tab_tools import (
@@ -53,9 +59,15 @@ from tabascal.utils.tab_tools import (
 )
 
 
-def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetrack_path: str=None, norad_ids: list=[]):
+def tabascal_subtraction(
+    config: dict,
+    sim_dir: str,
+    ms_path: str = None,
+    spacetrack_path: str = None,
+    norad_ids: list = [],
+):
 
-    log = open('log_tab.txt', 'w')
+    log = open("log_tab.txt", "w")
     backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
 
@@ -68,7 +80,9 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     mem_i = 0
 
     ### Define Model
-    vis_model = fixed_orbit_rfi_full_fft_standard_model
+    # vis_model = fixed_orbit_rfi_full_fft_standard_model
+    # vis_model = fixed_orbit_rfi_full_fft_standard_model_otf # RFI resampling is performed On-The-Fly
+    vis_model = fixed_orbit_rfi_full_fft_standard_model_otf_fft  # RFI resampling is performed On-The-Fly with FFT - Not working yet
 
     def model(args, v_obs=None):
         return fixed_orbit_rfi_fft_standard(args, vis_model, v_obs)
@@ -83,9 +97,9 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
         sim_dir = os.path.abspath(config["data"]["sim_dir"])
         config["data"]["sim_dir"] = sim_dir
 
-    config["model"] = {"name": model_name, "func": vis_model.__name__} 
+    config["model"] = {"name": model_name, "func": vis_model.__name__}
 
-    if sim_dir[-1]=="/":
+    if sim_dir[-1] == "/":
         sim_dir = sim_dir[:-1]
     f_name = os.path.split(sim_dir)[1]
 
@@ -120,7 +134,7 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
 
     ms_params = read_ms(ms_path, config["data"]["freq"], config["data"]["corr"])
     n_rfi, norad_ids, tles = get_tles(config, ms_params, norad_ids, spacetrack_path)
-        
+
     config["satellites"]["norad_ids"] = norad_ids
     config["satellites"]["norad_ids_path"] = None
 
@@ -131,7 +145,7 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     #     check_antenna_and_satellite_positions(config, ms_params, tles)
     ######################################################
     #######################
-    # Check the required sampling rate of the RFI by checking the 
+    # Check the required sampling rate of the RFI by checking the
     # fringe frequency at a low sampling rate. Every minute is enough.
     # Once required sampling rate is determined calculate rfi_phase and times_fine
     #######################
@@ -139,6 +153,10 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
 
     rfi_phase, times_fine = get_rfi_phase(ms_params, norad_ids, tles, n_int_samples)
     gp_params = get_gp_params(config, ms_params)
+
+    if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_model_otf_fft":
+        gp_params["n_rfi_times"] = gp_params["n_rfi_times"] - 1
+        gp_params["rfi_times"] = gp_params["rfi_times"][:-1]
 
     n_g_params = (2 * ms_params["n_ant"] - 1) * gp_params["n_g_times"]
     n_rfi_params = 2 * ms_params["n_ant"] * gp_params["n_rfi_times"]
@@ -155,9 +173,7 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     print(f"RFI   : {gp_params['n_rfi_times']: 4}")
     print(f"AST   : {ms_params['n_time']: 4}")
     print()
-    print(
-        f"Number of parameters : {n_g_params + n_rfi_params + n_ast_params}"
-    )
+    print(f"Number of parameters : {n_g_params + n_rfi_params + n_ast_params}")
     print(f"Number of data points: {n_data}")
 
     ##############################################
@@ -171,36 +187,75 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     # Calculate True Parameter Values if required
     #############################
 
-    if get_truth_conditional(config) :
+    if get_truth_conditional(config):
         true_params, truth_args = calculate_true_values(
             zarr_path, config, ms_params, gp_params, n_rfi, norad_ids
-            )
+        )
     else:
         true_params = None
 
     # Define Prior Means based on config
-    prior_means = get_prior_means(config, ms_params, estimates, true_params, n_rfi, gp_params)
+    prior_means = get_prior_means(
+        config, ms_params, estimates, true_params, n_rfi, gp_params
+    )
 
     k_ast = jnp.fft.fftfreq(ms_params["n_time"], ms_params["int_time"])
+
+    #######################################
+    # Chunking of the baselines appears to not be needed. Only jax.checkpoint is needed to trade compute for memory
+    #######################################
+    # import jax
+
+    # gpu_bytes = jax.devices()[0].memory_stats()["bytes_limit"]
+    # needed_bytes = (
+    #     n_rfi * n_int_samples * ms_params["n_time"] * ms_params["n_bl"] * 8 * 2 * 3
+    # )
+    # n_bl_chunk = int(
+    #     find_closest_factor_greater_than(
+    #         ms_params["n_bl"], int(4 * needed_bytes / gpu_bytes)
+    #     )
+    # )
+
+    # print()
+    # print(f"Total memory     : {gpu_bytes / (1024**3):.2f} GB")
+    # print(f"Memory needed    : {needed_bytes / (1024**3):.2f} GB")
+    # print(f"Number of chunks : {n_bl_chunk}")
 
     # Set Constant Parameters
     args = {
         "noise": ms_params["noise"] if ms_params["noise"] > 0 else 1.0,
-        "vis_ast_true": jnp.nan * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex), 
-        "vis_rfi_true": jnp.nan * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex),
-        "gains_true": jnp.nan * jnp.zeros((ms_params["n_ant"], ms_params["n_time"]), dtype=complex),
+        "vis_ast_true": jnp.nan
+        * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex),
+        "vis_rfi_true": jnp.nan
+        * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex),
+        "gains_true": jnp.nan
+        * jnp.zeros((ms_params["n_ant"], ms_params["n_time"]), dtype=complex),
         "times": ms_params["times"],
         "times_fine": times_fine,
         "g_times": gp_params["g_times"],
         "rfi_times": gp_params["rfi_times"],
         "k_ast": k_ast,
+        "rfi_var": gp_params["rfi_var"],
+        "rfi_l": gp_params["rfi_l"],
+        "n_int_samples": n_int_samples,
+        "n_rfi_factor": ms_params["n_time"] * n_int_samples // gp_params["n_rfi_times"],
         "n_time": ms_params["n_time"],
         "n_ants": ms_params["n_ant"],
+        "n_rfi": n_rfi,
         "n_bl": ms_params["n_bl"],
+        # "n_bl_chunk": ms_params["n_bl"],
+        # "n_bl_chunk": ms_params["n_ant"] // 2,
+        # "n_bl_chunk": ms_params["n_ant"] // 4,
+        # "n_bl_chunk": 2,
+        "n_bl_chunk": 1,
+        # "n_bl_chunk": n_bl_chunk,
+        # "chunk_rfi": False,
         "a1": ms_params["a1"],
         "a2": ms_params["a2"],
         "bl": jnp.arange(ms_params["n_bl"]),
-        "v_obs_ri": jnp.concatenate([ms_params["vis_obs"].real, ms_params["vis_obs"].imag], axis=0).T,
+        "v_obs_ri": jnp.concatenate(
+            [ms_params["vis_obs"].real, ms_params["vis_obs"].imag], axis=0
+        ).T,
         ### Define Prior Parameters
         "mu_G_amp": prior_means["g_amp_prior_mean"],
         "mu_G_phase": prior_means["g_phase_prior_mean"],
@@ -208,28 +263,50 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
         "mu_rfi_i": prior_means["rfi_prior_mean"].imag,
         "mu_ast_k_r": prior_means["ast_k_prior_mean"].real,
         "mu_ast_k_i": prior_means["ast_k_prior_mean"].imag,
-        "L_G_amp": jnp.linalg.cholesky(
-            kernel(gp_params["g_times"], gp_params["g_times"], gp_params["g_amp_var"], gp_params["g_l"], 1e-8)),
-        "L_G_phase": jnp.linalg.cholesky(
-            kernel(gp_params["g_times"], gp_params["g_times"], gp_params["g_phase_var"], gp_params["g_l"], 1e-8)
+        "L_G_amp": cholesky(
+            gp_params["g_times"], gp_params["g_amp_var"], gp_params["g_l"], 1e-8
         ),
-        "L_RFI": jnp.linalg.cholesky(
-            kernel(gp_params["rfi_times"], gp_params["rfi_times"], gp_params["rfi_var"], gp_params["rfi_l"])
-            ),
-        "sigma_ast_k": jnp.array([
-            pow_spec_sqrt(k_ast, **config["ast"]["pow_spec"]) for _ in range(ms_params["n_bl"])
-            ]),
+        "L_G_phase": cholesky(
+            gp_params["g_times"], gp_params["g_phase_var"], gp_params["g_l"], 1e-8
+        ),
+        "L_RFI": cholesky(
+            gp_params["rfi_times"], gp_params["rfi_var"], gp_params["rfi_l"], 1e-8
+        ),
+        "sigma_ast_k": jnp.array(
+            [
+                pow_spec_sqrt(k_ast, **config["ast"]["pow_spec"])
+                for _ in range(ms_params["n_bl"])
+            ]
+        ),
         "resample_g_amp": resampling_kernel(
-            gp_params["g_times"], ms_params["times"], gp_params["g_amp_var"], gp_params["g_l"], 1e-8
-            ),
+            gp_params["g_times"],
+            ms_params["times"],
+            gp_params["g_amp_var"],
+            gp_params["g_l"],
+            1e-8,
+        ),
         "resample_g_phase": resampling_kernel(
-            gp_params["g_times"], ms_params["times"], gp_params["g_phase_var"], gp_params["g_l"], 1e-8
-            ),
-        "resample_rfi": resampling_kernel(
-            gp_params["rfi_times"], times_fine, gp_params["rfi_var"], gp_params["rfi_l"], 1e-8
-            ),
+            gp_params["g_times"],
+            ms_params["times"],
+            gp_params["g_phase_var"],
+            gp_params["g_l"],
+            1e-8,
+        ),
         "rfi_phase": rfi_phase,
     }
+
+    if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_model":
+        args.update(
+            {
+                "resample_rfi": resampling_kernel(
+                    gp_params["rfi_times"],
+                    times_fine,
+                    gp_params["rfi_var"],
+                    gp_params["rfi_l"],
+                    1e-8,
+                ),
+            }
+        )
 
     if get_truth_conditional(config):
         args.update(truth_args)
@@ -237,7 +314,9 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     ##############################################
     # Initial parameters for optimization
     ##############################################
-    init_params = get_init_params(config, ms_params, prior_means, estimates, true_params)
+    init_params = get_init_params(
+        config, ms_params, prior_means, estimates, true_params
+    )
 
     inv_scaling = {
         "L_RFI": jnp.linalg.inv(args["L_RFI"]),
@@ -258,15 +337,26 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
 
     key, subkey = random.split(key)
     init_pred = init_predict(ms_params, model, args, subkey, init_params_base)
-    
+
     if config["plots"]["init"]:
         plot_init(ms_params, init_pred, args, model_name, plot_dir)
 
     ### Check and Plot Model at true parameters
     if config["plots"]["truth"]:
         key, subkey = random.split(key)
-        plot_truth(zarr_path, ms_params, args, model, model_name, subkey, true_params, gp_params, inv_scaling, plot_dir)
-    
+        plot_truth(
+            zarr_path,
+            ms_params,
+            args,
+            model,
+            model_name,
+            subkey,
+            true_params,
+            gp_params,
+            inv_scaling,
+            plot_dir,
+        )
+
     mem_i = save_memory(mem_dir, mem_i)
 
     ### Check and Plot Model at prior parameters
@@ -278,19 +368,26 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     key, *subkeys = random.split(key, 3)
     if config["inference"]["mcmc"]:
         mcmc_pred = run_mcmc(
-            ms_params, model, model_name, subkeys, 
-            args, init_params_base, plot_dir
-                             )
-    
+            ms_params, model, model_name, subkeys, args, init_params_base, plot_dir
+        )
+
     mem_i = save_memory(mem_dir, mem_i)
 
     ### Run Optimization
     key, *subkeys = random.split(key, 3)
     if config["inference"]["opt"]:
         vi_params, rchi2 = run_opt(
-            config, ms_params, model, model_name, args, subkeys, 
-            init_params_base, plot_dir, ms_path, map_path
-            )
+            config,
+            ms_params,
+            model,
+            model_name,
+            args,
+            subkeys,
+            init_params_base,
+            plot_dir,
+            ms_path,
+            map_path,
+        )
 
     mem_i = save_memory(mem_dir, mem_i)
 
@@ -298,10 +395,19 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     key, *subkeys = random.split(key, 3)
     if config["inference"]["fisher"] and rchi2 < 1.1:
         run_fisher(
-            config, ms_params, model, model_name, subkeys, vis_model, 
-            args, vi_params, init_params_base, plot_dir, fisher_path
-            )
-        
+            config,
+            ms_params,
+            model,
+            model_name,
+            subkeys,
+            vis_model,
+            args,
+            vi_params,
+            init_params_base,
+            plot_dir,
+            fisher_path,
+        )
+
     print()
     end_time = datetime.now()
     print(f"End Time  : {end_time}")
@@ -317,22 +423,18 @@ def tabascal_subtraction(config: dict, sim_dir: str, ms_path: str=None, spacetra
     with open(os.path.join(sim_dir, "tab_config.yaml"), "w") as fp:
         yaml.dump(config, fp)
 
-    
+
 def main():
     import argparse
 
-    parser = argparse.ArgumentParser(
-        description="Apply tabascal to a simulation."
-    )
+    parser = argparse.ArgumentParser(description="Apply tabascal to a simulation.")
     parser.add_argument(
         "-c", "--config", required=True, help="Path to the config file."
     )
     parser.add_argument(
         "-s", "--sim_dir", help="Path to the directory of the simulation."
     )
-    parser.add_argument(
-        "-m", "--ms_path", help="Path to Measurement Set."
-    )
+    parser.add_argument("-m", "--ms_path", help="Path to Measurement Set.")
     parser.add_argument(
         "-np", "--norad_path", help="Path to text file containing NORAD IDs to include."
     )
@@ -341,7 +443,7 @@ def main():
     )
     args = parser.parse_args()
     sim_dir = args.sim_dir
-    conf_path = args.config  
+    conf_path = args.config
     spacetrack_path = args.spacetrack
     norad_path = args.norad_path
     if sim_dir:
@@ -362,7 +464,8 @@ def main():
         config["satellites"]["spacetrack_path"] = config_st_path
         spacetrack_path = config_st_path
 
-    tabascal_subtraction(config, sim_dir, args.ms_path, spacetrack_path, norad_ids) 
+    tabascal_subtraction(config, sim_dir, args.ms_path, spacetrack_path, norad_ids)
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     main()

@@ -216,16 +216,17 @@ def get_tles(config, ms_params, norad_ids, spacetrack_path):
 
 
 def estimate_max_rfi_vis(ms_params: dict):
-    
+
     # Assumes RFI is dominant in the visibilities
-    
-    return jnp.max(jnp.abs(ms_params['vis_obs']))
+
+    return jnp.max(jnp.abs(ms_params["vis_obs"]))
+
 
 def estimate_vis_ast(ms_params: dict):
 
     # Assumes RFI will have fringing-winding loss when averaging
-    # visibilities over time to leave astronomical signal only 
-    
+    # visibilities over time to leave astronomical signal only
+
     vis_ast_est = jnp.mean(ms_params["vis_obs"].T, axis=1, keepdims=True) * jnp.ones(
         (ms_params["n_bl"], ms_params["n_time"])
     )
@@ -242,6 +243,7 @@ def estimate_vis_rfi(ms_params: dict):
     vis_rfi_est = jnp.max(jnp.abs(ms_params["vis_obs"] - vis_ast_est.T), axis=1)
 
     return vis_rfi_est
+
 
 # def estimate_sampling(config: dict, ms_params: dict, n_rfi: int, norad_ids, tles: list[list[str]], rfi_orbit):
 def estimate_sampling(
@@ -287,10 +289,12 @@ def estimate_sampling(
     print()
     print(f"Max Fringe Freq: {jnp.max(jnp.abs(fringe_freq)):.2f} Hz")
     print(f"Estimated Max RFI A : {jnp.sqrt(max_rfi_vis_est):.5f} sqrt(Jy)")
-    
+
     if get_truth_conditional(config):
         xds = xr.open_zarr(config["data"]["zarr_path"])
-        print(f"True Max RFI A      : {np.max(xds.rfi_tle_sat_A.data).compute():.5f} sqrt(Jy)")
+        print(
+            f"True Max RFI A      : {np.max(xds.rfi_tle_sat_A.data).compute():.5f} sqrt(Jy)"
+        )
 
     sample_freq = (
         jnp.pi
@@ -697,9 +701,7 @@ def get_antenna_uvw(ms_params: dict, n_int_samples: int):
     gsa = gmsa_from_jd(times_jd_fine) % 360
     gh0 = (gsa - ms_params["ra"]) % 360
 
-    ants_uvw = itrf_to_uvw(
-        ms_params["ants_itrf"], gh0, ms_params["dec"]
-    )
+    ants_uvw = itrf_to_uvw(ms_params["ants_itrf"], gh0, ms_params["dec"])
 
     return ants_uvw
 
@@ -864,7 +866,9 @@ def run_opt(
     plt.savefig(os.path.join(plot_dir, f"{model_name}_opt_loss.pdf"), format="pdf")
 
     print()
-    print("Copying tabascal results to MS file in 'TAB_DATA' and 'TAB_RFI_DATA' columns")
+    print(
+        "Copying tabascal results to MS file in 'TAB_DATA' and 'TAB_RFI_DATA' columns"
+    )
     subprocess.run(
         f"tab2MS -m {ms_path} -z {map_path}", shell=True, executable="/bin/bash"
     )
