@@ -29,9 +29,10 @@ dependencies = [
 gpu = ["jax[cuda12]"]
 sat = ["regions"]
 astro = ["bdsf"]
+opt = ["frozendict", "tab_opt @ git+https://github.com/chrisfinlay/tab_opt.git"]
 ps = ["TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
-all = ["jax[cuda12]", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
-all_cpu = ["regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+all = ["jax[cuda12]", "regions", "bdsf", "frozendict", "tab_opt @ git+https://github.com/chrisfinlay/tab_opt.git", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+all_cpu = ["regions", "bdsf", "frozendict", "tab_opt @ git+https://github.com/chrisfinlay/tab_opt.git", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
 
 [project.urls]
 # Homepage = "https://example.com"
