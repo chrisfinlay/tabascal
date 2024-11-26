@@ -20,11 +20,14 @@ from numpyro.infer import MCMC, NUTS, Predictive
 
 from tabascal.jax.coordinates import (
     calculate_sat_corr_time,
-    orbit,
+    # orbit,
     itrf_to_uvw,
     itrf_to_xyz,
     calculate_fringe_frequency,
     gmsa_from_jd,
+    mjd_to_jd,
+    secs_to_days,
+    angular_separation,
 )
 from tabascal.utils.tle import get_satellite_positions, get_tles_by_id
 
@@ -84,7 +87,7 @@ def reduced_chi2(pred, true, noise):
     return rchi2
 
 
-def write_xds(vi_pred, times, file_path, overwrite=True):
+def write_results_xds(vi_pred, args, file_path, overwrite=True):
 
     map_xds = xr.Dataset(
         data_vars={
@@ -92,8 +95,74 @@ def write_xds(vi_pred, times, file_path, overwrite=True):
             "gains": (["sample", "ant", "time"], da.asarray(vi_pred["gains"])),
             "rfi_vis": (["sample", "bl", "time"], da.asarray(vi_pred["rfi_vis"])),
             "vis_obs": (["sample", "bl", "time"], da.asarray(vi_pred["vis_obs"])),
+            "rfi_A": (
+                ["sample", "src", "ant", "rfi_time"],
+                da.asarray(vi_pred["rfi_A"]),
+            ),
+            "rfi_phase": (
+                ["src", "ant", "time_mjd_fine"],
+                da.asarray(args["rfi_phase"]),
+            ),
         },
-        coords={"time": da.asarray(times)},
+        coords={
+            "time": da.asarray(args["times"]),
+            "rfi_time": da.asarray(args["rfi_times"]),
+            "time_mjd_fine": da.asarray(args["times_mjd_fine"]),
+        },
+    )
+
+    mode = "w" if overwrite else "w-"
+
+    map_xds.to_zarr(file_path, mode=mode)
+
+    return map_xds
+
+
+def write_params_xds(vi_params, gp_params, ms_params, file_path, overwrite=True):
+
+    n_ant = vi_params["g_phase_induce_base"].shape[0]
+    print({key: value.shape for key, value in vi_params.items()})
+    map_xds = xr.Dataset(
+        data_vars={
+            "rfi_amp": (
+                ["src", "ant", "rfi_time"],
+                da.asarray(
+                    vi_params["rfi_r_induce_base_auto_loc"]
+                    + 1.0j * vi_params["rfi_i_induce_base_auto_loc"]
+                ),
+            ),
+            "gains": (
+                ["ant", "g_time"],
+                da.asarray(
+                    vi_params["g_amp_induce_base_auto_loc"]
+                    * np.exp(
+                        1.0j
+                        * np.concatenate(
+                            [
+                                vi_params["g_phase_induce_base_auto_loc"],
+                                np.zeros((1, n_ant)),
+                            ],
+                            axis=0,
+                        )
+                    )
+                ),
+            ),
+            "ast_vis": (
+                ["bl", "time"],
+                da.asarray(
+                    np.fft.fft(
+                        vi_params["ast_k_r_base_auto_loc"]
+                        + 1.0j * vi_params["ast_k_i_base_auto_loc"],
+                        axis=2,
+                    )
+                ),
+            ),
+        },
+        coords={
+            "rfi_time": da.asarray(gp_params["rfi_times"]),
+            "g_time": da.asarray(gp_params["g_times"]),
+            "time": da.asarray(ms_params["times"]),
+        },
     )
 
     mode = "w" if overwrite else "w-"
@@ -145,8 +214,11 @@ def read_ms(ms_path, freq: float = None, corr: str = "xx"):
     n_freq, n_corr = xds.DATA.data.shape[1:]
 
     freqs = jnp.array(xds_spec.CHAN_FREQ.data.compute())
+    int_time = xds.INTERVAL.data[0].compute()
 
-    times_jd = jnp.array(xds.TIME.data.reshape(n_time, n_bl)[:, 0].compute())
+    times_mjd = jnp.array(xds.TIME.data.reshape(n_time, n_bl)[:, 0].compute())
+
+    times = jnp.linspace(0, n_time * int_time, n_time, endpoint=False)
 
     if freq:
         chan = jnp.argmin(jnp.abs(freq - freqs))
@@ -165,9 +237,10 @@ def read_ms(ms_path, freq: float = None, corr: str = "xx"):
         "n_time": n_time,
         "n_ant": n_ant,
         "n_bl": n_bl,
-        "times_jd": times_jd,
-        "times": times_jd * 24 * 3600,  # Convert Julian date in days to seconds
-        "int_time": xds.INTERVAL.data[0].compute(),
+        "dish_d": xds_ant.DISH_DIAMETER.data[0].compute(),
+        "times_mjd": times_mjd,
+        "times": times,
+        "int_time": int_time,
         "freqs": freqs[chan],
         "ants_itrf": ants_itrf,
         "vis_obs": jnp.array(
@@ -206,7 +279,7 @@ def get_tles(config, ms_params, norad_ids, spacetrack_path):
             st_config["username"],
             st_config["password"],
             norad_ids,
-            jnp.mean(ms_params["times_jd"]),
+            mjd_to_jd(jnp.mean(ms_params["times_mjd"])),
             tle_dir=config["satellites"]["tle_dir"],
         )
         tles = np.atleast_2d(tles_df[["TLE_LINE1", "TLE_LINE2"]].values)
@@ -249,21 +322,26 @@ def estimate_vis_rfi(ms_params: dict):
 def estimate_sampling(
     config: dict, ms_params: dict, n_rfi: int, norad_ids, tles: list[list[str]]
 ):
+    if config["rfi"]["n_int_samples"]:
+        return config["rfi"]["n_int_samples"]
 
     jd_minute = 1 / (24 * 60)
-    times_jd_coarse = jnp.arange(
-        ms_params["times_jd"][0], ms_params["times_jd"][-1] + jd_minute, jd_minute
+    times_mjd_coarse = jnp.arange(
+        ms_params["times_mjd"][0], ms_params["times_mjd"][-1] + jd_minute, jd_minute
     )
-    times_coarse = times_jd_coarse * 24 * 3600
-    # times_coarse = Time(times_jd_coarse, format="jd").sidereal_time("mean", "greenwich").hour*3600 # Convert hours to seconds
+    # times_coarse = times_mjd_coarse * 24 * 3600
+    # times_coarse = Time(times_mjd_coarse, format="mjd").sidereal_time("mean", "greenwich").hour*3600 # Convert hours to seconds
 
     if len(norad_ids) > 0:
-        rfi_xyz = get_satellite_positions(tles, np.array(times_jd_coarse))
+        rfi_xyz = get_satellite_positions(tles, np.array(mjd_to_jd(times_mjd_coarse)))
     # if len(config["satellites"]["sat_ids"])>0:
     #     rfi_xyz = jnp.array([orbit(times_coarse, *rfi_orb) for rfi_orb in rfi_orbit])
 
-    # gsa = Time(times_jd_coarse, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
-    gsa = gmsa_from_jd(times_jd_coarse)
+    gsa = (
+        Time(times_mjd_coarse, format="mjd").sidereal_time("mean", "greenwich").hour
+        * 15
+    )  # Convert hours to degrees
+    # gsa = gmsa_from_jd(mjd_to_jd(times_mjd_coarse))
     gh0 = (gsa - ms_params["ra"]) % 360
     ants_u = itrf_to_uvw(ms_params["ants_itrf"], gh0, ms_params["dec"])[
         :, :, 0
@@ -273,7 +351,7 @@ def estimate_sampling(
 
     fringe_params = [
         {
-            "times": times_coarse,
+            "times_mjd": times_mjd_coarse,
             "freq": jnp.max(ms_params["freqs"]),
             "rfi_xyz": rfi_xyz[i],
             "ants_itrf": ms_params["ants_itrf"],
@@ -304,7 +382,6 @@ def estimate_sampling(
     n_int_samples = int(
         jnp.ceil(config["rfi"]["n_int_factor"] * ms_params["int_time"] * sample_freq)
     )
-    # n_int_samples = 65
 
     return n_int_samples
 
@@ -450,26 +527,98 @@ def calculate_true_values(
     return true_params, truth_args
 
 
-def calculate_estimates(ms_params, n_rfi, rfi_times):
+from tabascal.jax.coordinates import angular_separation
+from tabascal.jax.interferometry import airy_beam
+
+
+def get_rfi_amp_estimate(ms_params, tles):
+
+    rfi_xyz = get_satellite_positions(tles, np.array(mjd_to_jd(ms_params["times_mjd"])))
+    ants_xyz = get_antenna_positions(ms_params, 1)
+    ants_u = get_antenna_uvw(ms_params, 1)[:, :, 0]
+
+    fringe_freqs = jnp.array(
+        [
+            calculate_fringe_frequency(
+                ms_params["times_mjd"],
+                ms_params["freqs"],
+                rfi_xyz_,
+                ms_params["ants_itrf"],
+                ants_u,
+                ms_params["dec"],
+            )
+            for rfi_xyz_ in rfi_xyz
+        ]
+    )
+
+    # rfi_xyz is shape (n_rfi, n_time, 3)
+    # ants_xyz is shape (n_time, n_ant, 3)
+    theta = angular_separation(
+        rfi_xyz,
+        jnp.mean(ants_xyz, axis=1, keepdims=True),
+        ms_params["ra"],
+        ms_params["dec"],
+    )
+    # theta is shape (n_rfi, n_time, n_ant)
+    B = airy_beam(theta, ms_params["freqs"], ms_params["dish_d"])[:, :, 0, 0]
+    # B is shape (n_rfi, n_time, n_ant, n_freq) -> (n_rfi, n_time)
+    # fringe_freqs is shape (n_time, n_bl)
+    bl = jnp.argmin(jnp.max(jnp.abs(fringe_freqs), axis=0))
+    # vis_obs is shape (n_time, n_bl)
+    rfi_amp = jnp.sqrt(
+        jnp.max(jnp.abs(ms_params["vis_obs"][:, bl])) / jnp.max(jnp.sum(B**2, axis=0))
+    )
+
+    return B * rfi_amp
+
+
+def calculate_estimates(ms_params, tles, rfi_times):
 
     vis_ast_est = estimate_vis_ast(ms_params)
     ast_k_est = jnp.fft.fft(vis_ast_est, axis=1)
 
     n_rfi_times = len(rfi_times)
+    # n_rfi = len(rfi_amp_ratios)
 
     vis_rfi_est = estimate_vis_rfi(ms_params)
 
-    rfi_induce_est = (
-        jnp.interp(
-            rfi_times,
-            ms_params["times"],
-            jnp.sqrt(vis_rfi_est),
-        )[
-            None, None, :
-        ]  # shape is now (1, 1, n_rfi_times)
-        * jnp.ones((n_rfi, ms_params["n_ant"], n_rfi_times))
-        / n_rfi
-    )
+    rfi_amp = get_rfi_amp_estimate(ms_params, tles)
+    n_rfi = len(rfi_amp)
+
+    rfi_induce_est = vmap(
+        jnp.interp,
+        in_axes=(
+            None,
+            None,
+            0,
+        ),
+    )(
+        rfi_times, ms_params["times"], rfi_amp
+    )[:, None, :] * jnp.ones((n_rfi, ms_params["n_ant"], n_rfi_times))
+
+    # rfi_induce_est = (
+    #     jnp.interp(
+    #         rfi_times,
+    #         ms_params["times"],
+    #         jnp.sqrt(vis_rfi_est),
+    #     )[
+    #         None, None, :
+    #     ]  # shape is now (1, 1, n_rfi_times)
+    #     * jnp.ones((n_rfi, ms_params["n_ant"], n_rfi_times))
+    #     / n_rfi
+    # )
+
+    # rfi_induce_est = (
+    #     jnp.interp(
+    #         rfi_times,
+    #         ms_params["times"],
+    #         jnp.sqrt(vis_rfi_est),
+    #     )[
+    #         None, None, :
+    #     ]  # shape is now (1, 1, n_rfi_times)
+    #     * jnp.ones((n_rfi, ms_params["n_ant"], n_rfi_times))
+    #     * rfi_amp_ratios[:, None, ]
+    # )
 
     estimates = {
         "ast_k_est": ast_k_est,
@@ -657,10 +806,14 @@ def get_rfi_phase_from_pos(rfi_xyz, ants_w, ants_xyz, freqs):
 
 def get_antenna_positions(ms_params: dict, n_int_samples: int):
 
-    times_jd_fine = int_sample_times(ms_params["times_jd"], n_int_samples).compute()
+    times_fine = int_sample_times(ms_params["times"], n_int_samples).compute()
+    times_mjd_fine = ms_params["times_mjd"][0] + secs_to_days(times_fine)
+    # times_mjd_fine = int_sample_times(ms_params["times_mjd"], n_int_samples).compute()
 
-    # gsa = Time(times_jd_fine, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
-    gsa = gmsa_from_jd(times_jd_fine) % 360
+    gsa = (
+        Time(times_mjd_fine, format="mjd").sidereal_time("mean", "greenwich").hour * 15
+    )  # Convert hours to degrees
+    # gsa = gmsa_from_jd(mjd_to_jd(times_mjd_fine)) % 360
     ants_xyz = itrf_to_xyz(ms_params["ants_itrf"], gsa)
 
     return ants_xyz
@@ -668,9 +821,11 @@ def get_antenna_positions(ms_params: dict, n_int_samples: int):
 
 def get_sat_positions(ms_params: dict, n_int_samples: int, tles: list):
 
-    times_jd_fine = int_sample_times(ms_params["times_jd"], n_int_samples).compute()
+    times_fine = int_sample_times(ms_params["times"], n_int_samples).compute()
+    times_mjd_fine = ms_params["times_mjd"][0] + secs_to_days(times_fine)
+    # times_mjd_fine = int_sample_times(ms_params["times_mjd"], n_int_samples).compute()
 
-    rfi_xyz = get_satellite_positions(tles, np.array(times_jd_fine))
+    rfi_xyz = get_satellite_positions(tles, np.array(mjd_to_jd(times_mjd_fine)))
 
     return rfi_xyz
 
@@ -695,10 +850,14 @@ def check_antenna_and_satellite_positions(config: dict, ms_params: dict, tles: l
 
 def get_antenna_uvw(ms_params: dict, n_int_samples: int):
 
-    times_jd_fine = int_sample_times(ms_params["times_jd"], n_int_samples).compute()
+    times_fine = int_sample_times(ms_params["times"], n_int_samples).compute()
+    times_mjd_fine = ms_params["times_mjd"][0] + secs_to_days(times_fine)
+    # times_mjd_fine = int_sample_times(ms_params["times_mjd"], n_int_samples).compute()
 
-    # gsa = Time(times_jd_fine, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
-    gsa = gmsa_from_jd(times_jd_fine) % 360
+    gsa = (
+        Time(times_mjd_fine, format="mjd").sidereal_time("mean", "greenwich").hour * 15
+    )  # Convert hours to degrees
+    # gsa = gmsa_from_jd(mjd_to_jd(times_mjd_fine)) % 360
     gh0 = (gsa - ms_params["ra"]) % 360
 
     ants_uvw = itrf_to_uvw(ms_params["ants_itrf"], gh0, ms_params["dec"])
@@ -710,10 +869,19 @@ def get_rfi_phase(ms_params: dict, norad_ids: list, tles: list, n_int_samples: i
 
     # Beware of time definitions can lead to RFI and antenna position inaccuracies
     times_fine = int_sample_times(ms_params["times"], n_int_samples).compute()
-    times_jd_fine = int_sample_times(ms_params["times_jd"], n_int_samples).compute()
+    times_mjd_fine = ms_params["times_mjd"][0] + secs_to_days(times_fine)
+    # times_mjd_fine = int_sample_times(ms_params["times_mjd"], n_int_samples).compute()
 
-    # gsa = Time(times_jd_fine, format="jd").sidereal_time("mean", "greenwich").hour*15 # Convert hours to degrees
-    gsa = gmsa_from_jd(times_jd_fine) % 360
+    dt = np.diff(times_fine)[0]
+    dt_jd = np.diff(times_mjd_fine)[0]
+
+    times_fine = np.concatenate([times_fine, times_fine[-1:] + dt])
+    times_mjd_fine = np.concatenate([times_mjd_fine, times_mjd_fine[-1:] + dt_jd])
+
+    gsa = (
+        Time(times_mjd_fine, format="mjd").sidereal_time("mean", "greenwich").hour * 15
+    )  # Convert hours to degrees
+    # gsa = gmsa_from_jd(mjd_to_jd(times_mjd_fine)) % 360
     gh0 = (gsa - ms_params["ra"]) % 360
 
     ants_uvw = itrf_to_uvw(
@@ -722,13 +890,32 @@ def get_rfi_phase(ms_params: dict, norad_ids: list, tles: list, n_int_samples: i
     ants_xyz = itrf_to_xyz(ms_params["ants_itrf"], gsa)
 
     if len(norad_ids) > 0:
-        rfi_xyz = get_satellite_positions(tles, np.array(times_jd_fine))
+        rfi_xyz = get_satellite_positions(tles, np.array(mjd_to_jd(times_mjd_fine)))
         rfi_phase = jnp.transpose(
             get_rfi_phase_from_pos(
                 rfi_xyz, ants_uvw[..., -1], ants_xyz, ms_params["freqs"]
             )[..., 0],
             axes=(0, 2, 1),
         )
+
+    ang_seps = jnp.min(
+        angular_separation(
+            rfi_xyz,
+            jnp.mean(ants_xyz, axis=1, keepdims=True),
+            ms_params["ra"],
+            ms_params["dec"],
+        ),
+        axis=(1, 2),
+    )
+    rfi_amps = 1 / jnp.deg2rad(ang_seps) ** 2
+    norm = jnp.sum(rfi_amps)
+    rfi_amp_ratios = rfi_amps / norm
+
+    print()
+    print("Minimum Angular Separations")
+    for norad_id, ang_sep in zip(norad_ids, ang_seps):
+        print(f"{norad_id} : {ang_sep:.1f} degrees")
+    print()
 
     # if len(config["satellites"]["sat_ids"])>0:
     #     ole_df = pd.read_csv(config["satellites"]["ole_path"])
@@ -745,7 +932,7 @@ def get_rfi_phase(ms_params: dict, norad_ids: list, tles: list, n_int_samples: i
     #         ]
     #     )
 
-    return rfi_phase, times_fine
+    return rfi_phase, rfi_amp_ratios, times_fine, times_mjd_fine
 
 
 def run_mcmc(ms_params, model, model_name, subkeys, args, init_params, plot_dir):
@@ -790,6 +977,7 @@ def run_mcmc(ms_params, model, model_name, subkeys, args, init_params, plot_dir)
 def run_opt(
     config,
     ms_params,
+    gp_params,
     model,
     model_name,
     args,
@@ -798,6 +986,7 @@ def run_opt(
     plot_dir,
     ms_path,
     map_path,
+    params_path,
 ):
 
     guides = {
@@ -834,7 +1023,8 @@ def run_opt(
     print(f"{datetime.now()}")
     start = datetime.now()
 
-    map_xds = write_xds(vi_pred, ms_params["times"], map_path)
+    write_results_xds(vi_pred, args, map_path)
+    # write_params_xds(vi_params, gp_params, ms_params, params_path, overwrite=True)
 
     plot_predictions(
         ms_params["times"],
@@ -955,7 +1145,7 @@ def init_predict(ms_params, model, args, subkey, init_params):
     return init_pred
 
 
-def plot_init(ms_params, init_pred, args, model_name, plot_dir):
+def plot_init(ms_params, config, init_pred, args, model_name, plot_dir):
 
     start = datetime.now()
     print()
@@ -969,6 +1159,13 @@ def plot_init(ms_params, init_pred, args, model_name, plot_dir):
         max_plots=10,
         save_dir=plot_dir,
     )
+    if get_truth_conditional(config):
+
+        # vi_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
+        print(f"RMSE Gains      : {jnp.mean(init_pred['rmse_gains']):.5f}")
+        print(f"RMSE RFI        : {jnp.mean(init_pred['rmse_rfi']):.5f}")
+        print(f"RMSE AST        : {jnp.mean(init_pred['rmse_ast']):.5f}")
+
     print()
     print(f"Initial Plot Time : {datetime.now() - start}")
     print(f"{datetime.now()}")
@@ -985,6 +1182,7 @@ def plot_truth(
     gp_params,
     inv_scaling,
     plot_dir,
+    true_path,
 ):
 
     start = datetime.now()
@@ -1012,6 +1210,8 @@ def plot_truth(
         batch_ndims=1,
     )
     true_pred = pred(subkey, args=args)
+    write_results_xds(true_pred, args, true_path)
+
     # true_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
     print(f"RMSE Gains      : {jnp.mean(true_pred['rmse_gains']):.5f}")
     print(f"RMSE RFI        : {jnp.mean(true_pred['rmse_rfi']):.5f}")

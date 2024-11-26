@@ -55,6 +55,8 @@ from tabascal.utils.tab_tools import (
     run_mcmc,
     run_opt,
     run_fisher,
+    write_results_xds,
+    write_params_xds,
     check_antenna_and_satellite_positions,
 )
 
@@ -80,9 +82,9 @@ def tabascal_subtraction(
     mem_i = 0
 
     ### Define Model
-    # vis_model = fixed_orbit_rfi_full_fft_standard_model
+    vis_model = fixed_orbit_rfi_full_fft_standard_model
     # vis_model = fixed_orbit_rfi_full_fft_standard_model_otf # RFI resampling is performed On-The-Fly
-    vis_model = fixed_orbit_rfi_full_fft_standard_model_otf_fft  # RFI resampling is performed On-The-Fly with FFT - Not working yet
+    # vis_model = fixed_orbit_rfi_full_fft_standard_model_otf_fft  # RFI resampling is performed On-The-Fly with FFT - Not working yet
 
     def model(args, v_obs=None):
         return fixed_orbit_rfi_fft_standard(args, vis_model, v_obs)
@@ -125,8 +127,13 @@ def tabascal_subtraction(
     os.makedirs(results_dir, exist_ok=True)
     os.makedirs(mem_dir, exist_ok=True)
 
-    map_path = os.path.join(results_dir, f"map_results_{results_name}.zarr")
-    fisher_path = os.path.join(results_dir, f"fisher_results_{results_name}.zarr")
+    map_path = os.path.join(results_dir, f"map_pred_{results_name}.zarr")
+    params_path = os.path.join(results_dir, f"map_params_{results_name}.zarr")
+    fisher_path = os.path.join(results_dir, f"fisher_pred_{results_name}.zarr")
+    init_pred_path = os.path.join(results_dir, f"init_pred_{results_name}.zarr")
+    init_params_path = os.path.join(results_dir, f"init_params_{results_name}.zarr")
+    true_pred_path = os.path.join(results_dir, f"true_pred_{results_name}.zarr")
+    true_params_path = os.path.join(results_dir, f"true_params_{results_name}.zarr")
 
     #####################################################
     # Calculate parameters from MS file
@@ -151,7 +158,10 @@ def tabascal_subtraction(
     #######################
     n_int_samples = estimate_sampling(config, ms_params, n_rfi, norad_ids, tles)
 
-    rfi_phase, times_fine = get_rfi_phase(ms_params, norad_ids, tles, n_int_samples)
+    rfi_phase, rfi_amp_ratios, times_fine, times_mjd_fine = get_rfi_phase(
+        ms_params, norad_ids, tles, n_int_samples
+    )
+
     gp_params = get_gp_params(config, ms_params)
 
     if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_model_otf_fft":
@@ -181,7 +191,7 @@ def tabascal_subtraction(
     ##############################################
     # Astronomical and RFI estimates from observed data
 
-    estimates = calculate_estimates(ms_params, n_rfi, gp_params["rfi_times"])
+    estimates = calculate_estimates(ms_params, tles, gp_params["rfi_times"])
 
     #############################
     # Calculate True Parameter Values if required
@@ -232,6 +242,7 @@ def tabascal_subtraction(
         * jnp.zeros((ms_params["n_ant"], ms_params["n_time"]), dtype=complex),
         "times": ms_params["times"],
         "times_fine": times_fine,
+        "times_mjd_fine": times_mjd_fine,
         "g_times": gp_params["g_times"],
         "rfi_times": gp_params["rfi_times"],
         "k_ast": k_ast,
@@ -311,19 +322,32 @@ def tabascal_subtraction(
     if get_truth_conditional(config):
         args.update(truth_args)
 
-    ##############################################
-    # Initial parameters for optimization
-    ##############################################
-    init_params = get_init_params(
-        config, ms_params, prior_means, estimates, true_params
-    )
-
     inv_scaling = {
         "L_RFI": jnp.linalg.inv(args["L_RFI"]),
         "L_G_amp": jnp.linalg.inv(args["L_G_amp"]),
         "L_G_phase": jnp.linalg.inv(args["L_G_phase"]),
         "sigma_ast_k": 1.0 / args["sigma_ast_k"],
     }
+
+    # static_args = {}
+    # array_args = {}
+    # for key, value in args.items():
+    #     if hasattr(value, "shape"):
+    #         array_args.update({key: value})
+    #     else:
+    #         static_args.update({key: value})
+
+    # args = {
+    #     "static_args": static_args,
+    #     "array_args": array_args,
+    # }
+
+    ##############################################
+    # Initial parameters for optimization
+    ##############################################
+    init_params = get_init_params(
+        config, ms_params, prior_means, estimates, true_params
+    )
 
     print()
     end_start = datetime.now()
@@ -337,9 +361,16 @@ def tabascal_subtraction(
 
     key, subkey = random.split(key)
     init_pred = init_predict(ms_params, model, args, subkey, init_params_base)
+    write_results_xds(init_pred, args, init_pred_path)
+    # write_params_xds(
+    #     {key + "_auto_loc": value for key, value in init_params_base.items()},
+    #     gp_params,
+    #     ms_params,
+    #     init_params_path,
+    # )
 
     if config["plots"]["init"]:
-        plot_init(ms_params, init_pred, args, model_name, plot_dir)
+        plot_init(ms_params, config, init_pred, args, model_name, plot_dir)
 
     ### Check and Plot Model at true parameters
     if config["plots"]["truth"]:
@@ -355,6 +386,7 @@ def tabascal_subtraction(
             gp_params,
             inv_scaling,
             plot_dir,
+            true_pred_path,
         )
 
     mem_i = save_memory(mem_dir, mem_i)
@@ -379,6 +411,7 @@ def tabascal_subtraction(
         vi_params, rchi2 = run_opt(
             config,
             ms_params,
+            gp_params,
             model,
             model_name,
             args,
@@ -387,6 +420,7 @@ def tabascal_subtraction(
             plot_dir,
             ms_path,
             map_path,
+            params_path,
         )
 
     mem_i = save_memory(mem_dir, mem_i)
@@ -450,7 +484,7 @@ def main():
         norad_path = os.path.join(sim_dir, "input_data/norad_ids.yaml")
 
     if norad_path:
-        norad_ids = [int(x) for x in np.loadtxt(norad_path)]
+        norad_ids = [int(x) for x in np.atleast_1d(np.loadtxt(norad_path))]
     else:
         norad_ids = []
 
