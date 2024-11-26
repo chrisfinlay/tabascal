@@ -7,7 +7,7 @@ import xarray as xr
 
 from tabascal.dask.coordinates import (
     ENU_to_ITRF,
-    ITRF_to_UVW, 
+    ITRF_to_UVW,
     ENU_to_GEO,
     GEO_to_XYZ_vmap0,
     ITRF_to_XYZ,
@@ -29,7 +29,15 @@ from tabascal.dask.interferometry import (
     apply_gains,
 )
 
-from tabascal.jax.coordinates import itrf_to_geo, alt_az_of_source, gmsa_from_jd
+from tabascal.jax.interferometry import int_sample_times
+
+from tabascal.jax.coordinates import (
+    itrf_to_geo,
+    alt_az_of_source,
+    gmsa_from_jd,
+    mjd_to_jd,
+    secs_to_days,
+)
 from tabascal.utils.tools import beam_size
 from tabascal.utils.write import construct_observation_ds, write_ms
 from tabascal.utils.dask_extras import get_chunksizes
@@ -38,6 +46,7 @@ from tabascal.utils.tle import get_satellite_positions, ants_pos, sat_distance
 config.update("jax_enable_x64", True)
 
 from astropy.time import Time
+
 
 class Telescope(object):
     """
@@ -64,13 +73,13 @@ class Telescope(object):
         self,
         latitude: float,
         longitude: float,
-        elevation: float=0.0,
-        ENU_array: Array=None,
-        ENU_path: str=None,
-        ITRF_array: Array=None,
-        ITRF_path: str=None,
-        tel_name: str=None,
-        n_ant: int=None,
+        elevation: float = 0.0,
+        ENU_array: Array = None,
+        ENU_path: str = None,
+        ITRF_array: Array = None,
+        ITRF_path: str = None,
+        tel_name: str = None,
+        n_ant: int = None,
     ):
         self.tel_name = tel_name
         self.latitude = da.asarray(latitude)
@@ -80,13 +89,15 @@ class Telescope(object):
         self.ITRF = None
         self.ENU = None
         self.n_ant = n_ant
-        
+
         if ENU_array is not None or ENU_path is not None:
             self.createArrayENU(ENU_array, ENU_path)
         if ITRF_array is not None or ITRF_path is not None:
             self.createArrayITRF(ITRF_array, ITRF_path)
         if self.ITRF is None and self.ENU is None:
-            raise ValueError("One of ('ENU_array', 'ENU_path', 'ITRF_array', 'ITRF_path') must be provided to create a Telescope object.")
+            raise ValueError(
+                "One of ('ENU_array', 'ENU_path', 'ITRF_array', 'ITRF_path') must be provided to create a Telescope object."
+            )
         self.n_ant = len(self.ITRF)
 
     def __str__(self):
@@ -107,7 +118,7 @@ Elevation : {elevation}\n"""
         if ENU_array is not None:
             self.ENU = ENU_array
         elif ENU_path is not None:
-            self.ENU = np.loadtxt(ENU_path, usecols=(0,1,2), max_rows=self.n_ant)
+            self.ENU = np.loadtxt(ENU_path, usecols=(0, 1, 2), max_rows=self.n_ant)
         else:
             self.ENU = None
             msg = """Error : East-North-Up coordinates are needed either in an 
@@ -123,7 +134,7 @@ Elevation : {elevation}\n"""
         if ITRF_array is not None:
             self.ITRF = ITRF_array
         elif ITRF_path is not None:
-            self.ITRF = np.loadtxt(ITRF_path, usecols=(0,1,2), max_rows=self.n_ant)
+            self.ITRF = np.loadtxt(ITRF_path, usecols=(0, 1, 2), max_rows=self.n_ant)
         else:
             self.ITRF = None
             msg = """Error : ITRF antenna coordinates are needed either in an 
@@ -132,7 +143,6 @@ Elevation : {elevation}\n"""
             return
         self.ITRF = da.asarray(self.ITRF)
         self.GEO_ants = da.asarray(itrf_to_geo(self.ITRF.compute()))
-
 
 
 class Observation(Telescope):
@@ -191,22 +201,22 @@ class Observation(Telescope):
         dec: float,
         freqs: Array,
         SEFD: Array,
-        times_jd: Array,
-        int_time: float=2.0,
-        chan_width: float=209e3,
-        ENU_array: Array=None,
-        ENU_path: str=None,
-        ITRF_array: Array=None,
-        ITRF_path: str=None,
-        n_ant: int=None,
-        dish_d: float=13.5,
-        random_seed: int=0,
-        auto_corrs: bool=False,
-        no_w: bool=False,
-        n_int_samples: int=4,
-        tel_name: str="MeerKAT",
-        target_name: str="unknown",
-        max_chunk_MB: float=100.0,
+        times_mjd: Array,
+        int_time: float = 2.0,
+        chan_width: float = 209e3,
+        ENU_array: Array = None,
+        ENU_path: str = None,
+        ITRF_array: Array = None,
+        ITRF_path: str = None,
+        n_ant: int = None,
+        dish_d: float = 13.5,
+        random_seed: int = 0,
+        auto_corrs: bool = False,
+        no_w: bool = False,
+        n_int_samples: int = 4,
+        tel_name: str = "MeerKAT",
+        target_name: str = "unknown",
+        max_chunk_MB: float = 100.0,
     ):
         super().__init__(
             latitude,
@@ -220,10 +230,14 @@ class Observation(Telescope):
             n_ant,
         )
 
-        n_int_samples = n_int_samples + 1 if n_int_samples%2==0 else n_int_samples
+        n_time = len(times_mjd)
+        start_mjd = times_mjd[0]
+        # times = (times_mjd - times_mjd[0]) * 24 * 3600
+        times = da.linspace(0, int_time * n_time, n_time, endpoint=False)
+        times_mjd = start_mjd + secs_to_days(times)
 
-        times = times_jd * 24 * 3600
-        
+        n_int_samples = n_int_samples + 1 if n_int_samples % 2 == 0 else n_int_samples
+
         self.target_name = target_name
         self.auto_corrs = auto_corrs
 
@@ -247,21 +261,41 @@ class Observation(Telescope):
         self.freq_chunk = chunksize["freq"]
 
         self.times = da.asarray(times).rechunk(self.time_chunk)
-        self.times_jd = da.asarray(times_jd).rechunk(self.time_chunk)
-        self.int_time = da.abs(da.diff(times)[0]) if len(times) > 1 else 2.0
+        self.times_mjd = da.asarray(times_mjd).rechunk(self.time_chunk)
+        self.int_time = int_time
         self.n_int_samples = n_int_samples
-        self.times_fine = int_sample_times(self.times, n_int_samples, int_time).rechunk(
-            self.time_fine_chunk
-        )
-        self.times_jd_fine = int_sample_times(self.times_jd, n_int_samples, int_time/(24*3600)).rechunk(
-            self.time_fine_chunk
-        )
+
+        self.times_fine = da.asarray(
+            int_sample_times(self.times.compute(), n_int_samples)
+        ).rechunk(self.time_fine_chunk)
+
+        self.times_mjd_fine = start_mjd + secs_to_days(self.times_fine)
+
+        #######################################
+        # dt = da.diff(self.times_fine)[:1]
+        # dt_jd = da.diff(self.times_mjd_fine)[:1]
+
+        # self.times_fine = da.concatenate([self.times_fine, dt]).rechunk(
+        #     self.time_fine_chunk + 1
+        # )
+        # self.times_mjd_fine = da.concatenate([self.times_mjd_fine, dt_jd]).rechunk(
+        #     self.time_fine_chunk + 1
+        # )
+        #######################################
+
         self.n_time = len(times)
         self.n_time_fine = len(self.times_fine)
-        self.t_idx = da.arange(self.n_int_samples//2, self.n_time_fine, self.n_int_samples).rechunk(self.time_chunk)
+        self.t_idx = da.arange(
+            self.n_int_samples // 2, self.n_time_fine, self.n_int_samples
+        ).rechunk(self.time_chunk)
 
-        # self.gsa = da.asarray(Time(self.times_jd_fine.compute(), format="jd").sidereal_time("mean", "greenwich").hour*15, chunks=(self.time_fine_chunk,))
-        self.gsa = gmsa_from_jd(self.times_jd_fine) % 360
+        self.gsa = da.asarray(
+            Time(self.times_mjd_fine.compute(), format="mjd")
+            .sidereal_time("mean", "greenwich")
+            .hour
+            * 15,
+            chunks=(self.time_fine_chunk,),
+        )
         self.gha = (self.gsa - self.ra) % 360
         self.lsa = (self.gsa + longitude) % 360
         self.lha = (((self.gha + longitude) % 360 - 180) % 360) - 180
@@ -270,7 +304,7 @@ class Observation(Telescope):
         self.freqs = da.asarray(freqs).rechunk((self.freq_chunk,))
         self.chan_width = da.diff(freqs)[0] if len(freqs) > 1 else chan_width
         self.n_freq = len(freqs)
-        self.lamda = 299792458.0 / self.freqs 
+        self.lamda = 299792458.0 / self.freqs
 
         self.SEFD = da.asarray(SEFD) * da.ones(self.n_freq, chunks=(self.freq_chunk,))
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)
@@ -351,12 +385,16 @@ Number of stationary RFI :  {n_stat}"""
             "auto_corrs": self.auto_corrs,
             "freq_min": self.freqs.min() / 1e6,
             "freq_max": self.freqs.max() / 1e6,
-            "time_min": Time(self.times_jd.min(), format="jd").strftime("%Y-%m-%d %H:%M:%S"),
-            "time_max": Time(self.times_jd.max(), format="jd").strftime("%Y-%m-%d %H:%M:%S"),
+            "time_min": Time(self.times_mjd.min(), format="mjd").strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
+            "time_max": Time(self.times_mjd.max(), format="mjd").strftime(
+                "%Y-%m-%d %H:%M:%S"
+            ),
             "lha_min": self.lha.min(),
             "lha_max": self.lha.max(),
-            "alt_min": self.altaz[:,0].min(),
-            "alt_max": self.altaz[:,0].max(),
+            "alt_min": self.altaz[:, 0].min(),
+            "alt_max": self.altaz[:, 0].max(),
             "chan_width": self.chan_width / 1e3,
             "n_freq": self.n_freq,
             "int_time": self.int_time,
@@ -444,7 +482,7 @@ Number of stationary RFI :  {n_stat}"""
             ** 2
         )
         vis_ast = astro_vis(I_app, self.bl_uvw[self.t_idx], lmn, self.freqs)
-        
+
         self.ast_p_I.append(I)
         self.ast_p_lmn.append(lmn)
         self.ast_p_radec.append(jnp.array([ra, dec]))
@@ -454,7 +492,13 @@ Number of stationary RFI :  {n_stat}"""
         self.vis_ast += vis_ast
 
     def addAstroGauss(
-        self, I: Array, major: Array, minor: Array, pos_angle: Array, ra: Array, dec: Array
+        self,
+        I: Array,
+        major: Array,
+        minor: Array,
+        pos_angle: Array,
+        ra: Array,
+        dec: Array,
     ):
         """
         Add a set of astronomical sources to the observation.
@@ -496,7 +540,9 @@ Number of stationary RFI :  {n_stat}"""
             * (airy_beam(theta[:, None, None], self.freqs, self.dish_d)[:, :, 0, :])
             ** 2
         )
-        vis_ast = astro_vis_gauss(I_app, major, minor, pos_angle, self.bl_uvw[self.t_idx], lmn, self.freqs)
+        vis_ast = astro_vis_gauss(
+            I_app, major, minor, pos_angle, self.bl_uvw[self.t_idx], lmn, self.freqs
+        )
 
         self.ast_g_major.append(major)
         self.ast_g_minor.append(minor)
@@ -509,9 +555,7 @@ Number of stationary RFI :  {n_stat}"""
 
         self.vis_ast += vis_ast
 
-    def addAstroExp(
-        self, I: Array, shape: Array, ra: Array, dec: Array
-    ):
+    def addAstroExp(self, I: Array, shape: Array, ra: Array, dec: Array):
         """
         Add a set of astronomical sources to the observation.
 
@@ -623,8 +667,12 @@ Number of stationary RFI :  {n_stat}"""
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
 
         vis_rfi = rfi_vis(
-            rfi_A_app.reshape((-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)),
-            (distances + self.ants_uvw[None, :, :, -1]).reshape((-1, self.n_time, self.n_int_samples, self.n_ant)),
+            rfi_A_app.reshape(
+                (-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)
+            ),
+            (distances + self.ants_uvw[None, :, :, -1]).reshape(
+                (-1, self.n_time, self.n_int_samples, self.n_ant)
+            ),
             self.freqs,
             self.a1,
             self.a2,
@@ -672,15 +720,18 @@ Number of stationary RFI :  {n_stat}"""
         ).rechunk((-1, self.time_fine_chunk, self.freq_chunk))
         norad_ids = da.asarray(da.atleast_1d(norad_ids), chunks=(-1,))
 
-        rfi_xyz = da.asarray(get_satellite_positions(tles, self.times_jd_fine.compute()), chunks=(-1, self.time_fine_chunk, 3))
-        tles = da.asarray(da.atleast_2d(tles), chunks=(-1,))  
+        rfi_xyz = da.asarray(
+            get_satellite_positions(tles, mjd_to_jd(self.times_mjd_fine.compute())),
+            chunks=(-1, self.time_fine_chunk, 3),
+        )
+        tles = da.asarray(da.atleast_2d(tles), chunks=(-1,))
         # rfi_xyz is shape (n_src,n_time_fine,3)
         # self.ants_xyz is shape (n_time_fine,n_ant,3)
         distances = da.linalg.norm(
             self.ants_xyz[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
         )
         # distances = da.asarray(da.linalg.norm(
-        #     ants_pos(self.ITRF.compute(), self.times_jd_fine.compute())[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
+        #     ants_pos(self.ITRF.compute(), mjd_to_jd(self.times_mjd_fine.compute()))[None, :, :, :] - rfi_xyz[:, :, None, :], axis=-1
         # ), chunks=(-1, self.time_fine_chunk, self.n_ant))
         # distances is shape (n_src,n_time_fine,n_ant)
         I = Pv_to_Sv(Pv, distances)
@@ -698,8 +749,12 @@ Number of stationary RFI :  {n_stat}"""
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
 
         vis_rfi = rfi_vis(
-            rfi_A_app.reshape((-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)),
-            (distances + self.ants_uvw[None, :, :, -1]).reshape((-1, self.n_time, self.n_int_samples, self.n_ant)),
+            rfi_A_app.reshape(
+                (-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)
+            ),
+            (distances + self.ants_uvw[None, :, :, -1]).reshape(
+                (-1, self.n_time, self.n_int_samples, self.n_ant)
+            ),
             self.freqs,
             self.a1,
             self.a2,
@@ -713,7 +768,6 @@ Number of stationary RFI :  {n_stat}"""
         self.norad_ids.append(norad_ids)
         self.n_rfi_tle_satellite += len(I)
         self.n_rfi += len(I)
-
 
     def addStationaryRFI(
         self,
@@ -778,8 +832,12 @@ Number of stationary RFI :  {n_stat}"""
         # self.rfi_A_app is shape (n_src,n_time_fine,n_ant,n_freqs)
         # self.ants_uvw is shape (n_time_fine,n_ant,3)
         vis_rfi = rfi_vis(
-            rfi_A_app.reshape((-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)),
-            (distances + self.ants_uvw[None, :, :, -1]).reshape((-1, self.n_time, self.n_int_samples, self.n_ant)),
+            rfi_A_app.reshape(
+                (-1, self.n_time, self.n_int_samples, self.n_ant, self.n_freq)
+            ),
+            (distances + self.ants_uvw[None, :, :, -1]).reshape(
+                (-1, self.n_time, self.n_int_samples, self.n_ant)
+            ),
             self.freqs,
             self.a1,
             self.a2,
@@ -836,7 +894,7 @@ Number of stationary RFI :  {n_stat}"""
             random_seed if random_seed else self.random_seed,
         ).rechunk((self.time_chunk, self.ant_chunk, self.freq_chunk))
 
-    def calculate_vis(self, flags: bool=True, random_seed=None):
+    def calculate_vis(self, flags: bool = True, random_seed=None):
         """
         Calculate the total gain amplified visibilities,  average down to the
         originally defined sampling rate and add noise.
@@ -862,7 +920,10 @@ Number of stationary RFI :  {n_stat}"""
                     None, None, :
                 ] * da.sqrt(2)
             else:
-                self.flags = da.abs(self.vis_cal - self.vis_ast) > 3.0 * da.std(self.vis_model, axis=0)[None,...]
+                self.flags = (
+                    da.abs(self.vis_cal - self.vis_ast)
+                    > 3.0 * da.std(self.vis_model, axis=0)[None, ...]
+                )
         else:
             self.flags = da.zeros(shape=self.vis_cal.shape, dtype=bool)
 

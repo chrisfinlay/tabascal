@@ -9,13 +9,23 @@ G = 6.67408e-11  # Gravitational constant in m^3/kg/s^2
 M_e = 5.9722e24  # Mass of the Earth in kilograms
 R_e = 6.371e6  # Average radius of the Earth in metres
 T_s = 86164.0905  # Sidereal day in seconds
-Omega_e = 2 * jnp.pi / T_s # Earth rotation rate in rad/s
-C = 299792458.0 # Speed of light in m/s
+Omega_e = 2 * jnp.pi / T_s  # Earth rotation rate in rad/s
+C = 299792458.0  # Speed of light in m/s
+DAY_SECS = 24 * 3600.0  # Seconds in a day
+
+
+def secs_to_days(seconds):
+
+    return seconds / DAY_SECS
+
+
+def days_to_secs(days):
+
+    return days * DAY_SECS
+
 
 @jit_with_doc
-def radec_to_lmn(
-    ra: Array, dec: Array, phase_centre: Array
-) -> Array:
+def radec_to_lmn(ra: Array, dec: Array, phase_centre: Array) -> Array:
     """
     Convert right-ascension and declination positions of a set of sources to
     direction cosines.
@@ -252,7 +262,7 @@ def GEO_to_XYZ_vmap1(geo: Array, times: Array) -> Array:
 
 @jit_with_doc
 def alt_az_of_source(lsa: Array, lat: float, ra: float, dec: float) -> Array:
-    """Calculate the altitude and azimuth of a given source direction over time. 
+    """Calculate the altitude and azimuth of a given source direction over time.
     Taken from https://astronomy.stackexchange.com/questions/14492/need-simple-equation-for-rise-transit-and-set-time
 
     Parameters
@@ -272,15 +282,15 @@ def alt_az_of_source(lsa: Array, lat: float, ra: float, dec: float) -> Array:
         Altitude and azimuth of the source in degrees relative to the observer.
     """
 
-    h0 = jnp.atleast_1d(lsa) - ra 
+    h0 = jnp.atleast_1d(lsa) - ra
     ones = jnp.ones_like(h0)
-    lat, h0, dec = jnp.deg2rad(jnp.array([lat*ones, h0, dec*ones]))
+    lat, h0, dec = jnp.deg2rad(jnp.array([lat * ones, h0, dec * ones]))
 
-    a = jnp.cos(lat)*jnp.sin(dec) - jnp.cos(dec)*jnp.sin(lat)*jnp.cos(h0)
-    b = jnp.cos(dec)*jnp.sin(h0)
-    c = jnp.sin(dec)*jnp.sin(lat) + jnp.cos(dec)*jnp.cos(lat)*jnp.cos(h0)
+    a = jnp.cos(lat) * jnp.sin(dec) - jnp.cos(dec) * jnp.sin(lat) * jnp.cos(h0)
+    b = jnp.cos(dec) * jnp.sin(h0)
+    c = jnp.sin(dec) * jnp.sin(lat) + jnp.cos(dec) * jnp.cos(lat) * jnp.cos(h0)
 
-    alt = jnp.rad2deg(jnp.arctan2(c, jnp.sqrt( a**2 + b**2 )))
+    alt = jnp.rad2deg(jnp.arctan2(c, jnp.sqrt(a**2 + b**2)))
     az = jnp.rad2deg(jnp.arctan2(b, a))
 
     return jnp.array([alt, az]).T
@@ -290,10 +300,10 @@ def alt_az_of_source(lsa: Array, lat: float, ra: float, dec: float) -> Array:
 def rise_and_set_of_source(lat: float, ra: float, dec: float) -> Array:
 
     lat, dec = jnp.deg2rad(jnp.array([lat, dec]))
-    
-    a = jnp.rad2deg(jnp.arccos(-jnp.tan(dec)*jnp.tan(lat)))
 
-    return jnp.array([ra-a, ra+a])
+    a = jnp.rad2deg(jnp.arccos(-jnp.tan(dec) * jnp.tan(lat)))
+
+    return jnp.array([ra - a, ra + a])
 
 
 @jit_with_doc
@@ -310,7 +320,7 @@ def lst_deg2sec(lst: Array) -> Array:
     Array
         Sidereal time in seconds.
     """
-    
+
     return lst / 360 * T_s
 
 
@@ -331,6 +341,7 @@ def lst_sec2deg(lst: Array) -> Array:
 
     return lst / T_s * 360
 
+
 def gmsa_from_jd(jd: float) -> float:
     """Get the Greenwich Mean Sidereal Angle in degrees from the Julian Day (UT1).
     Calculated using https://aa.usno.navy.mil/faq/GAST
@@ -343,14 +354,14 @@ def gmsa_from_jd(jd: float) -> float:
     Returns
     -------
     float
-        Greenwich Mean Sidereal Angle in degrees. 
+        Greenwich Mean Sidereal Angle in degrees.
     """
 
     gmst_hours = 18.697375 + 24.065709824279 * (jd - 2451545.0)
 
     gmsa = gmst_hours * 15
 
-    return gmsa 
+    return gmsa
 
 
 def jd_from_gmst(gmst: float) -> float:
@@ -368,23 +379,38 @@ def jd_from_gmst(gmst: float) -> float:
     """
 
     gmst_hours = gmst / 3600
-    
+
     jd = (gmst_hours - 18.697375) / 24.065709824279 + 2451545.0
 
     return jd
+
+
+def jd_to_mjd(jd):
+
+    mjd = jd - 2400000.5
+
+    return mjd
+
+
+def mjd_to_jd(mjd):
+
+    jd = mjd + 2400000.5
+
+    return jd
+
 
 def time_above_horizon(lat: float, dec: float) -> Array:
     """
     The number of degrees an object is above the horizon in a given day.
     """
-    
+
     lat, dec = jnp.deg2rad(jnp.array([lat, dec]))
-    
-    if jnp.cos(dec)==0 or jnp.cos(lat)==0:
+
+    if jnp.cos(dec) == 0 or jnp.cos(lat) == 0:
         return jnp.inf
-        
-    H = 2*jnp.rad2deg(jnp.arccos( -jnp.tan(lat)*jnp.tan(dec) ))
-                   
+
+    H = 2 * jnp.rad2deg(jnp.arccos(-jnp.tan(lat) * jnp.tan(dec)))
+
     return H
 
 
@@ -405,7 +431,7 @@ def transit_altitude(lat: float, dec: float) -> float:
         Altitude of the source at transit in degrees.
     """
 
-    alt = 90 - jnp.abs(dec-lat)
+    alt = 90 - jnp.abs(dec - lat)
 
     return alt
 
@@ -424,12 +450,14 @@ def earth_radius(lat: float) -> float:
     float
         Earth radius in metres at the given latitude.
     """
-    a = 6378137.0 # equitorial radius
-    b = 6356752.3 # polar radius
+    a = 6378137.0  # equitorial radius
+    b = 6356752.3  # polar radius
     lat = jnp.deg2rad(lat)
     cos = jnp.cos(lat)
     sin = jnp.sin(lat)
-    r = jnp.sqrt(( (a**2*cos)**2 + (b**2*sin)**2 ) / ( (a*cos)**2 + (b*sin)**2 ) )
+    r = jnp.sqrt(
+        ((a**2 * cos) ** 2 + (b**2 * sin) ** 2) / ((a * cos) ** 2 + (b * sin) ** 2)
+    )
 
     return r
 
@@ -460,20 +488,21 @@ def enu_to_itrf(enu: Array, lat: float, lon: float, el: float) -> Array:
     enu = jnp.atleast_2d(enu)
     R = earth_radius(lat) + el
     lat, lon = jnp.deg2rad(jnp.array([lat, lon]))
-    
-    r0 = R*jnp.array([
-        jnp.cos(lat)*jnp.cos(lon),
-        jnp.cos(lat)*jnp.sin(lon),
-        jnp.sin(lat)
-    ])
 
-    R = jnp.array([
-        [-jnp.sin(lon), jnp.cos(lon), 0],
-        [-jnp.cos(lon)*jnp.sin(lat), -jnp.sin(lon)*jnp.sin(lat), jnp.cos(lat)],
-        [jnp.cos(lat)*jnp.cos(lon), jnp.cos(lat)*jnp.sin(lon), jnp.sin(lat)],
-    ])
+    r0 = R * jnp.array(
+        [jnp.cos(lat) * jnp.cos(lon), jnp.cos(lat) * jnp.sin(lon), jnp.sin(lat)]
+    )
 
-    return r0[None,:] + jnp.dot(enu, R)
+    R = jnp.array(
+        [
+            [-jnp.sin(lon), jnp.cos(lon), 0],
+            [-jnp.cos(lon) * jnp.sin(lat), -jnp.sin(lon) * jnp.sin(lat), jnp.cos(lat)],
+            [jnp.cos(lat) * jnp.cos(lon), jnp.cos(lat) * jnp.sin(lon), jnp.sin(lat)],
+        ]
+    )
+
+    return r0[None, :] + jnp.dot(enu, R)
+
 
 def enu_to_xyz_local(enu, lat):
     """
@@ -482,17 +511,19 @@ def enu_to_xyz_local(enu, lat):
     enu = jnp.atleast_2d(enu)
     lat = jnp.deg2rad(lat)
 
-    R = jnp.array([
-        [0, -jnp.sin(lat), jnp.cos(lat)],
-        [1, 0, 0],
-        [0, jnp.cos(lat), jnp.sin(lat)],
-    ])
+    R = jnp.array(
+        [
+            [0, -jnp.sin(lat), jnp.cos(lat)],
+            [1, 0, 0],
+            [0, jnp.cos(lat), jnp.sin(lat)],
+        ]
+    )
 
     return jnp.dot(enu, R.T)
 
 
 @jit_with_doc
-def itrf_to_geo(itrf: Array) ->  Array:
+def itrf_to_geo(itrf: Array) -> Array:
     """Convert ITRF coordinates to geodetic coordinates.
 
     Parameters
@@ -508,7 +539,7 @@ def itrf_to_geo(itrf: Array) ->  Array:
     x, y, z = jnp.atleast_2d(itrf).T
     xy = jnp.sqrt(x**2 + y**2)
 
-    lat = jnp.rad2deg(jnp.arcsin(z/xy))
+    lat = jnp.rad2deg(jnp.arcsin(z / xy))
     lon = jnp.rad2deg(jnp.arctan2(y, x))
     el = jnp.linalg.norm(itrf, axis=-1) - earth_radius(lat)
 
@@ -531,11 +562,11 @@ def itrf_to_xyz(itrf: Array, gsa: Array) -> Array:
     Array (n_time, n_ant, 3)
         ECI coordinates in metres.
     """
-    
+
     itrf = jnp.atleast_2d(itrf)
     gsa = jnp.atleast_1d(gsa)
     ecef_to_eci = lambda ecef, gsa: jnp.einsum("ij,aj->ai", Rotz(gsa), ecef)
-    xyz = vmap(ecef_to_eci, in_axes=(None,0))(itrf, gsa)
+    xyz = vmap(ecef_to_eci, in_axes=(None, 0))(itrf, gsa)
 
     return xyz
 
@@ -556,22 +587,23 @@ def xyz_to_itrf(xyz: Array, gsa: Array) -> Array:
     Array (n_time, 3)
         ITRF (ECEF) coordinates in metres.
     """
-    
+
     xyz = jnp.atleast_2d(xyz)
     gsa = jnp.atleast_1d(gsa)
     eci_to_ecef = lambda eci, gsa: Rotz(-gsa) @ eci
-    itrf = vmap(eci_to_ecef, in_axes=(0,0))(xyz, gsa)
+    itrf = vmap(eci_to_ecef, in_axes=(0, 0))(xyz, gsa)
 
     return itrf
+
 
 @jit_with_doc
 def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
     """
     Calculate uvw coordinates from ITRF/ECEF coordinates,
-    source hour angle and declination. Use the Greenwich hour 
-    angle when using true ITRF coordinates such as those produced 
-    with 'enu_to_itrf' or provided in an MS file. Use local hour angle when using local 'xyz' 
-    coordinates as defined in most radio interferometry textbooks 
+    source hour angle and declination. Use the Greenwich hour
+    angle when using true ITRF coordinates such as those produced
+    with 'enu_to_itrf' or provided in an MS file. Use local hour angle when using local 'xyz'
+    coordinates as defined in most radio interferometry textbooks
     or those produced with 'enu_to_xyz_local'.
 
     Parameters
@@ -591,38 +623,54 @@ def itrf_to_uvw(itrf: Array, h0: Array, dec: float) -> Array:
     """
 
     itrf = jnp.atleast_2d(itrf)
-    itrf = itrf - itrf[0,None,:]
-    
+    itrf = itrf - itrf[0, None, :]
+
     h0 = jnp.deg2rad(jnp.atleast_1d(h0))
     dec = jnp.deg2rad(jnp.asarray(dec))
     ones = jnp.ones_like(h0)
-    
-    R = jnp.array([
-        [jnp.sin(h0), jnp.cos(h0), jnp.zeros_like(h0)],
-        [-jnp.sin(dec)*jnp.cos(h0), jnp.sin(dec)*jnp.sin(h0), jnp.cos(dec)*ones],
-        [jnp.cos(dec)*jnp.cos(h0), -jnp.cos(dec)*jnp.sin(h0), jnp.sin(dec)*ones]
-    ])
-    
+
+    R = jnp.array(
+        [
+            [jnp.sin(h0), jnp.cos(h0), jnp.zeros_like(h0)],
+            [
+                -jnp.sin(dec) * jnp.cos(h0),
+                jnp.sin(dec) * jnp.sin(h0),
+                jnp.cos(dec) * ones,
+            ],
+            [
+                jnp.cos(dec) * jnp.cos(h0),
+                -jnp.cos(dec) * jnp.sin(h0),
+                jnp.sin(dec) * ones,
+            ],
+        ]
+    )
+
     uvw = jnp.einsum("ijt,aj->tai", R, itrf)
 
     return uvw
 
 
-
 @jit_with_doc
-def calculate_fringe_frequency(times: Array, freq: float, rfi_xyz: Array, ants_itrf: Array, ants_u: Array, dec: float) -> Array:
+def calculate_fringe_frequency(
+    times_mjd: Array,
+    freq: float,
+    rfi_xyz: Array,
+    ants_itrf: Array,
+    ants_u: Array,
+    dec: float,
+) -> Array:
     """Calculate the fringe frequency of an RFI source.
 
     Parameters
     ----------
-    times : Array (n_time,)
-        Times are which the RFI and antenna positions are given in seconds.
+    times_mjd : Array (n_time,)
+        Times are which the RFI and antenna positions are given in Modified Julian Date.
     freq : float
         Observational frequency in Hz.
     rfi_xyz : Array (n_time, 3)
         Position of the RFI source in the ECI frame in metres.
     ants_itrf : Array (n_ant, 3)
-        Antenna positions in the ITRF (ECEF) frame in metres. 
+        Antenna positions in the ITRF (ECEF) frame in metres.
     ants_u : Array (n_time, n_ant)
         U component of the antennas in UVW frame in metres.
     dec : float
@@ -635,7 +683,9 @@ def calculate_fringe_frequency(times: Array, freq: float, rfi_xyz: Array, ants_i
     """
 
     lam = C / freq
-    gsa = gmsa_from_jd(times/(24*3600))
+    # Should change this to astropy.time.Time
+    gsa = gmsa_from_jd(mjd_to_jd(times_mjd))
+    times = (times_mjd - times_mjd[0]) * 24 * 3600
 
     r_ecef = xyz_to_itrf(rfi_xyz, gsa)
     s_ecef = r_ecef - jnp.mean(ants_itrf, axis=0)
@@ -644,17 +694,24 @@ def calculate_fringe_frequency(times: Array, freq: float, rfi_xyz: Array, ants_i
 
     a1, a2 = jnp.triu_indices(len(ants_itrf), 1)
     bl_ecef = ants_itrf[a1] - ants_itrf[a2]
-    bl_u = ants_u[:,a1] - ants_u[:,a2]
+    bl_u = ants_u[:, a1] - ants_u[:, a2]
 
     fringe_move = jnp.einsum("bi,ti->tb", bl_ecef, s_hat_dot) / lam
-    fringe_stat = - bl_u * Omega_e * jnp.cos(jnp.deg2rad(dec)) / lam
+    fringe_stat = -bl_u * Omega_e * jnp.cos(jnp.deg2rad(dec)) / lam
     fringe_freq = fringe_move - fringe_stat
 
     return fringe_freq
 
 
 @jit_with_doc
-def calculate_sat_corr_time(sat_xyz: Array, ants_xyz: Array, orbit_el: float, lat: float, dish_d: float, freqs: Array) -> float:
+def calculate_sat_corr_time(
+    sat_xyz: Array,
+    ants_xyz: Array,
+    orbit_el: float,
+    lat: float,
+    dish_d: float,
+    freqs: Array,
+) -> float:
     """Calculate the expected correlation time for a Gaussian process model of the RFI signal due to a satellite moving through the sidelobes of the primary beam.
 
     Parameters
@@ -688,10 +745,9 @@ def calculate_sat_corr_time(sat_xyz: Array, ants_xyz: Array, orbit_el: float, la
 
     return l
 
+
 @jit_with_doc
-def angular_separation(
-    rfi_xyz: Array, ants_xyz: Array, ra: float, dec: float
-) -> Array:
+def angular_separation(rfi_xyz: Array, ants_xyz: Array, ra: float, dec: float) -> Array:
     """
     Calculate the angular separation between the pointing direction of each
     antenna and the satellite source.
@@ -989,9 +1045,7 @@ def RIC_dev(
 
 
 @jit_with_doc
-def orbit_fisher(
-    times: Array, orbit_params: Array, RIC_std: Array
-) -> Array:
+def orbit_fisher(times: Array, orbit_params: Array, RIC_std: Array) -> Array:
     """
     Calculate the inverse covariance (Fisher) matrix in orbital elements
     induced by errors in the RIC frame of an orbiting object. This is

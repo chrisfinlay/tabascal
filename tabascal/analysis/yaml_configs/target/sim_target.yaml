@@ -16,7 +16,7 @@ observation:
   start_time_isot:
   int_time: 2.0
   n_time: 450
-  n_int: 64
+  n_int: 1024
   start_freq: 1.227e9
   chan_width: 209e3
   n_freq: 1
@@ -42,6 +42,7 @@ rfi_sources:
   tle_satellite:
     # norad_ids: []
     sat_names: [navstar]
+    # max_n_sat: 1
     spacetrack_path: ../eda2/spacetrack_login.yaml
     tle_dir: ../aux_data/tles
     norad_spec_model: ../aux_data/norad_satellite.rfimodel

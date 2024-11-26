@@ -140,6 +140,7 @@ rfi_sources:
     norad_ids: []             # Optional - NORAD IDs of the satellites to include
     norad_ids_path: null      # Optional - Path to a file conating the NORAD IDs of satellites to include. Each ID is on a seaprate line
     norad_spec_model: null    # Required if any TLE satellites are included - Path to the csv file of spectral models fo each satellite by NORAD ID
+    max_n_sat: null           # Optional - Maximum number of TLE satellites to include. Defaults to all found satellites.
     spacetrack_path: null     # Required if any TLE satellites are included - Path to the Space-Track login config file
     max_ang_sep: 90           # Optional - Maximum angular separation from the target direction, in degrees, of satellites to include
     min_alt: 0                # Optional - Minimum altitude of satellites to include. 0 indicates above the horizon

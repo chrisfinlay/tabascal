@@ -34,7 +34,9 @@ def astro_vis(
 
     src_n_time = sources.shape[1]
     if src_n_time != n_time and src_n_time != 1:
-        ValueError("The size of the time dimension for the astronomical sources must be n_time_fine or 1.")
+        ValueError(
+            "The size of the time dimension for the astronomical sources must be n_time_fine or 1."
+        )
 
     t = "time" if src_n_time is n_time else "time1"
     I = {"I": (["src", f"{t}", "freq"], sources)}
@@ -73,7 +75,13 @@ def astro_vis(
 
 
 def astro_vis_gauss(
-    sources: da.Array, major: da.Array, minor: da.Array, pos_angle: da.Array, uvw: da.Array, lmn: da.Array, freqs: da.Array
+    sources: da.Array,
+    major: da.Array,
+    minor: da.Array,
+    pos_angle: da.Array,
+    uvw: da.Array,
+    lmn: da.Array,
+    freqs: da.Array,
 ) -> da.Array:
     """Calculate visibilities from sources, uvw, lmn, and freqs.
 
@@ -127,7 +135,13 @@ def astro_vis_gauss(
 
     def _astro_vis_gauss(ds):
         vis = delayed(itf.astro_vis_gauss)(
-            ds.I.data, ds.major.data, ds.minor.data, ds.pos_angle.data, ds.uvw.data, ds.lmn.data, ds.freqs.data
+            ds.I.data,
+            ds.major.data,
+            ds.minor.data,
+            ds.pos_angle.data,
+            ds.uvw.data,
+            ds.lmn.data,
+            ds.freqs.data,
         ).compute()
         ds_out = xr.Dataset({"vis": (["time", "bl", "freq"], vis)})
         return ds_out
@@ -403,18 +417,19 @@ def SEFD_to_noise_std(SEFD, chan_width, t_int):
 #         itf.int_sample_times(times, n_int_samples, int_time), chunks=times.chunksize
 #     )
 #     return times_fine
-def int_sample_times(times, n_int_samples, int_time=2):
-    if len(times)>1:
-        int_time = times[1] - times[0]
-    times_fine = (
-        int_time / (2 * n_int_samples)
-        + da.arange(
-            times[0] - int_time / 2,
-            times[-1] + int_time / 2,
-            int_time / n_int_samples,
-        )[: n_int_samples * len(times)]
+
+
+def int_sample_times(times, n_int_samples: int, int_time: float = None):
+
+    n_time = len(times)
+    time_range = times[-1] - times[0]
+    int_time = time_range / (n_time - 1) if not int_time else int_time
+    n_time_fine = n_time * n_int_samples
+    times_fine = da.linspace(
+        -int_time / 2, time_range + int_time / 2, n_time_fine, endpoint=False
     )
-    return times_fine
+
+    return times[0] + int_time / (2 * n_int_samples) + times_fine
 
 
 def generate_gains(

@@ -15,7 +15,8 @@ import xarray as xr
 from daskms import Dataset, xds_to_table
 import numpy as np
 
-def rm_dir(path: str, overwrite: bool=True):
+
+def rm_dir(path: str, overwrite: bool = True):
     """Remove a directory but check for existence and overwrite flag before.
 
     Parameters
@@ -35,9 +36,12 @@ def rm_dir(path: str, overwrite: bool=True):
         if overwrite:
             shutil.rmtree(path)
         else:
-            raise FileExistsError(f"File {path} already exists.\n\nConsider using the 'overwrite' flag.")
+            raise FileExistsError(
+                f"File {path} already exists.\n\nConsider using the 'overwrite' flag."
+            )
 
-def mk_obs_dir(output_path: str, obs_name: str, overwrite: bool=True) -> tuple:
+
+def mk_obs_dir(output_path: str, obs_name: str, overwrite: bool = True) -> tuple:
     """Construct an observation simulation directory and return save paths for MS and zarr files.
 
     Parameters
@@ -63,12 +67,13 @@ def mk_obs_dir(output_path: str, obs_name: str, overwrite: bool=True) -> tuple:
     save_path = os.path.join(output_path, obs_name)
     rm_dir(save_path, overwrite)
     os.makedirs(save_path, exist_ok=True)
-    zarr_path = os.path.join(save_path, obs_name + ".zarr") 
+    zarr_path = os.path.join(save_path, obs_name + ".zarr")
     ms_path = os.path.join(save_path, obs_name + ".ms")
 
-    return save_path, zarr_path, ms_path 
+    return save_path, zarr_path, ms_path
 
-def mk_obs_name(prefix: str, obs: Observation, suffix: str=None) -> str:
+
+def mk_obs_name(prefix: str, obs: Observation, suffix: str = None) -> str:
     """Construct an observation name based on the parameters of the observation and an additional prefix.
 
     Parameters
@@ -90,7 +95,7 @@ def mk_obs_name(prefix: str, obs: Observation, suffix: str=None) -> str:
         + f"_{obs.n_p_ast:0>3}PAST_{obs.n_g_ast:0>3}GAST_{obs.n_e_ast:0>3}EAST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
     )
     if suffix is not None:
-        obs_name = obs_name + "_" + suffix 
+        obs_name = obs_name + "_" + suffix
 
     return obs_name
 
@@ -153,7 +158,7 @@ def get_optional_data(obs: Observation):
         # Time index from time_fine to time
         "time_idx": (["time"], obs.t_idx),
     }
-    
+
     return opt_data
 
 
@@ -182,10 +187,8 @@ def get_observation_attributes(obs: Observation):
         "n_ast_g_src": obs.n_g_ast,
         "n_ast_e_src": obs.n_e_ast,
     }
-    
-    attrs = {
-        k: v.compute() if isinstance(v, da.Array) else v for k, v in attrs.items()
-    }
+
+    attrs = {k: v.compute() if isinstance(v, da.Array) else v for k, v in attrs.items()}
 
     return attrs
 
@@ -193,8 +196,9 @@ def get_observation_attributes(obs: Observation):
 def get_coordinates(obs: Observation):
     coords = {
         "time": obs.times,
-        "time_jd": obs.times_jd,
         "time_fine": obs.times_fine,
+        "time_mjd": obs.times_mjd,
+        "time_mjd_fine": obs.times_mjd_fine,
         "freq": obs.freqs,
         "bl": np.arange(obs.n_bl),
         "ant": np.arange(obs.n_ant),
@@ -206,9 +210,9 @@ def get_coordinates(obs: Observation):
         "radec": np.array(["ra", "dec"]),
         "geo": np.array(["latitude", "longitude", "elevation"]),
         "orbit": np.array(["elevation", "inclination", "lon_asc_node", "periapsis"]),
-        "tle": np.array(["tle_line1", "tle_line2"])
+        "tle": np.array(["tle_line1", "tle_line2"]),
     }
-    
+
     return coords
 
 
@@ -218,53 +222,73 @@ def get_astromonical_source_data(obs: Observation):
             # Astronomical point source parameters
             "ast_p_I": (
                 ["ast_p_src", "time", "freq"],
-                da.concatenate(obs.ast_p_I, axis=0).rechunk('auto'),
+                da.concatenate(obs.ast_p_I, axis=0).rechunk("auto"),
             ),
-            "ast_p_lmn": (["ast_p_src", "lmn"], da.concatenate(obs.ast_p_lmn, axis=0).rechunk('auto')),
+            "ast_p_lmn": (
+                ["ast_p_src", "lmn"],
+                da.concatenate(obs.ast_p_lmn, axis=0).rechunk("auto"),
+            ),
             "ast_p_radec": (
                 ["ast_p_src", "radec"],
-                da.concatenate(obs.ast_p_radec, axis=1).rechunk('auto').T,
+                da.concatenate(obs.ast_p_radec, axis=1).rechunk("auto").T,
             ),
         }
     else:
         ast_p_data = {}
 
-    if obs.n_g_ast>0:
+    if obs.n_g_ast > 0:
         ast_g_data = {
             # Astronomical point source parameters
             "ast_g_I": (
                 ["ast_g_src", "time", "freq"],
-                da.concatenate(obs.ast_g_I, axis=0).rechunk('auto'),
+                da.concatenate(obs.ast_g_I, axis=0).rechunk("auto"),
             ),
-            "ast_g_lmn": (["ast_g_src", "lmn"], da.concatenate(obs.ast_g_lmn, axis=0).rechunk('auto')),
+            "ast_g_lmn": (
+                ["ast_g_src", "lmn"],
+                da.concatenate(obs.ast_g_lmn, axis=0).rechunk("auto"),
+            ),
             "ast_g_radec": (
                 ["ast_g_src", "radec"],
-                da.concatenate(obs.ast_g_radec, axis=1).rechunk('auto').T,
+                da.concatenate(obs.ast_g_radec, axis=1).rechunk("auto").T,
             ),
-            "ast_g_major": (["ast_g_src"], da.concatenate(obs.ast_g_major, axis=0).rechunk('auto')),
-            "ast_g_minor": (["ast_g_src"], da.concatenate(obs.ast_g_minor, axis=0).rechunk('auto')),
-            "ast_g_pos_angle": (["ast_g_src"], da.concatenate(obs.ast_g_pos_angle, axis=0).rechunk('auto')),
+            "ast_g_major": (
+                ["ast_g_src"],
+                da.concatenate(obs.ast_g_major, axis=0).rechunk("auto"),
+            ),
+            "ast_g_minor": (
+                ["ast_g_src"],
+                da.concatenate(obs.ast_g_minor, axis=0).rechunk("auto"),
+            ),
+            "ast_g_pos_angle": (
+                ["ast_g_src"],
+                da.concatenate(obs.ast_g_pos_angle, axis=0).rechunk("auto"),
+            ),
         }
     else:
         ast_g_data = {}
 
-    if obs.n_e_ast>0:
+    if obs.n_e_ast > 0:
         ast_e_data = {
             # Astronomical point source parameters
             "ast_e_I": (
                 ["ast_e_src", "time", "freq"],
-                da.concatenate(obs.ast_e_I, axis=0).rechunk('auto'),
+                da.concatenate(obs.ast_e_I, axis=0).rechunk("auto"),
             ),
-            "ast_e_lmn": (["ast_e_src", "lmn"], da.concatenate(obs.ast_e_lmn, axis=0).rechunk('auto')),
+            "ast_e_lmn": (
+                ["ast_e_src", "lmn"],
+                da.concatenate(obs.ast_e_lmn, axis=0).rechunk("auto"),
+            ),
             "ast_e_radec": (
                 ["ast_e_src", "radec"],
-                da.concatenate(obs.ast_e_radec, axis=1).rechunk('auto').T,
+                da.concatenate(obs.ast_e_radec, axis=1).rechunk("auto").T,
             ),
-            "ast_e_major": (["ast_e_src"], da.concatenate(obs.ast_e_major, axis=0).rechunk('auto')),
+            "ast_e_major": (
+                ["ast_e_src"],
+                da.concatenate(obs.ast_e_major, axis=0).rechunk("auto"),
+            ),
         }
     else:
         ast_e_data = {}
-
 
     ast_data = {**ast_p_data, **ast_g_data, **ast_e_data}
 
@@ -277,19 +301,19 @@ def get_satellite_rfi_data(obs: Observation):
         rfi_sat = {
             "rfi_sat_A": (
                 ["sat_src", "time_fine", "ant", "freq"],
-                da.concatenate(obs.rfi_satellite_A_app, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_satellite_A_app, axis=0).rechunk("auto"),
             ),
             "rfi_sat_xyz": (
                 ["sat_src", "time_fine", "xyz"],
-                da.concatenate(obs.rfi_satellite_xyz, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_satellite_xyz, axis=0).rechunk("auto"),
             ),
             "rfi_sat_ang_sep": (
                 ["sat_src", "time_fine", "ant"],
-                da.concatenate(obs.rfi_satellite_ang_sep, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_satellite_ang_sep, axis=0).rechunk("auto"),
             ),
             "rfi_sat_orbit": (
                 ["sat_src", "orbit"],
-                da.concatenate(obs.rfi_satellite_orbit, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_satellite_orbit, axis=0).rechunk("auto"),
             ),
         }
     else:
@@ -300,55 +324,60 @@ def get_satellite_rfi_data(obs: Observation):
         rfi_tle_sat = {
             "rfi_tle_sat_A": (
                 ["tle_sat_src", "time_fine", "ant", "freq"],
-                da.concatenate(obs.rfi_tle_satellite_A_app, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_tle_satellite_A_app, axis=0).rechunk("auto"),
             ),
             "rfi_tle_sat_xyz": (
                 ["sat_src", "time_fine", "xyz"],
-                da.concatenate(obs.rfi_tle_satellite_xyz, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_tle_satellite_xyz, axis=0).rechunk("auto"),
             ),
             "rfi_tle_sat_ang_sep": (
                 ["sat_src", "time_fine", "ant"],
-                da.concatenate(obs.rfi_tle_satellite_ang_sep, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_tle_satellite_ang_sep, axis=0).rechunk("auto"),
             ),
             "rfi_tle_sat_orbit": (
                 ["sat_src", "tle"],
-                da.asarray(np.concatenate(obs.rfi_tle_satellite_orbit, axis=0).astype("<U69")).rechunk("auto"),
+                da.asarray(
+                    np.concatenate(obs.rfi_tle_satellite_orbit, axis=0).astype("<U69")
+                ).rechunk("auto"),
             ),
             "norad_ids": (
                 ["sat_src"],
-                da.asarray(np.concatenate(obs.norad_ids, axis=0).astype(int)).rechunk("auto"),
+                da.asarray(np.concatenate(obs.norad_ids, axis=0).astype(int)).rechunk(
+                    "auto"
+                ),
             ),
         }
     else:
         rfi_tle_sat = {}
 
-    
     return {**rfi_sat, **rfi_tle_sat}
 
 
 def get_stationary_rfi_data(obs: Observation):
+
     if obs.n_rfi_stationary > 0:
         rfi_stat = {
             # Stationary RFI parameters
             "rfi_stat_A": (
                 ["stat_src", "time_fine", "ant", "freq"],
-                da.concatenate(obs.rfi_stationary_A_app, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_stationary_A_app, axis=0).rechunk("auto"),
             ),
             "rfi_stat_xyz": (
                 ["stat_src", "time_fine", "xyz"],
-                da.concatenate(obs.rfi_stationary_xyz, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_stationary_xyz, axis=0).rechunk("auto"),
             ),
             "rfi_stat_ang_sep": (
                 ["stat_src", "time_fine", "ant"],
-                da.concatenate(obs.rfi_stationary_ang_sep, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_stationary_ang_sep, axis=0).rechunk("auto"),
             ),
             "rfi_stat_geo": (
                 ["stat_src", "geo"],
-                da.concatenate(obs.rfi_stationary_geo, axis=0).rechunk('auto'),
+                da.concatenate(obs.rfi_stationary_geo, axis=0).rechunk("auto"),
             ),
         }
     else:
         rfi_stat = {}
+
     return rfi_stat
 
 
@@ -377,7 +406,13 @@ def write_ms(
         dask.compute(table)
 
 
-def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None, flags: dask.Array=None, extras: bool=True):
+def construct_ms_data_table(
+    ds: Dataset,
+    ms_path: str,
+    vis_corr: dask.Array = None,
+    flags: dask.Array = None,
+    extras: bool = True,
+):
     """Get the data table for a Measurement Set."""
     n_time = ds.attrs["n_time"]
     n_freq = ds.attrs["n_freq"]
@@ -390,14 +425,14 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
     vis_obs = ds.vis_obs.data.reshape(n_row, n_freq, n_corr)
     vis_model = ds.vis_ast.data.reshape(n_row, n_freq, n_corr)
 
-    vis_cal = ds.vis_calibrated.data.reshape(n_row, n_freq, n_corr) 
+    vis_cal = ds.vis_calibrated.data.reshape(n_row, n_freq, n_corr)
     vis_rfi = ds.vis_rfi.data.reshape(n_row, n_freq, n_corr)
-    noise_data = ds.noise_data.data.reshape(n_row, n_freq, n_corr) 
+    noise_data = ds.noise_data.data.reshape(n_row, n_freq, n_corr)
     rfi_resid = vis_rfi + noise_data
     no_rfi = vis_model + noise_data
 
     if vis_corr is None:
-        vis_corr = da.zeros((n_row, n_freq, n_corr), dtype=np.complex64) 
+        vis_corr = da.zeros((n_row, n_freq, n_corr), dtype=np.complex64)
     else:
         vis_corr = da.asarray(vis_corr).reshape(n_row, n_freq, n_corr)
 
@@ -407,7 +442,7 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
         flags = da.asarray(flags).reshape(n_row, n_freq, n_corr)
 
     row_times = da.asarray(
-        (ds.coords["time_jd"].data[:, None] * da.ones(shape=(1, n_bl))).flatten()
+        (ds.coords["time_mjd"].data[:, None] * da.ones(shape=(1, n_bl))).flatten()
     )
     ant1 = (
         (ds.antenna1.data[None, :] * da.ones(shape=(n_time, 1)))
@@ -435,13 +470,19 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
         "TIME_CENTROID": (("row"), row_times),
         "UVW": (("row", "uvw"), uvw),
         "CORRECTED_DATA": (("row", "chan", "corr"), vis_corr),
-        "MODEL_DATA": (("row", "chan", "corr"), da.zeros((n_row, n_freq, n_corr), dtype=np.complex64)),
+        "MODEL_DATA": (
+            ("row", "chan", "corr"),
+            da.zeros((n_row, n_freq, n_corr), dtype=np.complex64),
+        ),
         "SIGMA": (("row", "corr"), noise_std),
         "WEIGHT": (("row", "corr"), weight),
         "ARRAY_ID": (("row"), a_id),
         "FLAG": (("row", "chan", "corr"), flags),
         "INTERVAL": (("row"), interval),
-        "FLAG_CATEGORY": (("row", "chan", "corr", "flagcat"), da.expand_dims(flags, axis=3)),
+        "FLAG_CATEGORY": (
+            ("row", "chan", "corr", "flagcat"),
+            da.expand_dims(flags, axis=3),
+        ),
     }
 
     if extras:
@@ -466,7 +507,12 @@ def construct_ms_data_table(ds: Dataset, ms_path: str, vis_corr: dask.Array=None
         "AST_DATA": {"UNIT": "Jy"},
     }
 
-    return xds_to_table([Dataset(data_vars).chunk(chunks)], ms_path, columns="ALL", column_keywords=col_kw)
+    return xds_to_table(
+        [Dataset(data_vars).chunk(chunks)],
+        ms_path,
+        columns="ALL",
+        column_keywords=col_kw,
+    )
 
     #####################
 
@@ -653,7 +699,8 @@ def construct_ms_polarization_table(ds: Dataset, ms_path: str):
     # corr_type = da.array([[9, 12]]) # XX, YY
     # num_corr = 2 * da.ones(1)
     corr_prod = da.zeros(shape=(1, 1, 1))
-    corr_type = da.array([[9,]]) # XX
+    corr_type = 9 * da.ones((1, 1))  # XX
+
     num_corr = da.ones(1)
     flag_row = da.zeros(1)
 
