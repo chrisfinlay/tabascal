@@ -1043,8 +1043,8 @@ def run_opt(
 
         # vi_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
         print(f"RMSE Gains      : {jnp.mean(vi_pred['rmse_gains']):.5f}")
-        print(f"RMSE RFI        : {jnp.mean(vi_pred['rmse_rfi']):.5f}")
-        print(f"RMSE AST        : {jnp.mean(vi_pred['rmse_ast']):.5f}")
+        print(f"RMSE RFI Vis    : {jnp.mean(vi_pred['rmse_rfi']):.5f}")
+        print(f"RMSE AST Vis    : {jnp.mean(vi_pred['rmse_ast']):.5f}")
 
     rchi2 = reduced_chi2(
         vi_pred["vis_obs"][0], ms_params["vis_obs"].T, ms_params["noise"]
@@ -1163,8 +1163,8 @@ def plot_init(ms_params, config, init_pred, args, model_name, plot_dir):
 
         # vi_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
         print(f"RMSE Gains      : {jnp.mean(init_pred['rmse_gains']):.5f}")
-        print(f"RMSE RFI        : {jnp.mean(init_pred['rmse_rfi']):.5f}")
-        print(f"RMSE AST        : {jnp.mean(init_pred['rmse_ast']):.5f}")
+        print(f"RMSE RFI Vis    : {jnp.mean(init_pred['rmse_rfi']):.5f}")
+        print(f"RMSE AST Vis    : {jnp.mean(init_pred['rmse_ast']):.5f}")
 
     print()
     print(f"Initial Plot Time : {datetime.now() - start}")
@@ -1214,11 +1214,11 @@ def plot_truth(
 
     # true_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
     print(f"RMSE Gains      : {jnp.mean(true_pred['rmse_gains']):.5f}")
-    print(f"RMSE RFI        : {jnp.mean(true_pred['rmse_rfi']):.5f}")
     print(
         f"RMSE RFI signal : {jnp.sqrt(jnp.mean(jnp.abs(rfi_A_true - rfi_A_pred)**2)):.5f}"
     )
-    print(f"RMSE AST        : {jnp.mean(true_pred['rmse_ast']):.5f}")
+    print(f"RMSE RFI Vis    : {jnp.mean(true_pred['rmse_rfi']):.5f}")
+    print(f"RMSE AST Vis    : {jnp.mean(true_pred['rmse_ast']):.5f}")
 
     rchi2 = reduced_chi2(
         true_pred["vis_obs"][0], ms_params["vis_obs"].T, ms_params["noise"]
