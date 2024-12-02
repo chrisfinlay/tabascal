@@ -643,7 +643,7 @@ def print_signal_specs(
 
     rfi_amp = da.mean(da.abs(vis_rfi)).compute()
     ast_amp = da.mean(da.abs(vis_ast)).compute()
-    noise = da.std(noise_data).compute()
+    noise = da.std(noise_data.real).compute()
     flag_rate = 100 * da.mean(flags).compute()
 
     print()
