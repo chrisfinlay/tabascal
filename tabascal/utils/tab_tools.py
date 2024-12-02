@@ -265,6 +265,8 @@ def get_tles(config, ms_params, norad_ids, spacetrack_path):
     if len(config["satellites"]["norad_ids"]) > 0:
         norad_ids += config["satellites"]["norad_ids"]
 
+    norad_ids = list(np.unique(norad_ids))
+
     n_rfi = len(norad_ids) + len(config["satellites"]["sat_ids"])
 
     # if len(config["satellites"]["sat_ids"])>0:
@@ -283,6 +285,8 @@ def get_tles(config, ms_params, norad_ids, spacetrack_path):
             tle_dir=config["satellites"]["tle_dir"],
         )
         tles = np.atleast_2d(tles_df[["TLE_LINE1", "TLE_LINE2"]].values)
+    elif len(norad_ids) > 0:
+        raise ValueError("No spacetrack_path has been defined.")
 
     # return n_rfi, norad_ids, tles, rfi_orbit
     return n_rfi, norad_ids, tles
