@@ -35,9 +35,13 @@ ast:
   # mean: est
   # mean: truth
   pow_spec:
+    # P0: 3e3
+    # k0: 1e-3
+    # gamma: 1.2
     P0: 3e3
-    k0: 1e-3
+    k0: 1e-5
     gamma: 1.2
+  pad_factor: 0.5
 
 rfi:
   init: est

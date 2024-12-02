@@ -5,8 +5,6 @@ import os
 import sys
 import yaml
 
-from frozendict import frozendict
-
 # os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"  # add this
 # os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
 
@@ -28,6 +26,7 @@ from tab_opt.gp import (
     find_closest_factor_greater_than,
 )
 from tab_opt.models import (
+    fixed_orbit_rfi_full_fft_standard_padded_model,
     fixed_orbit_rfi_fft_standard,
     fixed_orbit_rfi_full_fft_standard_model,
     fixed_orbit_rfi_full_fft_standard_model_otf,
@@ -82,16 +81,17 @@ def tabascal_subtraction(
     mem_i = 0
 
     ### Define Model
-    vis_model = fixed_orbit_rfi_full_fft_standard_model
+    vis_model = fixed_orbit_rfi_full_fft_standard_padded_model
+    # vis_model = fixed_orbit_rfi_full_fft_standard_model
     # vis_model = fixed_orbit_rfi_full_fft_standard_model_otf # RFI resampling is performed On-The-Fly
     # vis_model = fixed_orbit_rfi_full_fft_standard_model_otf_fft  # RFI resampling is performed On-The-Fly with FFT - Not working yet
 
     def model(args, v_obs=None):
         return fixed_orbit_rfi_fft_standard(args, vis_model, v_obs)
 
-    model_name = f"fixed_orbit_rfi"
+    model_name = vis_model.__name__
     print(f"Model : {model_name}")
-    results_name = f"fixed_orbit_rfi"
+    results_name = model_name
 
     if config["data"]["sim_dir"] is None:
         config["data"]["sim_dir"] = os.path.abspath(sim_dir)
@@ -168,9 +168,14 @@ def tabascal_subtraction(
         gp_params["n_rfi_times"] = gp_params["n_rfi_times"] - 1
         gp_params["rfi_times"] = gp_params["rfi_times"][:-1]
 
+    if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_padded_model":
+        n_ast_time = 2 * gp_params["ast_pad"] + ms_params["n_time"]
+    else:
+        n_ast_time = ms_params["n_time"]
+
     n_g_params = (2 * ms_params["n_ant"] - 1) * gp_params["n_g_times"]
     n_rfi_params = 2 * ms_params["n_ant"] * gp_params["n_rfi_times"]
-    n_ast_params = 2 * ms_params["n_time"] * ms_params["n_bl"]
+    n_ast_params = 2 * n_ast_time * ms_params["n_bl"]
     n_data = 2 * ms_params["n_bl"] * ms_params["n_time"]
 
     print(f"Using {n_int_samples} samples per time step for RFI prediction.")
@@ -181,7 +186,7 @@ def tabascal_subtraction(
     print("Number of parameters per antenna/baseline")
     print(f"Gains : {gp_params['n_g_times']: 4}")
     print(f"RFI   : {gp_params['n_rfi_times']: 4}")
-    print(f"AST   : {ms_params['n_time']: 4}")
+    print(f"AST   : {n_ast_time: 4}")
     print()
     print(f"Number of parameters : {n_g_params + n_rfi_params + n_ast_params}")
     print(f"Number of data points: {n_data}")
@@ -191,7 +196,7 @@ def tabascal_subtraction(
     ##############################################
     # Astronomical and RFI estimates from observed data
 
-    estimates = calculate_estimates(ms_params, tles, gp_params["rfi_times"])
+    estimates = calculate_estimates(ms_params, config, tles, gp_params)
 
     #############################
     # Calculate True Parameter Values if required
@@ -209,7 +214,12 @@ def tabascal_subtraction(
         config, ms_params, estimates, true_params, n_rfi, gp_params
     )
 
-    k_ast = jnp.fft.fftfreq(ms_params["n_time"], ms_params["int_time"])
+    if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_padded_model":
+        k_ast = jnp.fft.fftfreq(
+            ms_params["n_time"] + 2 * gp_params["ast_pad"], ms_params["int_time"]
+        )
+    else:
+        k_ast = jnp.fft.fftfreq(ms_params["n_time"], ms_params["int_time"])
 
     #######################################
     # Chunking of the baselines appears to not be needed. Only jax.checkpoint is needed to trade compute for memory
@@ -246,6 +256,7 @@ def tabascal_subtraction(
         "g_times": gp_params["g_times"],
         "rfi_times": gp_params["rfi_times"],
         "k_ast": k_ast,
+        "ast_pad": gp_params["ast_pad"],
         "rfi_var": gp_params["rfi_var"],
         "rfi_l": gp_params["rfi_l"],
         "n_int_samples": n_int_samples,
@@ -306,7 +317,10 @@ def tabascal_subtraction(
         "rfi_phase": rfi_phase,
     }
 
-    if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_model":
+    if (
+        config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_model"
+        or config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_padded_model"
+    ):
         args.update(
             {
                 "resample_rfi": resampling_kernel(

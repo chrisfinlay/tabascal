@@ -420,7 +420,12 @@ def get_truth_conditional(config):
 
 
 def calculate_true_values(
-    zarr_path: str, config: dict, ms_params: dict, gp_params, n_rfi, norad_ids
+    zarr_path: str,
+    config: dict,
+    ms_params: dict,
+    gp_params: dict,
+    n_rfi: int,
+    norad_ids: list,
 ):
     xds = xr.open_zarr(zarr_path)
 
@@ -507,7 +512,13 @@ def calculate_true_values(
     print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi)):.1f} Jy")
     print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast)):.1f} Jy")
 
-    ast_k = jnp.fft.fft(vis_ast, axis=0).T
+    if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_padded_model":
+        vis_ast_padded = vmap(jnp.pad, in_axes=(1, None, None))(
+            vis_ast, gp_params["ast_pad"], "linear_ramp"
+        )
+        ast_k = jnp.fft.fft(vis_ast_padded, axis=1)
+    else:
+        ast_k = jnp.fft.fft(vis_ast, axis=0).T
 
     gains_induce = vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
         gp_params["g_times"], ms_params["times"], gains_ants
@@ -576,15 +587,20 @@ def get_rfi_amp_estimate(ms_params, tles):
     return B * rfi_amp
 
 
-def calculate_estimates(ms_params, tles, rfi_times):
+def calculate_estimates(ms_params, config, tles, gp_params):
 
     vis_ast_est = estimate_vis_ast(ms_params)
     ast_k_est = jnp.fft.fft(vis_ast_est, axis=1)
 
+    if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_padded_model":
+        vis_ast_est_pad = vmap(jnp.pad, in_axes=(1, None, None))(
+            vis_ast_est, gp_params["ast_pad"], "linear_ramp"
+        )
+        ast_k_est = jnp.fft.fft(vis_ast_est_pad, axis=1)
+
+    rfi_times = gp_params["rfi_times"]
     n_rfi_times = len(rfi_times)
     # n_rfi = len(rfi_amp_ratios)
-
-    vis_rfi_est = estimate_vis_rfi(ms_params)
 
     rfi_amp = get_rfi_amp_estimate(ms_params, tles)
     n_rfi = len(rfi_amp)
@@ -599,6 +615,8 @@ def calculate_estimates(ms_params, tles, rfi_times):
     )(
         rfi_times, ms_params["times"], rfi_amp
     )[:, None, :] * jnp.ones((n_rfi, ms_params["n_ant"], n_rfi_times))
+
+    # vis_rfi_est = estimate_vis_rfi(ms_params)
 
     # rfi_induce_est = (
     #     jnp.interp(
@@ -655,9 +673,15 @@ def get_prior_means(config, ms_params, estimates, true_params, n_rfi, gp_params)
 
     # Set Astronomical Prior Mean
     if config["ast"]["mean"] == 0:
-        ast_k_prior_mean = jnp.zeros(
-            (ms_params["n_bl"], ms_params["n_time"]), dtype=complex
-        )
+        if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_padded_model":
+            ast_k_prior_mean = jnp.zeros(
+                (ms_params["n_bl"], ms_params["n_time"] + 2 * gp_params["ast_pad"]),
+                dtype=complex,
+            )
+        else:
+            ast_k_prior_mean = jnp.zeros(
+                (ms_params["n_bl"], ms_params["n_time"]), dtype=complex
+            )
     elif config["ast"]["mean"] == "est":
         ast_k_prior_mean = estimates["ast_k_est"]
     elif config["ast"]["mean"] == "truth":
@@ -779,6 +803,9 @@ def get_gp_params(config, ms_params):
         "rfi_l": rfi_l,
         "rfi_times": rfi_times,
         "n_rfi_times": n_rfi_times,
+        "ast_pad": int(
+            max([config["ast"]["pad_factor"] * ms_params["n_time"] // 2, 1])
+        ),
     }
 
     return gp_params
