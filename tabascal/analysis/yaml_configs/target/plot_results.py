@@ -12,7 +12,7 @@ import os
 plt.rcParams["font.size"] = 16
 
 
-def get_stats(stats_base, img_dirs, img_name):
+def get_stats(stats_base: dict, img_dirs: list, img_name: str, n_sigma: float = 3.0):
 
     n_dir = len(img_dirs.flatten())
     shape = img_dirs.shape
@@ -43,7 +43,7 @@ def get_stats(stats_base, img_dirs, img_name):
         try:
             bdsf_df = pd.read_csv(bdsf_path, skiprows=5)
             if len(bdsf_df) > 0:
-                det[i] = np.sum(bdsf_df[" Total_flux"] > 3e-3 * im_noise[i])
+                det[i] = np.sum(bdsf_df[" Total_flux"] > n_sigma * 1e-3 * im_noise[i])
         except:
             print(f"No pyBDSF file found at {bdsf_path}")
 
@@ -127,7 +127,7 @@ img_names = {
 }
 
 
-def main(data_dir, n_bins, bin_stat):
+def main(data_dir: str, n_bins: int, bin_stat: callable, n_sigma: float):
 
     data_dirs = np.array(glob(os.path.join(data_dir, "*")))
 
@@ -171,7 +171,7 @@ def main(data_dir, n_bins, bin_stat):
     }
 
     all_stats = {
-        name: get_stats(base_stats, img_dirs, img_names[name]) for name in options
+        name: get_stats(base_stats, img_dirs, img_names[name], n_sigma) for name in options
     }
 
     all_med = {
@@ -383,7 +383,10 @@ if __name__ == "__main__":
         help="Path to the data directory containing all the simulations.",
     )
     parser.add_argument(
-        "-b", "--n_bins", default=5, help="Number of RFI bins. Default is 5."
+        "-b", "--n_bins", default=5, type=int, help="Number of RFI bins. Default is 5."
+    )
+    parser.add_argument(
+        "-n", "--n_sigma", default=3.0, type=float, help="Number of sigma of the image noise to consider a detection. Default is 3."
     )
     parser.add_argument(
         "-s",
@@ -395,6 +398,8 @@ if __name__ == "__main__":
     args = parser.parse_args()
     data_dir = args.data_dir
     n_bins = args.n_bins
+    n_sigma = args.n_sigma
+    stat = args.stat
 
     stat_opts = {
         "median": np.median,
@@ -403,4 +408,4 @@ if __name__ == "__main__":
 
     os.makedirs(os.path.join(data_dir, "plots"), exist_ok=True)
 
-    main(data_dir, n_bins, stat_opts[args.stat])
+    main(data_dir, n_bins, stat_opts[stat], n_sigma)
