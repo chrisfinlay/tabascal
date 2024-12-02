@@ -92,7 +92,7 @@ def mk_obs_name(prefix: str, obs: Observation, suffix: str = None) -> str:
     obs_name = (
         f"{prefix}_obs_{obs.n_ant:0>2}A_{obs.n_time:0>3}T-{int(obs.times[0]):0>4}-{int(obs.times[-1]):0>4}"
         + f"_{obs.n_int_samples:0>3}I_{obs.n_freq:0>3}F-{float(obs.freqs[0]):.3e}-{float(obs.freqs[-1]):.3e}"
-        + f"_{obs.n_p_ast:0>3}PAST_{obs.n_g_ast:0>3}GAST_{obs.n_e_ast:0>3}EAST_{obs.n_rfi_satellite}SAT_{obs.n_rfi_stationary}GRD"
+        + f"_{obs.n_p_ast:0>3}PAST_{obs.n_g_ast:0>3}GAST_{obs.n_e_ast:0>3}EAST_{obs.n_rfi_tle_satellite}SAT_{obs.n_rfi_stationary}GRD"
     )
     if suffix is not None:
         obs_name = obs_name + "_" + suffix
