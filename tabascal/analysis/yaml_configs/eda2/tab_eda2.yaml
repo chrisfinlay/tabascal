@@ -51,9 +51,10 @@ rfi:
   corr_time: 24   # seconds
 
 satellites:
-  norad_ids: [55700] 
-  sat_ids: []
-  ole_path: ../aux_data/satellite.ole
+  spacetrack_path: spacetrack_login.yaml
+  # norad_ids: [55700] 
+  # sat_ids: []
+  # ole_path: ../aux_data/satellite.ole
   tle_dir: ../aux_data/tles
 
 # True gains
