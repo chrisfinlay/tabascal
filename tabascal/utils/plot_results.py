@@ -1,0 +1,1002 @@
+import numpy as np
+import pandas as pd
+from astropy.io import fits
+import matplotlib.pyplot as plt
+from matplotlib.colors import LogNorm
+from scipy.stats import norm
+
+from daskms import xds_from_ms
+import xarray as xr
+
+from glob import glob
+import os
+
+from tqdm import tqdm
+
+plt.rcParams["font.size"] = 16
+
+
+def get_stats(
+    stats_base: dict, name: str, img_dirs: list, img_name: str, n_sigma: float = 3.0
+):
+
+    n_dir = len(img_dirs.flatten())
+    shape = img_dirs.shape
+
+    TP = np.zeros(n_dir)
+    im_noise = np.nan * np.zeros(n_dir)
+    mean_I_error = np.nan * np.zeros(n_dir)
+    std_I_error = np.nan * np.zeros(n_dir)
+    det = np.zeros(n_dir)
+
+    no_src = []
+    no_match = []
+
+    for i, img_dir in enumerate(img_dirs.flatten()):
+        img_path = os.path.join(img_dir, f"{img_name}.csv")
+        bdsf_path = os.path.join(img_dir, f"{img_name}.pybdsf.csv")
+
+        try:
+            df = pd.read_csv(img_path)
+            n_src = len(df)
+            if n_src > 0:
+                im_noise[i] = df["Image_noise [mJy/beam]"].values[0]
+                idx = np.where(df["SNR"].values > n_sigma)[0]
+                n_match = len(idx)
+                if n_match > 0:
+                    TP[i] = n_match
+                    mean_I_error[i] = np.mean(
+                        df["Total_flux_image [mJy]"].iloc[idx]
+                        - df["Total_flux_true [mJy]"].iloc[idx]
+                    )
+                    std_I_error[i] = np.mean(df["Total_flux_std [mJy]"].iloc[idx])
+
+                    bdsf_df = pd.read_csv(bdsf_path, skiprows=5)
+                    if len(bdsf_df) > 0:
+                        det[i] = np.sum(
+                            bdsf_df[" Total_flux"] > n_sigma * 1e-3 * im_noise[i]
+                        )
+                else:
+                    no_match.append(img_path)
+        except:
+            no_src.append(img_path)
+
+    stats = {
+        "TP": TP,
+        "im_noise": im_noise,
+        "mean_I_error": mean_I_error,
+        "std_I_error": std_I_error,
+        "det": det,
+    }
+    stats = {key: val.reshape(*shape) for key, val in stats.items()}
+    stats.update(stats_base)
+
+    print()
+    print(f"{name} results")
+    print(f"Number of runs with no source extraction results {len(no_src)}")
+    if len(no_src) > 0:
+        print("Runs with no source extraction")
+        for no in no_src:
+            print(no)
+    if len(no_match) > 0:
+        print(f"Runs with no matches with SNR > {n_sigma:.1f}")
+        for no in no_match:
+            print(no)
+
+    stats["FP"] = stats["det"] - stats["TP"]
+    stats["FN"] = stats["P"] - stats["TP"]
+    # stats["TN"] = unknown
+    # stats["N"] = stats["FP"] + stats["TN"] => unknown
+    stats["TPR"] = stats["TP"] / stats["P"]
+    stats["FNR"] = stats["FN"] / stats["P"]
+    # stats["FPR"] = stats["FP"] / stats["N"]
+    # stats["TNR"] = stats["TN"] / stats["N"]
+    stats["prec"] = stats["TP"] / (stats["TP"] + stats["FP"])  # Purity
+    stats["prec"] = np.where(np.isnan(stats["prec"]), 0, stats["prec"])
+    stats["rec"] = stats["TP"] / (stats["TP"] + stats["FN"])  # Completeness
+
+    stats["SNR_RFI"] = stats["mean_rfi"] / stats["vis_noise"]
+    stats["RFI/AST"] = stats["mean_rfi"] / stats["mean_ast"]
+
+    return stats
+
+
+def bin_stats(stats, n_bins, statistic, bin_array):
+
+    bins = np.logspace(
+        np.log10(np.min(bin_array)), np.log10(np.max(bin_array) + 1), n_bins + 1
+    )
+    bin_idx = [
+        np.where((bin_array >= bins[i]) & (bin_array < bins[i + 1]))[0]
+        for i in range(n_bins)
+    ]
+
+    binned = {}
+    for key, value in stats.items():
+        binned_stat = np.zeros(n_bins)
+        for i, idx in enumerate(bin_idx):
+            binned_value = value[idx]
+            binned_stat[i] = statistic(binned_value[~np.isnan(binned_value)])
+        binned[key] = binned_stat
+
+    return binned
+
+
+def get_error(sim_file, tab_file):
+
+    xds = xr.open_zarr(sim_file)
+    xds_tab = xr.open_zarr(tab_file)
+    error = (xds.vis_ast.data[:, :, 0] - xds_tab.ast_vis.data[0, :, :].T).compute()
+
+    return np.concatenate([error.real.flatten(), error.imag.flatten()])
+
+
+def get_aoflagged(sim_file, ms_file):
+
+    xds = xr.open_zarr(sim_file)
+    xds_ms = xds_from_ms(ms_file)[0]
+    idx = np.where(xds_ms.FLAG.data[:, 0, 0] == 0)[0].compute()
+    error = (
+        xds.vis_ast.data[:, :, 0].flatten()[idx] - xds_ms.CAL_DATA.data[idx, 0, 0]
+    ).compute()
+
+    return np.concatenate([error.real.flatten(), error.imag.flatten()])
+
+
+def get_perfect_flagged(sim_file):
+
+    xds = xr.open_zarr(sim_file)
+    idx = np.where(xds.flags.data[:, :, 0].flatten() == 0)[0].compute()
+    error = (
+        xds.vis_ast.data[:, :, 0].flatten()[idx]
+        - xds.vis_calibrated.data[:, :, 0].flatten()[idx]
+    ).compute()
+
+    return np.concatenate([error.real.flatten(), error.imag.flatten()])
+
+
+def get_noise(sim_file, gains=False):
+
+    xds = xr.open_zarr(sim_file)
+    if gains:
+        a1, a2 = xds.antenna1.data.compute(), xds.antenna1.data.compute()
+        gains = xds.gains_ants.data[:, :, 0].compute()
+        noise = (
+            xds.noise_data.data[:, :, 0].compute()
+            * gains[:, a1]
+            * np.conjugate(gains[:, a2])
+        )
+    else:
+        noise = xds.noise_data.data[:, :, 0].compute()
+
+    return np.concatenate([noise.real.flatten(), noise.imag.flatten()])
+
+
+def get_bins(bin_array, n_bins):
+
+    bins = np.logspace(
+        np.log10(np.min(bin_array)), np.log10(np.max(bin_array) + 1), n_bins + 1
+    )
+    bin_idx = [
+        np.where((bin_array >= bins[i]) & (bin_array < bins[i + 1]))[0]
+        for i in range(n_bins)
+    ]
+
+    return bin_idx
+
+
+def get_all_errors(zarr_files, ms_files, tab_files, bin_idx):
+
+    errors = []
+    errors_flags1 = []
+    errors_flags2 = []
+    # noises = []
+    # noises_g = []
+    print()
+    print("Calculating Errors")
+    for idx in tqdm(bin_idx):
+
+        errors.append(
+            np.concatenate(
+                [
+                    get_error(zarr_file, tab_file)
+                    for zarr_file, tab_file in zip(zarr_files[idx], tab_files[idx])
+                ]
+            )
+        )
+        errors_flags1.append(
+            np.concatenate(
+                [get_perfect_flagged(zarr_file) for zarr_file in zarr_files[idx]]
+            )
+        )
+        errors_flags2.append(
+            np.concatenate(
+                [
+                    get_aoflagged(zarr_file, ms_file)
+                    for zarr_file, ms_file in zip(zarr_files[idx], ms_files[idx])
+                ]
+            )
+        )
+        # noises.append(np.concatenate([get_noise(zarr_file) for zarr_file in zarr_files[idx]]))
+        # noises_g.append(np.concatenate([get_noise(zarr_file, gains=True) for zarr_file in zarr_files[idx]]))
+
+    return errors, errors_flags1, errors_flags2
+
+
+def get_file_names(data_dir: str, model_name: str):
+    data_dirs = np.array(glob(os.path.join(data_dir, "*")))
+
+    data_dirs = np.array([d for d in data_dirs if "plots" not in d])
+
+    img_dirs = np.array([os.path.join(d, "images") for d in data_dirs])
+
+    ms_files = np.array(
+        [os.path.join(d, os.path.split(d)[1] + ".ms") for d in data_dirs]
+    )
+    zarr_files = np.array(
+        [os.path.join(d, os.path.split(d)[1] + ".zarr") for d in data_dirs]
+    )
+    tab_files = np.array(
+        [
+            os.path.join(
+                os.path.join(d, "results"),
+                f"{model_name}.zarr",
+            )
+            for d in data_dirs
+        ]
+    )
+
+    n_sim = len(data_dirs)
+
+    rchi2 = np.zeros(n_sim)
+    mean_rfi = np.zeros(n_sim)
+    mean_ast = np.zeros(n_sim)
+    vis_noise = np.zeros(n_sim)
+    flags1 = np.zeros(n_sim)
+    flags2 = np.zeros(n_sim)
+    idx = []
+
+    no_tab = []
+    bad_tab = []
+
+    for i in tqdm(range(n_sim)):
+        try:
+            xds_ms = xds_from_ms(ms_files[i])[0]
+            xds = xr.open_zarr(zarr_files[i])
+            xds_res = xr.open_zarr(tab_files[i])
+            rchi2[i] = (
+                np.mean(
+                    np.abs(xds.vis_obs.data[:, :, 0] - xds_res.vis_obs.data[0, :, :].T)
+                    ** 2
+                )
+                / (2 * xds.noise_std.data**2)
+            ).compute()[0]
+            mean_rfi[i] = np.abs(xds_ms.RFI_MODEL_DATA.data).mean().compute()
+            mean_ast[i] = np.abs(xds_ms.AST_MODEL_DATA.data).mean().compute()
+            flags1[i] = np.abs(xds.flags).mean().compute()
+            flags2[i] = np.abs(xds_ms.FLAG.data).mean().compute()
+            vis_noise[i] = np.std(xds_ms.NOISE_DATA.data.real).compute()
+            if rchi2[i] < 1:
+                idx.append(i)
+            else:
+                bad_tab.append(data_dirs[i])
+        except:
+            no_tab.append(data_dirs[i])
+
+    idx = np.array(idx)
+    files = {
+        "data_dirs": data_dirs[idx],
+        "img_dirs": img_dirs[idx],
+        "ms_files": ms_files[idx],
+        "zarr_files": zarr_files[idx],
+        "tab_files": tab_files[idx],
+    }
+
+    data = {
+        "rchi2": rchi2[idx],
+        "mean_rfi": mean_rfi[idx],
+        "mean_ast": mean_ast[idx],
+        "flags1": flags1[idx],
+        "flags2": flags2[idx],
+        "vis_noise": vis_noise[idx],
+    }
+
+    print()
+    print(f"Total number of simulations      : {n_sim}")
+    print(f"Number of sims with good results : {len(idx)}")
+    print(f"Number of sims with rchi2 > 1    : {len(bad_tab)}")
+    print(f"Number of sims with no results   : {len(no_tab)}")
+    if len(bad_tab) > 0:
+        print()
+        print("Simulations with rchi2 > 1")
+        for bad in bad_tab:
+            print(bad)
+    if len(no_tab) > 0:
+        print()
+        print("Simulations with no results")
+        for no in no_tab:
+            print(no)
+
+    return files, data
+
+
+def get_names(suffix: str = ""):
+
+    names = {
+        "options": [
+            "ideal",
+            "tab",
+            "flag1",
+            "flag2",
+        ],
+        "names": {
+            "ideal": "Uncontaminated",
+            "tab": "TABASCAL",
+            "flag1": "Perfect Flagging",
+            "flag2": "AOFlagger",
+        },
+        "colors": {
+            "ideal": "tab:blue",
+            "tab": "tab:orange",
+            "flag1": "tab:red",
+            "flag2": "tab:green",
+        },
+        "img_names": {
+            "ideal": f"AST_DATA_0.0sigma{suffix}",
+            "tab": f"TAB_DATA_0.0sigma{suffix}",
+            "flag1": f"CAL_DATA_3.0sigma{suffix}",
+            "flag2": f"CAL_DATA_aoflagger{suffix}",
+        },
+    }
+
+    return names
+
+
+def plot_errors(
+    errors: dict, bin_idx: list, SNR: list, noise_std: float, hist_bins: int
+):
+
+    plt.figure(figsize=(15, 5))
+    for i, idx in enumerate(bin_idx):
+        x = np.linspace(errors[i].min(), errors[i].max(), 100)
+        mean, std = norm.fit(errors[i])
+        y = norm.pdf(x, mean, std)
+        plt.hist(
+            errors[i],
+            bins=hist_bins,
+            density=True,
+            color=f"C{i}",
+            alpha=0.8,
+            label=f"{10*np.log10(np.mean(SNR[idx])): = .1f} dB",
+            histtype="step",
+        )
+        plt.plot(x, y, color=f"C{i}", alpha=0.8)
+
+    x = np.linspace(-5, 5, 100)
+    plt.plot(x, norm.pdf(x, 0, noise_std), color="k", label="Vis Noise")
+    plt.ylim(1e-6, 2e0)
+    plt.xlim(x[0], x[-1])
+    plt.semilogy()
+    plt.xlabel("AST Vis Error [Jy]")
+    plt.ylabel("Probability Density [Jy$^{-1}$]")
+    plt.grid()
+
+
+def plot_tab_errors(
+    errors: dict,
+    bin_idx: list,
+    SNR: list,
+    noise_std: float,
+    hist_bins: int,
+    data_dir: str,
+):
+
+    plot_errors(errors, bin_idx, SNR, noise_std, hist_bins)
+
+    mean, std = norm.fit(errors[0])
+    plt.axvline(mean - 4 * std, ls="dashed", color="tab:blue")
+    plt.axvline(mean + 4 * std, ls="dashed", color="tab:blue", label="4$\\sigma$ Error")
+    plt.legend(fontsize=14, title="SNR$(|V^{RFI}|)$")
+    plt.title("TABASCAL Errors")
+
+    plt.text(
+        -4.5,
+        0.5,
+        f"Vis Noise std : {noise_std:.2f} Jy",
+        {"fontsize": 14},
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.4, "edgecolor": "k"},
+    )
+    plt.text(
+        -4.5,
+        0.1,
+        f"TAB Error std : {std:.2f} Jy",
+        {"fontsize": 14},
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.4, "edgecolor": "k"},
+    )
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/TABASCAL_Errors.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_perfect_flag_errors(
+    errors: dict,
+    bin_idx: list,
+    SNR: list,
+    noise_std: float,
+    hist_bins: int,
+    data_dir: str,
+):
+
+    plot_errors(errors, bin_idx, SNR, noise_std, hist_bins)
+
+    sig3 = 3 * noise_std * np.sqrt(2)
+    plt.axvline(-sig3, ls="dashed", color="k")
+    plt.axvline(sig3, ls="dashed", color="k", label="3$\\sigma$ Noise")
+    plt.legend(fontsize=14, title="SNR$(|V^{RFI}|)$")
+    plt.title("Perfectly Calibrated & 3$\\sigma$ Flagged Errors")
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/Perfect_Flag_Errors.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_aoflagger_errors(
+    errors: dict,
+    bin_idx: list,
+    SNR: list,
+    noise_std: float,
+    hist_bins: int,
+    data_dir: str,
+):
+
+    plot_errors(errors, bin_idx, SNR, noise_std, hist_bins)
+
+    sig3 = 3 * noise_std * np.sqrt(2)
+    plt.axvline(-sig3, ls="dashed", color="k")
+    plt.axvline(sig3, ls="dashed", color="k", label="3$\\sigma$ Noise")
+    plt.legend(fontsize=14, title="SNR$(|V^{RFI}|)$")
+    plt.title("AOFlagger Calibrated & Flagged Errors")
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/AOFlagger_Errors.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_sausage(all_med, all_q1, all_q2, names, x_name, y_name):
+
+    plt.figure(figsize=(7, 6))
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+
+    for name, stat in all_med.items():
+        marker = "o-" if name == "ideal" else ".-"
+        ax.plot(
+            stat[x_name],
+            stat[y_name],
+            marker,
+            label=names["names"][name],
+            color=names["colors"][name],
+        )
+        ax.fill_between(
+            x=stat[x_name],
+            y1=all_q1[name][y_name],
+            y2=all_q2[name][y_name],
+            color=names["colors"][name],
+            alpha=0.3,
+        )
+
+    ax.legend()
+
+    return ax
+
+
+def plot_completeness(
+    all_med: dict, all_q1: dict, all_q2: dict, names: dict, data_dir: str
+):
+    ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "rec")
+
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Completeness")
+    ax.semilogx()
+
+    ax2 = ax.twiny()
+    ax2.plot(all_med["ideal"]["RFI/AST"], all_med["ideal"]["rec"], alpha=0)
+    ax2.semilogx()
+    ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/Completeness.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_purity(all_med: dict, all_q1: dict, all_q2: dict, names: dict, data_dir: str):
+
+    ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "prec")
+
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Purity")
+    ax.semilogx()
+
+    ax2 = ax.twiny()
+    ax2.plot(all_med["ideal"]["RFI/AST"], all_med["ideal"]["prec"], alpha=0)
+    ax2.semilogx()
+    ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/Purity.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_image_noise(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
+
+    ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "im_noise")
+
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Image Noise [mJy/beam]")
+    ax.semilogx()
+    ax.semilogy()
+
+    ax2 = ax.twiny()
+    ax2.plot(all_med["ideal"]["RFI/AST"], all_med["ideal"]["im_noise"], alpha=0)
+    ax2.semilogx()
+    ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/ImageNoise.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_flux_error(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
+
+    ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "mean_I_error")
+
+    ax.axhline(0, ls="--", color="k")
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Mean Flux Error [mJy]")
+    ax.semilogx()
+    # ax.xticks(10**np.arange(-1.0, 2.0, 1.0), 10**np.arange(-1.0, 2.0, 1.0))
+    ax.set_ylim(-100, 100)
+
+    ax2 = ax.twiny()
+    ax2.plot(all_med["ideal"]["RFI/AST"], all_med["ideal"]["mean_I_error"], alpha=0)
+    ax2.semilogx()
+    ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/FluxError.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_flag_noise(
+    files: dict,
+    noise_std: float,
+    data: dict,
+    all_stats: dict,
+    names: dict,
+    data_dir: str,
+):
+
+    flag_rate = np.linspace(0, 0.999, 100)
+    n_row = xds_from_ms(files["ms_files"][0])[0].DATA.data.shape[0]
+    ther_noise = 1e3 * noise_std / np.sqrt((1 - flag_rate) * n_row)
+
+    plt.figure(figsize=(7, 6))
+    for name, flag in zip(["flag1", "flag2"], [data["flags1"], data["flags2"]]):
+        plt.plot(
+            100 * flag,
+            all_stats[name]["im_noise"],
+            "o",
+            label=names["names"][name],
+            color=names["colors"][name],
+        )
+
+    plt.plot(100 * flag_rate, ther_noise, "k--", label="Theoretical")
+    plt.xlabel("Flag Rate [%]")
+    plt.ylabel("Actual Image Noise [mJy]")
+    plt.semilogy()
+    plt.legend()
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/ImageNoiseVsFlagRate.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_theoretical_noise(
+    files: dict,
+    noise_std: float,
+    data: dict,
+    all_stats: dict,
+    names: dict,
+    data_dir: str,
+):
+
+    n_row = xds_from_ms(files["ms_files"][0])[0].DATA.data.shape[0]
+
+    ther_noise1 = np.array(
+        [
+            1e3 * noise_std / np.sqrt((1 - flag_rate) * n_row)
+            for flag_rate in data["flags1"]
+        ]
+    )
+    ther_noise2 = np.array(
+        [
+            1e3 * noise_std / np.sqrt((1 - flag_rate) * n_row)
+            for flag_rate in data["flags2"]
+        ]
+    )
+
+    sig_I = np.linspace(ther_noise1.min(), ther_noise1.max(), 100)
+
+    plt.figure(figsize=(7, 6))
+    for name, noise in zip(["flag1", "flag2"], [ther_noise1, ther_noise2]):
+        plt.plot(
+            noise,
+            all_stats[name]["im_noise"],
+            "o",
+            label=names["names"][name],
+            color=names["colors"][name],
+        )
+
+    plt.plot(sig_I, sig_I, "k--", label="Theoretical")
+    plt.xlabel("Theoretical Image Noise [mJy]")
+    plt.ylabel("Actual Image Noise [mJy]")
+    plt.semilogy()
+    plt.legend()
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/ImageNoiseVsTheory.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_image(
+    img_dirs,
+    img_names,
+    names,
+    options,
+    mean_rfi,
+    rfi_amp,
+    data_dir,
+    vbounds,
+    log: bool = False,
+    cmap: str = "Greys_r",
+):
+
+    idx = np.argmin(np.abs(mean_rfi - rfi_amp))
+    imgs = [
+        1e3 * fits.getdata(os.path.join(img_dirs[idx], name + "-image.fits"))[0, 0]
+        for name in img_names.values()
+    ]
+    heads = [
+        fits.getheader(os.path.join(img_dirs[idx], name + "-image.fits"))
+        for name in img_names.values()
+    ]
+    noises = {
+        key: 1e3
+        * np.nanstd(fits.getdata(os.path.join(img_dirs[idx], name + "-residual.fits")))
+        for key, name in img_names.items()
+    }
+
+    # cmap = 'PuOr_r'
+
+    ##############################
+
+    img_scale = "Log" if log else "Linear"
+    # vbounds = [-5, 5] # 64 Ant
+    vbounds = [-10, 10]
+    vbounds = [-15, 15]
+    # vbounds = [-100, 100]
+    vbounds_log = [1e-1, 1e1]
+
+    edge = np.abs(heads[0]["CDELT1"]) * heads[0]["NAXIS1"] / 2
+
+    fig, ax = plt.subplots(2, 2, figsize=(12, 12))
+    for i, a in enumerate(ax.flatten()):
+        if log:
+            im = a.imshow(
+                np.abs(imgs[i]),
+                cmap=cmap,
+                origin="lower",
+                extent=[-edge, edge, -edge, edge],
+                norm=LogNorm(vmin=vbounds_log[0], vmax=vbounds_log[1]),
+            )
+        else:
+            im = a.imshow(
+                imgs[i],
+                cmap=cmap,
+                origin="lower",
+                extent=[-edge, edge, -edge, edge],
+                vmin=vbounds[0],
+                vmax=vbounds[1],
+            )
+        a.text(
+            -0.63,
+            0.58,
+            names[options[i]],
+            {"fontsize": 20},
+            bbox={
+                "facecolor": "white",
+                "boxstyle": "round",
+                "pad": 0.2,
+                "edgecolor": "k",
+            },
+        )
+        a.text(
+            -0.63,
+            -0.63,
+            r" $\sigma_I$:" + f" {noises[options[i]]:.2f} mJy/beam",
+            {"fontsize": 16},
+            bbox={
+                "facecolor": "white",
+                "boxstyle": "round",
+                "pad": 0.2,
+                "edgecolor": "k",
+            },
+        )
+
+    # cbar_ax = fig.add_axes([0.85, 0.15, 0.02, 0.7]) # figsize=(15,11)
+    cbar_ax = fig.add_axes([0.91, 0.15, 0.02, 0.7])
+    fig.colorbar(im, cax=cbar_ax, label="Flux mJy/beam")
+
+    ax[0, 0].set_ylabel("DEC Offset [deg]")
+    ax[1, 0].set_ylabel("DEC Offset [deg]")
+
+    ax[1, 0].set_xlabel("RA Offset [deg]")
+    ax[1, 1].set_xlabel("RA Offset [deg]")
+
+    ax[0, 1].tick_params(
+        axis="both",  # changes apply to the x-axis
+        labelbottom=False,
+        labelleft=False,
+        direction="in",
+    )
+    ax[0, 0].tick_params(axis="x", labelbottom=False)  # changes apply to the x-axis
+    ax[1, 1].tick_params(labelleft=False)
+
+    for a in ax.flatten():
+        a.tick_params(
+            direction="in", left=True, right=True, top=True, bottom=True, labelsize=16
+        )
+    # plt.subplots_adjust(wspace=-0.4441, hspace=0) # figsize=(15,11)
+    # plt.subplots_adjust(wspace=-0.2799, hspace=0.) # figsize=(13,12)
+    plt.subplots_adjust(wspace=0, hspace=-0.03)  # figsize=(11.5,12)
+    plt.suptitle(f"Mean RFI Amplitude: {mean_rfi[idx]:.2f} Jy", y=0.91)
+    plt.savefig(
+        os.path.join(
+            data_dir, f"plots/CompImage{img_scale}_{cmap}_RFI_{mean_rfi[idx]:.2e}.pdf"
+        ),
+        dpi=200,
+        format="pdf",
+        bbox_inches="tight",
+    )
+
+
+def plot(
+    data_dir: str,
+    n_bins: int,
+    n_hist_bins: int,
+    n_sigma: float,
+    plots: dict,
+    rfi_amps: list,
+    vbounds: list,
+    model_name: str = "map_pred_fixed_orbit_rfi_full_fft_standard_padded_model",
+):
+
+    files, data = get_file_names(data_dir, model_name)
+
+    names = get_names(suffix="")
+
+    noise_std = np.mean(data["vis_noise"])
+
+    #############################################################
+    # Visibility Errors
+    #############################################################
+
+    if plots["error"]:
+
+        SNR = data["mean_rfi"] / data["vis_noise"]
+        bin_idx = get_bins(SNR, n_bins)
+        errors, errors_flags1, errors_flags2 = get_all_errors(
+            files["zarr_files"], files["ms_files"], files["tab_files"], bin_idx
+        )
+
+        plot_tab_errors(errors, bin_idx, SNR, noise_std, n_hist_bins, data_dir)
+
+        plot_perfect_flag_errors(
+            errors_flags1, bin_idx, SNR, noise_std, n_hist_bins, data_dir
+        )
+
+        plot_aoflagger_errors(
+            errors_flags2, bin_idx, SNR, noise_std, n_hist_bins, data_dir
+        )
+
+    if plots["img"]:
+        for rfi_amp in rfi_amps:
+            plot_image(
+                files["img_dirs"],
+                names["img_names"],
+                names["names"],
+                names["options"],
+                data["mean_rfi"],
+                rfi_amp,
+                data_dir,
+                vbounds,
+                log=False,
+            )
+
+    #############################################################
+    # Point Source Recovery Statistics
+    #############################################################
+
+    if plots["src"]:
+        n_true = np.array(
+            [
+                len(pd.read_csv(os.path.join(d, "true_sources.csv")))
+                for d in files["img_dirs"]
+            ]
+        )
+
+        base_stats = {
+            "mean_ast": data["mean_ast"],
+            "mean_rfi": data["mean_rfi"],
+            "vis_noise": data["vis_noise"],
+            "P": n_true,
+        }
+
+        all_stats = {
+            name: get_stats(
+                base_stats,
+                names["names"][name],
+                files["img_dirs"],
+                names["img_names"][name],
+                n_sigma,
+            )
+            for name in names["options"]
+        }
+
+        percentiles = [2.5, 50, 97.5]
+        percentiles = [16, 50, 84]
+
+        all_q1 = {
+            name: bin_stats(
+                stat,
+                n_bins,
+                lambda x: np.percentile(x, percentiles[0]),
+                data["mean_rfi"],
+            )
+            for name, stat in all_stats.items()
+        }
+        all_med = {
+            name: bin_stats(
+                stat,
+                n_bins,
+                lambda x: np.percentile(x, percentiles[1]),
+                data["mean_rfi"],
+            )
+            for name, stat in all_stats.items()
+        }
+        all_q2 = {
+            name: bin_stats(
+                stat,
+                n_bins,
+                lambda x: np.percentile(x, percentiles[2]),
+                data["mean_rfi"],
+            )
+            for name, stat in all_stats.items()
+        }
+        print()
+        plot_completeness(all_med, all_q1, all_q2, names, data_dir)
+        plot_purity(all_med, all_q1, all_q2, names, data_dir)
+        plot_image_noise(all_med, all_q1, all_q2, names, data_dir)
+        plot_flux_error(all_med, all_q1, all_q2, names, data_dir)
+
+        # plot_flag_noise(files, noise_std, data, all_stats, names, data_dir)
+        # plot_theoretical_noise(files, noise_std, data, all_stats, names, data_dir)
+
+
+def main():
+    import argparse
+
+    parser = argparse.ArgumentParser(
+        description="Analyse tabascal simulations, recoveries and point source extractions."
+    )
+    parser.add_argument(
+        "-d",
+        "--data_dir",
+        required=True,
+        help="Path to the data directory containing all the simulations.",
+    )
+    parser.add_argument(
+        "-b", "--n_bins", default=5, type=int, help="Number of RFI bins. Default is 5."
+    )
+    parser.add_argument(
+        "-hb",
+        "--hist_bins",
+        default=100,
+        type=int,
+        help="Number of histogram bins in error plots. Default is 100.",
+    )
+    parser.add_argument(
+        "-n",
+        "--n_sigma",
+        default=3.0,
+        type=float,
+        help="Number of sigma of the image noise to consider a detection. Default is 3.",
+    )
+    parser.add_argument(
+        "-p",
+        "--plots",
+        default="error,img,src",
+        help="Which plots to create.",
+    )
+    parser.add_argument(
+        "-v",
+        "--vbounds",
+        default="-15,15",
+        help="Bounds on the image plot.",
+    )
+    parser.add_argument(
+        "-r",
+        "--rfi_amps",
+        default="100",
+        help="RFI amplitude for image plot.",
+    )
+
+    args = parser.parse_args()
+    data_dir = args.data_dir
+    plots_types = args.plots.split(",")
+    vbounds = [float(x) for x in args.vbounds.split(",")]
+    rfi_amps = [float(x) for x in args.rfi_amps.split(",")]
+
+    os.makedirs(os.path.join(data_dir, "plots"), exist_ok=True)
+
+    plots = {
+        "error": False,
+        "img": False,
+        "src": False,
+        "pow_spec": False,
+    }
+
+    for plot_type in plots_types:
+        plots[plot_type] = True
+
+    plot(
+        data_dir,
+        args.n_bins,
+        args.hist_bins,
+        args.n_sigma,
+        plots,
+        rfi_amps,
+        vbounds,
+    )
+
+
+if __name__ == "__main__":
+
+    main()
