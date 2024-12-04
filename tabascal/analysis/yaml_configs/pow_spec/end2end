@@ -4,14 +4,19 @@
 # ras=(0)
 # powers=(1e-2)
 
-seeds=(0 1 2 3 4 5 6 7 8 9)
-ras=(0 36 72 108 144 180 216 252 288 324)
-decs=(0 -6 -12 -18 -24 -30 -36 -42 -48 -54)
+ras=({0..324..36})
+decs=({-60..30..10})
 
 powers=(1e-2 3e-2 1e-1 3e-1 1e0 3e0 1e1 3e1 1e2 3e2)
 
-for i in "${!seeds[@]}";
+len_ra=${#ras[@]}
+len=$((len_ra * ${#powers[@]}))
+seeds=($(seq 1 $len))
+
+for i in "${!ras[@]}";
 do for j in "${!powers[@]}";
-do ps-end2end -s sim_pow_spec.yaml -t tab_pow_spec.yaml -e extract_pow_spec.yaml -r ${powers[j]} -rr $((seeds[i] * ras[j])) -ra ${ras[i]} -dec ${decs[i]} 2>&1 | tee log_end2end.txt ;
+do k=$((len_ra*i+j)); 
+echo ${seeds[k]}; 
+ps-end2end -s sim_pow_spec.yaml -t tab_pow_spec.yaml -e extract_pow_spec.yaml -ra ${ras[i]} -dec ${decs[i]} -r ${powers[j]} -rr ${seeds[k]} 2>&1 | tee log_end2end.txt ;
 done;
 done;

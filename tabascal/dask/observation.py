@@ -337,7 +337,7 @@ class Observation(Telescope):
             chunks=(self.time_chunk, self.ant_chunk, self.freq_chunk),
             dtype=jnp.complex128,
         )
-        self.random_seed = np.random.default_rng(random_seed)
+        self.random_seed = random_seed
 
         self.n_ast = 0
         self.n_p_ast = 0
