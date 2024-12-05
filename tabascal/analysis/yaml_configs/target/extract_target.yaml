@@ -23,14 +23,14 @@ flag2:
   data_col: CAL_DATA
   flag:
     type: aoflagger
-    sif_path: 
+    sif_path: ../../../../../sing/aoflagger.sif
     strategies: 
       - ../aux_data/firstpass.rfis
       - ../aux_data/secondpass.rfis
       - ../aux_data/thirdpass.rfis
 
 image: 
-  sif_path: 
+  sif_path: ../../../../../sing/wsclean.sif
   params:
     size: 256 256 
     scale: 20asec 

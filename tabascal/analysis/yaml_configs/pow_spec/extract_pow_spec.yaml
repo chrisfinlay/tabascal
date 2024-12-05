@@ -27,7 +27,7 @@ flag2:
   # suffix: aoflagger
   flag:
     type: aoflagger
-    sif_path: 
+    sif_path: ../../../../../sing/aoflagger.sif
     strategies: 
       - ../aux_data/firstpass.rfis
       - ../aux_data/secondpass.rfis
