@@ -1,20 +1,20 @@
 telescope:
-  name: MeerKAT
+  name: SARAO_Small
   latitude: -30.0
   longitude: 21.0
   elevation: 1050.0
-  dish_d: 13.5
-  itrf_path: ../../../data/MeerKAT.itrf.txt
-  n_ant: 16
+  dish_d: 2.0
+  enu_path: ../../../data/Small_Array.enu.txt
+  n_ant: 100
 
 observation:
   target_name: power_spectrum
   ra: 27.0
   dec: -30.0
   start_time_lha: 0.0
-  int_time: 2.0
-  n_time: 450
-  n_int: 256
+  int_time: 4.0
+  n_time: 225
+  n_int: 64
   start_freq: 1.227e9
   chan_width: 209e3
   n_freq: 1
@@ -43,7 +43,7 @@ rfi_sources:
     sat_names: [navstar]
     spacetrack_path: ../eda2/spacetrack_login.yaml
     tle_dir: ../aux_data/tles
-    power_scale: 1e-2
+    power_scale: 1.5e-4
     norad_spec_model: ../aux_data/norad_satellite.rfimodel
     max_ang_sep: 30  # degrees
     min_alt: 0       # degrees
@@ -57,7 +57,7 @@ gains:
   random_seed: 999
 
 output:
-  path: ../../data/pow_spec_16
+  path: ../../data/pow_spec_100A
   prefix: pow_spec
   overwrite: True
   zarr: True
@@ -69,4 +69,4 @@ diagnostics:
   rfi_seps: True
 
 dask:
-  max_chunk_MB: 100
+  max_chunk_MB: 100.0

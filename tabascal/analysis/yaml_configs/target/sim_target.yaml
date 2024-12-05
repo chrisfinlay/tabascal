@@ -51,19 +51,6 @@ rfi_sources:
     min_alt: 0       # degrees
     vis_step: 1      # minutes
 
-# rfi_sources:
-#   satellite:
-#     sat_ids: [1]
-#     tle_path: 
-#     circ_path: ../aux_data/satellite.ole
-#     power_scale: 1
-#     spec_model: ../aux_data/satellite.rfimodel
-#   stationary:
-#     loc_ids: []
-#     geo_path: ../aux_data/stationary.loc
-#     power_scale: 1
-#     spec_model: ../aux_data/stationary.rfimodel
-    
 gains:
   G0_mean: 1.0
   G0_std: 0.05
@@ -72,7 +59,7 @@ gains:
   random_seed: 999
 
 output:
-  path: ../../data/pnt_src
+  path: ../../data/pnt_src_16A
   prefix: pnt_src
   overwrite: True
   zarr: True

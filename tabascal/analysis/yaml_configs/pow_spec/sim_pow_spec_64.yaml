@@ -5,7 +5,7 @@ telescope:
   elevation: 1050.0
   dish_d: 13.5
   itrf_path: ../../../data/MeerKAT.itrf.txt
-  n_ant: 16
+  n_ant: 64
 
 observation:
   target_name: power_spectrum
@@ -48,7 +48,7 @@ rfi_sources:
     max_ang_sep: 30  # degrees
     min_alt: 0       # degrees
     vis_step: 1      # minutes
-
+  
 gains:
   G0_mean: 1.0
   G0_std: 0.05
@@ -57,7 +57,7 @@ gains:
   random_seed: 999
 
 output:
-  path: ../../data/pow_spec_16
+  path: ../../data/pow_spec_64A
   prefix: pow_spec
   overwrite: True
   zarr: True
@@ -69,4 +69,4 @@ diagnostics:
   rfi_seps: True
 
 dask:
-  max_chunk_MB: 100
+  max_chunk_MB: 100.0

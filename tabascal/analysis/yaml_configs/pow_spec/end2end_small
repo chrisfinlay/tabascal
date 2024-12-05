@@ -1,0 +1,23 @@
+#!/bin/bash
+
+# seeds=(0)
+# ras=(0)
+# powers=(1e-2)
+
+ras=({0..324..36})
+decs=({-60..30..10})
+
+powers=(1e-2 3e-2 1e-1 3e-1 1e0 3e0 1e1 3e1 1e2 3e2)
+
+len_ra=${#ras[@]}
+len=$((len_ra * ${#powers[@]}))
+seeds=($(seq 1 $len))
+
+
+for i in "${!ras[@]}";
+do for j in "${!powers[@]}";
+do k=$((len_ra*i+j)); 
+echo ${seeds[k]}; 
+ps-end2end -s sim_pow_spec_small.yaml -t tab_pow_spec.yaml -e extract_pow_spec.yaml -ra ${ras[i]} -dec ${decs[i]} -r ${powers[j]} -rr ${seeds[k]} 2>&1 | tee log_end2end.txt ;
+done;
+done;
