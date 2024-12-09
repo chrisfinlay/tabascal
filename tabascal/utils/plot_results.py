@@ -5,8 +5,11 @@ import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 from scipy.stats import norm
 
-from daskms import xds_from_ms
+from daskms import xds_from_ms, xds_from_table
+import dask.array as da
 import xarray as xr
+
+from tge import TGE, Cl
 
 from glob import glob
 import os
@@ -126,9 +129,13 @@ def get_error(sim_file, tab_file):
 
     xds = xr.open_zarr(sim_file)
     xds_tab = xr.open_zarr(tab_file)
-    error = (xds.vis_ast.data[:, :, 0] - xds_tab.ast_vis.data[0, :, :].T).compute()
+    error = (
+        (xds.vis_ast.data[:, :, 0] - xds_tab.ast_vis.data[0, :, :].T)
+        .flatten()
+        .compute()
+    )
 
-    return np.concatenate([error.real.flatten(), error.imag.flatten()])
+    return np.concatenate([error.real, error.imag])
 
 
 def get_aoflagged(sim_file, ms_file):
@@ -137,10 +144,12 @@ def get_aoflagged(sim_file, ms_file):
     xds_ms = xds_from_ms(ms_file)[0]
     idx = np.where(xds_ms.FLAG.data[:, 0, 0] == 0)[0].compute()
     error = (
-        xds.vis_ast.data[:, :, 0].flatten()[idx] - xds_ms.CAL_DATA.data[idx, 0, 0]
-    ).compute()
+        (xds.vis_ast.data[:, :, 0].flatten()[idx] - xds_ms.CAL_DATA.data[idx, 0, 0])
+        .flatten()
+        .compute()
+    )
 
-    return np.concatenate([error.real.flatten(), error.imag.flatten()])
+    return np.concatenate([error.real, error.imag])
 
 
 def get_perfect_flagged(sim_file):
@@ -148,11 +157,15 @@ def get_perfect_flagged(sim_file):
     xds = xr.open_zarr(sim_file)
     idx = np.where(xds.flags.data[:, :, 0].flatten() == 0)[0].compute()
     error = (
-        xds.vis_ast.data[:, :, 0].flatten()[idx]
-        - xds.vis_calibrated.data[:, :, 0].flatten()[idx]
-    ).compute()
+        (
+            xds.vis_ast.data[:, :, 0].flatten()[idx]
+            - xds.vis_calibrated.data[:, :, 0].flatten()[idx]
+        )
+        .flatten()
+        .compute()
+    )
 
-    return np.concatenate([error.real.flatten(), error.imag.flatten()])
+    return np.concatenate([error.real, error.imag])
 
 
 def get_noise(sim_file, gains=False):
@@ -165,11 +178,23 @@ def get_noise(sim_file, gains=False):
             xds.noise_data.data[:, :, 0].compute()
             * gains[:, a1]
             * np.conjugate(gains[:, a2])
-        )
+        ).flatten()
     else:
-        noise = xds.noise_data.data[:, :, 0].compute()
+        noise = xds.noise_data.data[:, :, 0].flatten().compute()
 
-    return np.concatenate([noise.real.flatten(), noise.imag.flatten()])
+    return np.concatenate([noise.real, noise.imag])
+
+
+def get_vis_cal_error(sim_file):
+
+    xds = xr.open_zarr(sim_file)
+    vis_cal = (
+        (xds.vis_calibrated.data[:, :, 0] - xds.vis_ast.data[:, :, 0])
+        .flatten()
+        .compute()
+    )
+
+    return np.concatenate([vis_cal.real, vis_cal.imag])
 
 
 def get_bins(bin_array, n_bins):
@@ -383,13 +408,25 @@ def plot_errors(
 
 
 def plot_tab_errors(
-    errors: dict,
+    zarr_files: list,
+    tab_files: list,
     bin_idx: list,
     SNR: list,
     noise_std: float,
     hist_bins: int,
     data_dir: str,
 ):
+
+    errors = []
+    for idx in tqdm(bin_idx):
+        errors.append(
+            np.concatenate(
+                [
+                    get_error(zarr_file, tab_file)
+                    for zarr_file, tab_file in zip(zarr_files[idx], tab_files[idx])
+                ]
+            )
+        )
 
     plot_errors(errors, bin_idx, SNR, noise_std, hist_bins)
 
@@ -423,13 +460,20 @@ def plot_tab_errors(
 
 
 def plot_perfect_flag_errors(
-    errors: dict,
+    zarr_files: list,
     bin_idx: list,
     SNR: list,
     noise_std: float,
     hist_bins: int,
     data_dir: str,
 ):
+    errors = []
+    for idx in tqdm(bin_idx):
+        errors.append(
+            np.concatenate(
+                [get_perfect_flagged(zarr_file) for zarr_file in zarr_files[idx]]
+            )
+        )
 
     plot_errors(errors, bin_idx, SNR, noise_std, hist_bins)
 
@@ -448,13 +492,25 @@ def plot_perfect_flag_errors(
 
 
 def plot_aoflagger_errors(
-    errors: dict,
+    zarr_files: list,
+    ms_files: list,
     bin_idx: list,
     SNR: list,
     noise_std: float,
     hist_bins: int,
     data_dir: str,
 ):
+
+    errors = []
+    for idx in bin_idx:
+        errors.append(
+            np.concatenate(
+                [
+                    get_aoflagged(zarr_file, ms_file)
+                    for zarr_file, ms_file in zip(zarr_files[idx], ms_files[idx])
+                ]
+            )
+        )
 
     plot_errors(errors, bin_idx, SNR, noise_std, hist_bins)
 
@@ -466,6 +522,39 @@ def plot_aoflagger_errors(
 
     plt.savefig(
         os.path.join(data_dir, "plots/AOFlagger_Errors.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_vis_cal_errors(
+    zarr_files: list,
+    bin_idx: list,
+    SNR: list,
+    noise_std: float,
+    hist_bins: int,
+    data_dir: str,
+):
+
+    errors = []
+    for idx in bin_idx:
+        errors.append(
+            np.concatenate(
+                [get_vis_cal_error(zarr_file) for zarr_file in zarr_files[idx]]
+            )
+        )
+
+    plot_errors(errors, bin_idx, SNR, noise_std, hist_bins)
+
+    sig3 = 3 * noise_std * np.sqrt(2)
+    plt.axvline(-sig3, ls="dashed", color="k")
+    plt.axvline(sig3, ls="dashed", color="k", label="3$\\sigma$ Noise")
+    plt.legend(fontsize=14, title="SNR$(|V^{RFI}|)$")
+    plt.title("Calibrated, Unflagged Visibilities")
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/Vis_Cal_Errors.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
@@ -797,6 +886,159 @@ def plot_image(
     )
 
 
+def extract_ms_data(ms_path: str, name: str) -> dict:
+
+    xds = xds_from_ms(ms_path)[0]
+
+    if name == "flag2":
+        flags = np.invert(xds.FLAG.data[:, 0, 0].compute().astype(bool))
+        data_col = "CAL_DATA"
+    elif name == "flag1":
+        flags = np.where(
+            np.abs(xds.CAL_DATA.data[:, 0, 0] - xds.AST_MODEL_DATA.data[:, 0, 0])
+            < 3 * np.sqrt(2) * xds.NOISE_DATA.data[0, 0, 0]
+        )[0]
+        data_col = "CAL_DATA"
+    elif name == "ideal":
+        flags = np.arange(xds.DATA.data.shape[0])
+        data_col = "AST_DATA"
+    elif name == "tab":
+        flags = np.arange(xds.DATA.data.shape[0])
+        data_col = "TAB_DATA"
+    elif name == "nonoise":
+        flags = np.arange(xds.DATA.data.shape[0])
+        data_col = "AST_MODEL_DATA"
+    else:
+        print(f"Invalid name : {name} given.")
+
+    data = {
+        "dish_d": xds_from_table(ms_path + "::ANTENNA")[0]
+        .DISH_DIAMETER.data[0]
+        .compute(),
+        "freq": xds_from_table(ms_path + "::SPECTRAL_WINDOW")[0]
+        .CHAN_FREQ.data[0, 0]
+        .compute(),
+        "vis": xds[data_col].data[flags, 0, 0].compute(),
+        "uv": xds.UVW.data[flags, :2].compute(),
+        "noise_std": xds.SIGMA.data[flags].mean().compute(),
+    }
+
+    return data
+
+
+def calculate_pow_spec(
+    data: dict,
+    n_grid: int = 256,
+    n_bins: int = 10,
+):
+
+    tge_ps = TGE(dish_d=data["dish_d"], ref_freq=data["freq"], f=1, N_grid_x=n_grid)
+
+    l_b, Cl_b_norm, d_Cl_b_norm = tge_ps.estimate_Cl(
+        uv=data["uv"] / tge_ps.lamda,
+        V=data["vis"],
+        sigma_n=data["noise_std"],
+        n_bins=n_bins,
+    )
+
+    l = np.logspace(np.log10(np.nanmin(l_b) / 2), np.log10(np.nanmax(l_b) * 2))
+    norm = l * (l + 1) / (2 * np.pi)
+    C_l_norm = norm * Cl(l)
+
+    xds = xr.Dataset(
+        {
+            # Gridded variables
+            "U_g": (("uv_grid"), da.asarray(tge_ps.U_g.flatten())),
+            "V_cg": (("uv_grid"), da.asarray(tge_ps.V_cg)),
+            "K1g": (("uv_grid"), da.asarray(tge_ps.K1g)),
+            "B_cg": (("uv_grid"), da.asarray(tge_ps.B_cg)),
+            "K2gg": (("uv_grid"), da.asarray(tge_ps.K2gg)),
+            "E_g": (("uv_grid"), da.asarray(tge_ps.E_g)),
+            # Binned variables
+            "U_b": (("l_bin"), da.asarray(tge_ps.U_b)),
+            "l_b": (("l_bin"), da.asarray(tge_ps.l_b)),
+            "Cl_norm": (("l_bin"), da.asarray(tge_ps.Cl_norm)),
+            "Cl_b": (("l_bin"), da.asarray(tge_ps.Cl_b)),
+            "delta_Cl_b": (("l_bin"), da.asarray(tge_ps.delta_Cl_b)),
+            "Cl_b_normed": (("l_bin"), da.asarray(Cl_b_norm)),
+            "d_Cl_b_normed": (("l_bin"), da.asarray(d_Cl_b_norm)),
+            "l": (("l_fine"), da.asarray(l)),
+            "Cl_normed": (("l_fine"), da.asarray(C_l_norm)),
+        }
+    )
+
+    return xds
+
+
+def extract_pow_spec_all(ms_files, SNR, bin_idx, names, data_dir):
+
+    ps_dir = os.path.join(data_dir, "plots")
+    n_rfi_bins = len(bin_idx)
+
+    for i, idx in tqdm(enumerate(bin_idx)):
+        xdt = xr.DataTree(name=f"rfi_bin_{i:02}")
+        print(f"Calculating PS from : {len(idx)} datasets")
+        ps_name = f"ps_rfi_{i:02}_{n_rfi_bins:02}.zarr"
+        print(f"Writing : {ps_name}")
+        for name in tqdm(names["options"]):
+            if len(idx) > 0:
+                data = [extract_ms_data(ms, name) for ms in ms_files[idx]]
+                data = {
+                    key: np.concatenate([np.atleast_1d(d[key]) for d in data])
+                    for key in data[0].keys()
+                }
+                for key in ["dish_d", "freq", "noise_std"]:
+                    data[key] = data[key][0]
+                xds = calculate_pow_spec(data)
+                xdt[name] = xds
+
+        xdt["SNR"] = np.mean(SNR[idx])
+        xdt.to_zarr(os.path.join(ps_dir, ps_name), mode="w")
+
+    return ps_dir
+
+
+def plot_pow_spec(ps_file, names, SNR, ps_dir):
+
+    xdt = xr.open_datatree(ps_file, engine="zarr")
+    ps_name = os.path.splitext(os.path.split(ps_file)[1])[0]
+
+    plot_name = f"PS_Recovery_{ps_name}.pdf"
+    i = int(ps_name.split("_")[-2])
+
+    plt.figure(figsize=(15, 11))
+    for name in names["options"]:
+        xds = xdt[name]
+        if name in ["ideal", "tab", "flag1", "flag2"]:
+            marker = "o" if name == "ideal" else "."
+            capsize = 10 if name == "ideal" else 5
+            if name == "ideal":
+                plt.loglog(xds["l"], xds["Cl_normed"] * 1e6, "k", label="$C_l$")
+            plt.errorbar(
+                xds["l_b"],
+                xds["Cl_b_normed"] * 1e6,
+                yerr=xds["d_Cl_b_normed"] * 1e6,
+                fmt=marker,
+                label=names["names"][name],
+                color=names["colors"][name],
+                capsize=capsize,
+            )
+
+    plt.title("Recovered Power Spectrum : SNR($|V^{RFI}|$) Amp = " + f"{SNR[i]:.2f} Jy")
+    plt.legend()
+    plt.xlabel("l")
+    plt.ylabel("l(l+1)C$_l$/2$\\pi$ [mK$^2$]")
+    # plt.ylim(1e7, 5e9)
+    plt.ylim(1e6, 5e11)
+    plt.xlim(1e2, 1.5e4)
+    plt.savefig(
+        os.path.join(ps_dir, plot_name),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
 def plot(
     data_dir: str,
     n_bins: int,
@@ -805,6 +1047,7 @@ def plot(
     plots: dict,
     rfi_amps: list,
     vbounds: list,
+    ps_dir: str,
     model_name: str = "map_pred_fixed_orbit_rfi_full_fft_standard_padded_model",
 ):
 
@@ -813,6 +1056,8 @@ def plot(
     names = get_names(suffix="")
 
     noise_std = np.mean(data["vis_noise"])
+    SNR = data["mean_rfi"] / data["vis_noise"]
+    bin_idx = get_bins(SNR, n_bins)
 
     #############################################################
     # Visibility Errors
@@ -820,20 +1065,32 @@ def plot(
 
     if plots["error"]:
 
-        SNR = data["mean_rfi"] / data["vis_noise"]
-        bin_idx = get_bins(SNR, n_bins)
-        errors, errors_flags1, errors_flags2 = get_all_errors(
-            files["zarr_files"], files["ms_files"], files["tab_files"], bin_idx
+        plot_tab_errors(
+            files["zarr_files"],
+            files["tab_files"],
+            bin_idx,
+            SNR,
+            noise_std,
+            n_hist_bins,
+            data_dir,
         )
 
-        plot_tab_errors(errors, bin_idx, SNR, noise_std, n_hist_bins, data_dir)
-
         plot_perfect_flag_errors(
-            errors_flags1, bin_idx, SNR, noise_std, n_hist_bins, data_dir
+            files["zarr_files"], bin_idx, SNR, noise_std, n_hist_bins, data_dir
         )
 
         plot_aoflagger_errors(
-            errors_flags2, bin_idx, SNR, noise_std, n_hist_bins, data_dir
+            files["zarr_files"],
+            files["ms_files"],
+            bin_idx,
+            SNR,
+            noise_std,
+            n_hist_bins,
+            data_dir,
+        )
+
+        plot_vis_cal_errors(
+            files["zarr_files"], bin_idx, SNR, noise_std, n_hist_bins, data_dir
         )
 
     if plots["img"]:
@@ -919,6 +1176,32 @@ def plot(
         # plot_flag_noise(files, noise_std, data, all_stats, names, data_dir)
         # plot_theoretical_noise(files, noise_std, data, all_stats, names, data_dir)
 
+    ###########################################
+    # Plot Power Spectrum Recovery
+    ###########################################
+
+    # print(files["ms_files"], SNR, bin_idx, names, data_dir)
+
+    # print(len(SNR), SNR)
+    # print(len(bin_idx), bin_idx)
+    # print([np.mean(SNR[idx]) for idx in bin_idx])
+
+    # import sys
+
+    # sys.exit(0)
+
+    if plots["pow_spec"]:
+        if ps_dir:
+            ps_files = glob(os.path.join(ps_dir, "ps_rfi_*"))
+        else:
+            ps_dir = extract_pow_spec_all(
+                files["ms_files"], SNR, bin_idx, names, data_dir
+            )
+            ps_files = glob(os.path.join(ps_dir, "ps_rfi_*"))
+        for ps_file in ps_files:
+            snr = [np.mean(SNR[idx]) for idx in bin_idx]
+            plot_pow_spec(ps_file, names, snr, ps_dir)
+
 
 def main():
     import argparse
@@ -967,6 +1250,12 @@ def main():
         default="100",
         help="RFI amplitude for image plot.",
     )
+    parser.add_argument(
+        "-ps",
+        "--ps_dir",
+        default=None,
+        help="Directory with precalculated power spectrum results.",
+    )
 
     args = parser.parse_args()
     data_dir = args.data_dir
@@ -994,6 +1283,7 @@ def main():
         plots,
         rfi_amps,
         vbounds,
+        args.ps_dir,
     )
 
 
