@@ -253,6 +253,9 @@ def get_file_names(data_dir: str, model_name: str):
 
     data_dirs = np.array([d for d in data_dirs if "plots" not in d])
 
+    if len(data_dirs) == 0:
+        raise ValueError(f"No data found in {data_dir}")
+
     img_dirs = np.array([os.path.join(d, "images") for d in data_dirs])
 
     ms_files = np.array(
@@ -349,24 +352,28 @@ def get_names(suffix: str = ""):
 
     names = {
         "options": [
+            "perfect",
             "ideal",
             "tab",
             "flag1",
             "flag2",
         ],
         "names": {
+            "perfect": "No Noise, No RFI",
             "ideal": "Uncontaminated",
             "tab": "TABASCAL",
             "flag1": "Perfect Flagging",
             "flag2": "AOFlagger",
         },
         "colors": {
+            "perfect": "tab:purple",
             "ideal": "tab:blue",
             "tab": "tab:orange",
             "flag1": "tab:red",
             "flag2": "tab:green",
         },
         "img_names": {
+            "perfect": f"AST_MODEL_DATA_0.0sigma{suffix}",
             "ideal": f"AST_DATA_0.0sigma{suffix}",
             "tab": f"TAB_DATA_0.0sigma{suffix}",
             "flag1": f"CAL_DATA_3.0sigma{suffix}",
@@ -561,7 +568,168 @@ def plot_vis_cal_errors(
     )
 
 
-def plot_sausage(all_med, all_q1, all_q2, names, x_name, y_name):
+def plot_errors_ax(
+    ax, errors: dict, bin_idx: list, SNR: list, noise_std: float, hist_bins: int
+):
+
+    for i, idx in enumerate(bin_idx):
+        x = np.linspace(errors[i].min(), errors[i].max(), 100)
+        mean, std = norm.fit(errors[i])
+        y = norm.pdf(x, mean, std)
+        ax.hist(
+            errors[i],
+            bins=hist_bins,
+            density=True,
+            color=f"C{i}",
+            alpha=0.8,
+            label=f"{10*np.log10(np.mean(SNR[idx])): = .1f} dB",
+            histtype="step",
+        )
+        ax.plot(x, y, color=f"C{i}", alpha=0.8)
+
+    x = np.linspace(-5, 5, 100)
+    ax.plot(x, norm.pdf(x, 0, noise_std), color="k", label="Vis Noise")
+    ax.semilogy()
+    ax.set_ylabel("Probability Density [Jy$^{-1}$]")
+    ax.grid()
+
+
+def plot_tab_error_ax(
+    ax, zarr_files, tab_files, bin_idx, SNR, noise_std, hist_bins=100
+):
+
+    errors = []
+    for idx in tqdm(bin_idx):
+        errors.append(
+            np.concatenate(
+                [
+                    get_error(zarr_file, tab_file)
+                    for zarr_file, tab_file in zip(zarr_files[idx], tab_files[idx])
+                ]
+            )
+        )
+
+    plot_errors_ax(ax, errors, bin_idx, SNR, noise_std, hist_bins)
+
+    mean, std = norm.fit(errors[0])
+    ax.axvline(mean - 4 * std, ls="dashed", color="tab:blue")
+    ax.axvline(mean + 4 * std, ls="dashed", color="tab:blue", label="4$\\sigma$ Error")
+
+    return std
+
+
+def plot_flag_error_ax(ax, zarr_files, bin_idx, SNR, noise_std, hist_bins=100):
+
+    errors = []
+    for idx in tqdm(bin_idx):
+        errors.append(
+            np.concatenate(
+                [get_perfect_flagged(zarr_file) for zarr_file in zarr_files[idx]]
+            )
+        )
+
+    plot_errors_ax(ax, errors, bin_idx, SNR, noise_std, hist_bins)
+
+
+def plot_aoflag_error_ax(
+    ax, zarr_files, ms_files, bin_idx, SNR, noise_std, hist_bins=100
+):
+
+    errors = []
+    for idx in tqdm(bin_idx):
+        errors.append(
+            np.concatenate(
+                [
+                    get_aoflagged(zarr_file, ms_file)
+                    for zarr_file, ms_file in zip(zarr_files[idx], ms_files[idx])
+                ]
+            )
+        )
+
+    plot_errors_ax(ax, errors, bin_idx, SNR, noise_std, hist_bins)
+
+
+def plot_errors_all(files, bin_idx, SNR, noise_std, hist_bins, data_dir):
+
+    fig, ax = plt.subplots(3, 1, figsize=(15, 15))
+
+    tab_std = plot_tab_error_ax(
+        ax[0],
+        files["zarr_files"],
+        files["tab_files"],
+        bin_idx,
+        SNR,
+        noise_std,
+        hist_bins,
+    )
+    plot_aoflag_error_ax(
+        ax[1],
+        files["zarr_files"],
+        files["ms_files"],
+        bin_idx,
+        SNR,
+        noise_std,
+        hist_bins,
+    )
+    plot_flag_error_ax(ax[2], files["zarr_files"], bin_idx, SNR, noise_std, hist_bins)
+
+    ax[0].tick_params(axis="x", labelbottom=False)  # changes apply to the x-axis
+    ax[1].tick_params(axis="x", labelbottom=False)  # changes apply to the x-axis
+
+    ax[0].set_title("TABASCAL Errors")
+    # ax[0].plot(x, t.pdf(x, *t.fit(errors[-1])))
+
+    ax[0].text(
+        -4.5,
+        0.5,
+        f"Vis Noise std : {noise_std:.2f} Jy",
+        {"fontsize": 14},
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.4, "edgecolor": "k"},
+    )
+    ax[0].text(
+        -4.5,
+        0.1,
+        f"TAB Error std : {tab_std:.2f} Jy",
+        {"fontsize": 14},
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.4, "edgecolor": "k"},
+    )
+
+    sig3 = 3 * noise_std * np.sqrt(2)
+    for a in ax:
+        a.axvline(-sig3, ls="dashed", color="k")
+        a.axvline(sig3, ls="dashed", color="k", label="3$\\sigma$ Noise")
+        a.legend(fontsize=14, title="SNR$(|V^{RFI}|)$", loc="right")
+        a.set_ylim(5e-6, 2e0)
+        a.set_xlim(-5, 5)
+
+    ax[1].text(
+        -1.3,
+        0.9,
+        "AOFlagger, Perfect Calibration",
+        fontsize=14,
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.1, "edgecolor": "k"},
+    )
+    ax[2].text(
+        -1.4,
+        0.9,
+        "3$\\sigma$ Flagging, Perfect Calibration",
+        fontsize=14,
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.1, "edgecolor": "k"},
+    )
+
+    ax[2].set_xlabel("AST Visibility Error [Jy]")
+
+    plt.subplots_adjust(wspace=0, hspace=-0.03)  # figsize=(11.5,12)
+
+    plt.savefig(
+        os.path.join(data_dir, "plots/Errors.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def plot_sausage(all_med, all_q1, all_q2, names, x_name, y_name, error_alpha=0.1):
 
     plt.figure(figsize=(7, 6))
     fig, ax = plt.subplots(1, 1, figsize=(7, 6))
@@ -580,7 +748,7 @@ def plot_sausage(all_med, all_q1, all_q2, names, x_name, y_name):
             y1=all_q1[name][y_name],
             y2=all_q2[name][y_name],
             color=names["colors"][name],
-            alpha=0.3,
+            alpha=error_alpha,
         )
 
     ax.legend()
@@ -653,7 +821,9 @@ def plot_image_noise(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
     )
 
 
-def plot_flux_error(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
+def plot_flux_error(
+    all_med, all_q1: dict, all_q2: dict, names, data_dir: str, vbounds: list
+):
 
     ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "mean_I_error")
 
@@ -662,7 +832,7 @@ def plot_flux_error(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
     ax.set_ylabel("Mean Flux Error [mJy]")
     ax.semilogx()
     # ax.xticks(10**np.arange(-1.0, 2.0, 1.0), 10**np.arange(-1.0, 2.0, 1.0))
-    ax.set_ylim(-100, 100)
+    ax.set_ylim(vbounds[0], vbounds[1])
 
     ax2 = ax.twiny()
     ax2.plot(all_med["ideal"]["RFI/AST"], all_med["ideal"]["mean_I_error"], alpha=0)
@@ -905,7 +1075,7 @@ def extract_ms_data(ms_path: str, name: str) -> dict:
     elif name == "tab":
         flags = np.arange(xds.DATA.data.shape[0])
         data_col = "TAB_DATA"
-    elif name == "nonoise":
+    elif name == "perfect":
         flags = np.arange(xds.DATA.data.shape[0])
         data_col = "AST_MODEL_DATA"
     else:
@@ -1047,6 +1217,7 @@ def plot(
     plots: dict,
     rfi_amps: list,
     vbounds: list,
+    vbounds_flux: list,
     ps_dir: str,
     model_name: str = "map_pred_fixed_orbit_rfi_full_fft_standard_padded_model",
 ):
@@ -1065,41 +1236,45 @@ def plot(
 
     if plots["error"]:
 
-        plot_tab_errors(
-            files["zarr_files"],
-            files["tab_files"],
-            bin_idx,
-            SNR,
-            noise_std,
-            n_hist_bins,
-            data_dir,
-        )
+        plot_errors_all(files, bin_idx, SNR, noise_std, n_hist_bins, data_dir)
 
-        plot_perfect_flag_errors(
-            files["zarr_files"], bin_idx, SNR, noise_std, n_hist_bins, data_dir
-        )
+        # plot_tab_errors(
+        #     files["zarr_files"],
+        #     files["tab_files"],
+        #     bin_idx,
+        #     SNR,
+        #     noise_std,
+        #     n_hist_bins,
+        #     data_dir,
+        # )
 
-        plot_aoflagger_errors(
-            files["zarr_files"],
-            files["ms_files"],
-            bin_idx,
-            SNR,
-            noise_std,
-            n_hist_bins,
-            data_dir,
-        )
+        # plot_perfect_flag_errors(
+        #     files["zarr_files"], bin_idx, SNR, noise_std, n_hist_bins, data_dir
+        # )
 
-        plot_vis_cal_errors(
-            files["zarr_files"], bin_idx, SNR, noise_std, n_hist_bins, data_dir
-        )
+        # plot_aoflagger_errors(
+        #     files["zarr_files"],
+        #     files["ms_files"],
+        #     bin_idx,
+        #     SNR,
+        #     noise_std,
+        #     n_hist_bins,
+        #     data_dir,
+        # )
+
+        # plot_vis_cal_errors(
+        #     files["zarr_files"], bin_idx, SNR, noise_std, n_hist_bins, data_dir
+        # )
 
     if plots["img"]:
+        keys = ["ideal", "tab", "flag1", "flag2"]
+        img_names = {key: names["img_names"][key] for key in keys}
         for rfi_amp in rfi_amps:
             plot_image(
                 files["img_dirs"],
-                names["img_names"],
+                img_names,
                 names["names"],
-                names["options"],
+                keys,
                 data["mean_rfi"],
                 rfi_amp,
                 data_dir,
@@ -1171,7 +1346,7 @@ def plot(
         plot_completeness(all_med, all_q1, all_q2, names, data_dir)
         plot_purity(all_med, all_q1, all_q2, names, data_dir)
         plot_image_noise(all_med, all_q1, all_q2, names, data_dir)
-        plot_flux_error(all_med, all_q1, all_q2, names, data_dir)
+        plot_flux_error(all_med, all_q1, all_q2, names, data_dir, vbounds_flux)
 
         # plot_flag_noise(files, noise_std, data, all_stats, names, data_dir)
         # plot_theoretical_noise(files, noise_std, data, all_stats, names, data_dir)
@@ -1236,13 +1411,19 @@ def main():
         "-p",
         "--plots",
         default="error,img,src",
-        help="Which plots to create.",
+        help="Which plots to create. Default is 'error,img,src'. Options are {'error', 'img', 'src', 'pow_spec'}",
     )
     parser.add_argument(
         "-v",
         "--vbounds",
         default="-15,15",
         help="Bounds on the image plot.",
+    )
+    parser.add_argument(
+        "-vf",
+        "--vbounds_flux",
+        default="-15,15",
+        help="Bounds on the flux error plot.",
     )
     parser.add_argument(
         "-r",
@@ -1261,6 +1442,7 @@ def main():
     data_dir = args.data_dir
     plots_types = args.plots.split(",")
     vbounds = [float(x) for x in args.vbounds.split(",")]
+    vbounds_flux = [float(x) for x in args.vbounds_flux.split(",")]
     rfi_amps = [float(x) for x in args.rfi_amps.split(",")]
 
     os.makedirs(os.path.join(data_dir, "plots"), exist_ok=True)
@@ -1283,6 +1465,7 @@ def main():
         plots,
         rfi_amps,
         vbounds,
+        vbounds_flux,
         args.ps_dir,
     )
 
