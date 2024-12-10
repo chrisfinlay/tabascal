@@ -106,8 +106,8 @@ def main():
     parser.add_argument(
         "-d",
         "--data",
-        default="ideal,tab,flag1,flag2",
-        help="The data types to analyse. {'ideal', 'tab', 'flag1', 'flag2'}",
+        default="perfect,ideal,tab,flag1,flag2",
+        help="The data types to analyse. {'perfect', 'ideal', 'tab', 'flag1', 'flag2'}",
     )
     parser.add_argument(
         "-c", "--config", required=True, help="Path to the config file."

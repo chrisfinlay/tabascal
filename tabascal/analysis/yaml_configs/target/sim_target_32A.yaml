@@ -5,16 +5,18 @@ telescope:
   elevation: 1050.0
   dish_d: 13.5
   itrf_path: ../../../data/MeerKAT.itrf.txt
-  n_ant: 64
+  n_ant: 32
 
 observation:
-  target_name: power_spectrum
+  target_name: target
   ra: 27.0
   dec: -30.0
   start_time_lha: 0.0
+  start_time_jd: 
+  start_time_isot:
   int_time: 2.0
   n_time: 450
-  n_int: 256
+  n_int: 1024
   start_freq: 1.227e9
   chan_width: 209e3
   n_freq: 1
@@ -23,32 +25,32 @@ observation:
   no_w: False
   random_seed: 12345
 
-
 ast_sources:
-  pow_spec:
-    random:
-      n_side: 128
-      fov_f: 1.2
-      random_seed: 123
-      type: Cl
-      A: 513e-6  # mK^2
-      beta: 1.34
-      # type: Pk
-      # P0: 1e12
-      # k0: 1e1
-      # gamma: 2.34
+  point:
+    random: 
+      n_src: 100
+      min_I: 10sigma
+      max_I: 1.0
+      I_pow_law: 1.6
+      si_mean: 0.7
+      si_std: 0.2
+      n_beam: 5.0
+      max_sep: 120.0 # arcseconds
+      random_seed: 123456
 
 rfi_sources:
   tle_satellite:
+    # norad_ids: []
     sat_names: [navstar]
+    # max_n_sat: 1
     spacetrack_path: ../eda2/spacetrack_login.yaml
     tle_dir: ../aux_data/tles
-    power_scale: 1e-2
     norad_spec_model: ../aux_data/norad_satellite.rfimodel
+    power_scale: 1e-2
     max_ang_sep: 30  # degrees
     min_alt: 0       # degrees
     vis_step: 1      # minutes
-  
+
 gains:
   G0_mean: 1.0
   G0_std: 0.05
@@ -57,8 +59,8 @@ gains:
   random_seed: 999
 
 output:
-  path: ../../data/pow_spec_64A
-  prefix: pow_spec
+  path: ../../data/pnt_src_32A
+  prefix: pnt_src
   overwrite: True
   zarr: True
   ms: True

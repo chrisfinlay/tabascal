@@ -1,6 +1,13 @@
 data:
   sim_dir:
-  
+
+perfect:
+  data_col: AST_MODEL_DATA 
+  # suffix: perfect
+  flag: 
+    type: perfect
+    thresh: 0
+
 ideal:
   data_col: AST_DATA 
   # suffix: perfect
@@ -35,4 +42,4 @@ flag2:
 
 tge:
   n_grid: 256
-  n_bins: 20
+  n_bins: 10

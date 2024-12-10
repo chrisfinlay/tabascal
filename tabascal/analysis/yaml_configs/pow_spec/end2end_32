@@ -17,6 +17,6 @@ for i in "${!ras[@]}";
 do for j in "${!powers[@]}";
 do k=$((len_ra*i+j)); 
 echo ${seeds[k]}; 
-ps-end2end -s sim_pow_spec_small.yaml -t tab_pow_spec.yaml -e extract_pow_spec.yaml -ra ${ras[i]} -dec ${decs[i]} -r ${powers[j]} -rr ${seeds[k]} 2>&1 | tee log_end2end.txt ;
+ps-end2end -s sim_pow_spec_32.yaml -t tab_pow_spec.yaml -e extract_pow_spec.yaml -ra ${ras[i]} -dec ${decs[i]} -r ${powers[j]} -rr ${seeds[k]} 2>&1 | tee log_end2end.txt ;
 done;
 done;

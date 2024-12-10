@@ -6,7 +6,7 @@ perfect:
   flag:
     type: perfect
     thresh: 0
-    
+
 ideal:
   data_col: AST_DATA 
   flag: 
@@ -38,8 +38,8 @@ flag2:
 image: 
   sif_path: ../../../../../sing/wsclean.sif
   params:
-    size: 256 256 
-    scale: 20asec 
+    size: 426 426
+    scale: 12asec 
     niter: 100000
     mgain: 0.3
     auto-threshold: 0.3
