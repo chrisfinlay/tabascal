@@ -68,7 +68,10 @@ def tabascal_subtraction(
     norad_ids: list = [],
 ):
 
-    log = open("log_tab.txt", "w")
+    from tabascal.utils.tle import id_generator
+
+    log_path = f"log_tab_{id_generator()}.txt"
+    log = open(log_path, "w")
     backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
 
@@ -464,8 +467,8 @@ def tabascal_subtraction(
     mem_i = save_memory(mem_dir, mem_i)
 
     log.close()
-    shutil.copy("log_tab.txt", sim_dir)
-    os.remove("log_tab.txt")
+    shutil.copy(log_path, sim_dir)
+    os.remove(log_path)
     sys.stdout = backup
 
     with open(os.path.join(sim_dir, "tab_config.yaml"), "w") as fp:
