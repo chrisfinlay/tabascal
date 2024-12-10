@@ -10,6 +10,7 @@ import os
 
 plt.rcParams["font.size"] = 18
 
+
 def time_units(times: ArrayLike) -> tuple:
     """Scale the time axis to hours, minutes or seconds depending on the total range.
 
@@ -26,16 +27,17 @@ def time_units(times: ArrayLike) -> tuple:
 
     time_range = times[-1] - times[0]
     times = times - times[0]
-    if time_range>3600:
+    if time_range > 3600:
         units = "hr"
         times = times / 3600
-    elif time_range>60:
+    elif time_range > 60:
         units = "min"
         times = times / 60
     else:
         units = "s"
 
     return times, units
+
 
 def plot_angular_seps(obs: Observation, save_path: str) -> None:
     """Plot the angular separations between the RFI sources and pointing direction.
@@ -47,16 +49,16 @@ def plot_angular_seps(obs: Observation, save_path: str) -> None:
     save_path : str
         Path to where to save the plots.
     """
-    
+
     times, scale = time_units(obs.times_fine)
-    plt.figure(figsize=(10,7))
-    if obs.n_rfi_satellite>0:
+    plt.figure(figsize=(10, 7))
+    if obs.n_rfi_satellite > 0:
         ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0).mean(axis=-1).T
         plt.plot(times, ang_seps, label="Satellite")
-    if obs.n_rfi_stationary>0:
+    if obs.n_rfi_stationary > 0:
         ang_seps = np.concatenate(obs.rfi_stationary_ang_sep, axis=0).mean(axis=-1).T
         plt.plot(times, ang_seps, label="Stationary")
-    if obs.n_rfi_tle_satellite>0:
+    if obs.n_rfi_tle_satellite > 0:
         ang_seps = np.concatenate(obs.rfi_tle_satellite_ang_sep, axis=0).mean(axis=-1).T
         plt.plot(times, ang_seps, label="TLE Satellite")
     plt.xlabel(f"Time [{scale}]")
@@ -78,9 +80,11 @@ def plot_src_alt(obs: Observation, save_path: str) -> None:
 
     times, scale = time_units(obs.times)
     lsa = obs.lsa.compute()
-    alt = alt_az_of_source(lsa[obs.t_idx], *[x.compute() for x in [obs.latitude, obs.ra, obs.dec]])[:,0]
-    plt.figure(figsize=(10,7))
-    plt.plot(times, alt, '.-')
+    alt = alt_az_of_source(
+        lsa[obs.t_idx], *[x.compute() for x in [obs.latitude, obs.ra, obs.dec]]
+    )[:, 0]
+    plt.figure(figsize=(10, 7))
+    plt.plot(times, alt, ".-")
     plt.xlabel(f"Time [{scale}]")
     plt.ylabel("Source Altitude [deg]")
     plt.savefig(os.path.join(save_path, "SourceAltitude.png"), format="png", dpi=200)
@@ -95,21 +99,21 @@ def plot_uv(obs: Observation, save_path: str) -> None:
         Observation object.
     save_path : str
         Path to where to save the plot.
-    """   
+    """
 
-    plt.figure(figsize=(10,10))
+    plt.figure(figsize=(10, 10))
     if obs.n_time_fine > 100:
-        time_step = int(obs.n_time_fine/100)
+        time_step = int(obs.n_time_fine / 100)
     else:
         time_step = 1
-    u = obs.bl_uvw[::time_step,:,0].compute().flatten()
-    v = obs.bl_uvw[::time_step,:,1].compute().flatten()
+    u = obs.bl_uvw[::time_step, :, 0].compute().flatten()
+    v = obs.bl_uvw[::time_step, :, 1].compute().flatten()
     max_U = np.max(np.sqrt(u**2 + v**2))
     exp = float(np.floor(np.log10(max_U)))
-    mantissa = np.ceil(10**(np.log10(max_U)-exp))
+    mantissa = np.ceil(10 ** (np.log10(max_U) - exp))
     lim = mantissa * 10**exp
-    plt.plot(u, v, 'k.', ms=1, alpha=0.3)
-    plt.plot(-u, -v, 'k.', ms=1, alpha=0.3)
+    plt.plot(u, v, "k.", ms=1, alpha=0.3)
+    plt.plot(-u, -v, "k.", ms=1, alpha=0.3)
     plt.grid()
     plt.xlim(-lim, lim)
     plt.ylim(-lim, lim)
@@ -191,6 +195,10 @@ def plot_complex_real_imag(
     save_dir: str = "plots/",
 ):
     n_params = min(param.shape[1], max_plots)
+    # idx = np.random.permutation(param.shape[1])
+    # print(param.shape, true.shape)
+    # param = param[:, idx]
+    # true = true[idx]
     mean_r = param.real.mean(axis=0)
     mean_i = param.imag.mean(axis=0)
     std_r = param.real.std(axis=0)
@@ -208,7 +216,9 @@ def plot_complex_real_imag(
 
     if save_name is not None:
         fig.savefig(
-            os.path.join(save_dir, f"{save_name}_real_imag.pdf"), format="pdf", bbox_inches="tight"
+            os.path.join(save_dir, f"{save_name}_real_imag.pdf"),
+            format="pdf",
+            bbox_inches="tight",
         )
     plt.close(fig)
 
@@ -225,6 +235,10 @@ def plot_complex_amp_phase(
     save_dir: str = "plots/",
 ):
     n_params = min(param.shape[1], max_plots)
+    # idx = np.random.permutation(param.shape[1])
+    # print(param.shape, true.shape)
+    # param = param[:, idx]
+    # true = true[idx]
     mean_amp = jnp.abs(param).mean(axis=0)
     mean_phase = jnp.rad2deg(jnp.angle(param)).mean(axis=0)
     std_amp = jnp.abs(param).std(axis=0)
@@ -251,13 +265,21 @@ def plot_complex_amp_phase(
 
     if save_name is not None:
         fig.savefig(
-            os.path.join(save_dir, f"{save_name}_amp_phase.pdf"), format="pdf", bbox_inches="tight"
+            os.path.join(save_dir, f"{save_name}_amp_phase.pdf"),
+            format="pdf",
+            bbox_inches="tight",
         )
     plt.close(fig)
 
 
 def plot_predictions(
-    times, pred, args, type: str = "", model_name: str = "", max_plots: int = 10, save_dir: str = "plots/"
+    times,
+    pred,
+    args,
+    type: str = "",
+    model_name: str = "",
+    max_plots: int = 10,
+    save_dir: str = "plots/",
 ):
     plot_complex_real_imag(
         times=times,

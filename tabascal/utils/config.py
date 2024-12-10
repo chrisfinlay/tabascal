@@ -260,6 +260,9 @@ def load_obs(obs_spec: dict) -> Observation:
         max_chunk_MB=dask_["max_chunk_MB"],
     )
 
+    print()
+    print(f"Theoretical synthesized beam width : {3600*obs.syn_bw:.0f} arcsec")
+
     return obs
 
 
@@ -830,7 +833,10 @@ def run_sim_config(
     obs_spec: dict = None, config_path: str = None, spacetrack_path: str = None
 ) -> Observation:
 
-    log = open("log_sim.txt", "w")
+    from tabascal.utils.tle import id_generator
+
+    log_path = f"log_sim_{id_generator()}.txt"
+    log = open(log_path, "w")
     backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
 
@@ -883,8 +889,8 @@ def run_sim_config(
     print(datetime.now())
 
     log.close()
-    shutil.copy("log_sim.txt", save_path)
-    os.remove("log_sim.txt")
+    shutil.copy(log_path, save_path)
+    os.remove(log_path)
     sys.stdout = backup
 
     return obs, save_path
