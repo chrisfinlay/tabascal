@@ -257,6 +257,7 @@ def get_file_names(data_dir: str, model_name: str):
         raise ValueError(f"No data found in {data_dir}")
 
     img_dirs = np.array([os.path.join(d, "images") for d in data_dirs])
+    ps_dirs = np.array([os.path.join(d, "power_spectrum") for d in data_dirs])
 
     ms_files = np.array(
         [os.path.join(d, os.path.split(d)[1] + ".ms") for d in data_dirs]
@@ -315,6 +316,7 @@ def get_file_names(data_dir: str, model_name: str):
     files = {
         "data_dirs": data_dirs[idx],
         "img_dirs": img_dirs[idx],
+        "ps_dirs": ps_dirs[idx],
         "ms_files": ms_files[idx],
         "zarr_files": zarr_files[idx],
         "tab_files": tab_files[idx],
@@ -1056,6 +1058,107 @@ def plot_image(
     )
 
 
+def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3):
+    xds = xr.open_zarr(zarr_file)
+    xds_tab = xr.open_zarr(tab_file)
+
+    mean_rfi = np.mean(np.abs(xds.vis_rfi.data)).compute()
+
+    bl_norm = np.linalg.norm(xds.bl_uvw.data[0, :, :-1], axis=-1).compute()
+
+    bl1 = np.argmin(np.abs(bl_norm - bl1))
+    bl2 = np.argmin(np.abs(bl_norm - bl2))
+
+    time = xds.time.data / 60
+    fig, ax = plt.subplots(2, 2, figsize=(10, 9))
+
+    ax[0, 0].plot(time, np.abs(xds.vis_rfi.data[:, bl1]), label="Truth")
+    ax[0, 0].plot(
+        time, np.abs(xds_tab.rfi_vis.data[0, bl1]), alpha=0.5, label="tabascal"
+    )
+    ax[0, 0].set_ylabel("RFI Visibility Magnitude [Jy]")
+    ax[0, 0].tick_params(axis="x", labelbottom=False)
+    y_pos = ax[0, 0].get_ylim()[0] + np.diff(ax[0, 0].get_ylim()) * 0.9
+    ax[0, 0].text(
+        0.1,
+        y_pos,
+        f"|uv| = {bl_norm[bl1]:.0f} m",
+        fontsize=14,
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
+    )
+    # ax[0,0].legend(loc="center left")
+    ax[0, 0].legend()
+
+    ax[0, 1].plot(time, np.abs(xds.vis_rfi.data[:, bl2]), label="Truth")
+    ax[0, 1].plot(
+        time, np.abs(xds_tab.rfi_vis.data[0, bl2]), alpha=0.5, label="tabascal"
+    )
+    ax[0, 1].tick_params(axis="x", labelbottom=False)
+    ax[0, 1].tick_params(
+        axis="y", labelleft=False, labelright=True, left=False, right=True
+    )
+    # ax[0,1].tick_params(axis='y')
+    y_pos = ax[0, 1].get_ylim()[0] + np.diff(ax[0, 1].get_ylim()) * 0.90
+    ax[0, 1].text(
+        0.1,
+        y_pos,
+        f"|uv| = {bl_norm[bl2]:.0f} m",
+        fontsize=14,
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
+    )
+    ax[0, 1].legend(loc="center left")
+    # ax[0,1].legend()
+
+    ax[1, 0].plot(time, np.abs(xds.vis_ast.data[:, bl1]), label="Truth")
+    ax[1, 0].plot(
+        time, np.abs(xds_tab.ast_vis.data[0, bl1]), alpha=0.5, label="tabascal"
+    )
+    ax[1, 0].set_xlabel("Time [min]")
+    ax[1, 0].set_ylabel("AST Visibility Magnitude [Jy]")
+    y_pos = ax[1, 0].get_ylim()[0] + np.diff(ax[1, 0].get_ylim()) * 0.9
+    ax[1, 0].text(
+        0.1,
+        y_pos,
+        f"|uv| = {bl_norm[bl1]:.0f} m",
+        fontsize=14,
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
+    )
+    # ax[1,0].legend(loc="center left")
+    ax[1, 0].legend()
+
+    ax[1, 1].plot(time, np.abs(xds.vis_ast.data[:, bl2]), label="Truth")
+    ax[1, 1].plot(
+        time, np.abs(xds_tab.ast_vis.data[0, bl2]), alpha=0.5, label="tabascal"
+    )
+    ax[1, 1].set_xlabel("Time [min]")
+    # ax[1,1].set_ylabel("AST Visibility Magnitude [Jy]", )
+    ax[1, 1].tick_params(
+        axis="y", labelleft=False, labelright=True, left=False, right=True
+    )
+    y_pos = ax[1, 1].get_ylim()[0] + np.diff(ax[1, 1].get_ylim()) * 0.90
+    ax[1, 1].text(
+        0.1,
+        y_pos,
+        f"|uv| = {bl_norm[bl2]:.0f} m",
+        fontsize=14,
+        bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
+    )
+    # ax[1,1].legend(loc="center left")
+    ax[1, 1].legend()
+
+    plt.subplots_adjust(wspace=0, hspace=-0.03)  # figsize=(11.5,12)
+
+    for a in ax.flatten():
+        a.grid()
+
+    plt.savefig(
+        os.path.join(data_dir, f"plots/Vis_Ex_RFI_{mean_rfi:.2e}.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
 def extract_ms_data(ms_path: str, name: str) -> dict:
 
     xds = xds_from_ms(ms_path)[0]
@@ -1282,6 +1385,17 @@ def plot(
                 log=False,
             )
 
+    if plots["vis"]:
+        for rfi_amp in rfi_amps:
+            idx = np.argmin(np.abs(data["mean_rfi"] - rfi_amp))
+            plot_vis_ex(
+                files["zarr_files"][idx],
+                files["tab_files"][idx],
+                data_dir,
+                bl1=3e1,
+                bl2=1e3,
+            )
+
     #############################################################
     # Point Source Recovery Statistics
     #############################################################
@@ -1410,8 +1524,8 @@ def main():
     parser.add_argument(
         "-p",
         "--plots",
-        default="error,img,src",
-        help="Which plots to create. Default is 'error,img,src'. Options are {'error', 'img', 'src', 'pow_spec'}",
+        default="error,vis,img,src",
+        help="Which plots to create. Default is 'error,img,src'. Options are {'error', 'vis', 'img', 'src', 'pow_spec'}",
     )
     parser.add_argument(
         "-v",
@@ -1449,6 +1563,7 @@ def main():
 
     plots = {
         "error": False,
+        "vis": False,
         "img": False,
         "src": False,
         "pow_spec": False,
