@@ -90,9 +90,11 @@ def main():
     tle_dir = args.tle_dir
     norad_ids = []
     if args.norad_ids:
-        norad_ids += [int(x) for x in args.norad_ids.split(",")]
+        norad_ids += [int(x) for x in np.atleast_1d(args.norad_ids.split(","))]
     if args.norad_path:
-        norad_ids += [int(x) for x in yaml_load(args.norad_path).split()]
+        norad_ids += [
+            int(x) for x in np.atleast_1d(str(yaml_load(args.norad_path)).split())
+        ]
 
     os.makedirs(tle_dir, exist_ok=True)
 
@@ -142,8 +144,12 @@ def main():
         ants_itrf = np.mean(xds_ants.POSITION.data.compute(), axis=0, keepdims=True)
 
         if args.sim:
-            ants_xyz = itrf_to_xyz(ants_itrf, gmsa_from_jd(times_jd))[:, 0]
-            # ants_xyz = itrf_to_xyz(ants_itrf, Time(times_jd, format="jd").sidereal_time("mean", "greenwich").hour*15)[:,0]
+            # ants_xyz = itrf_to_xyz(ants_itrf, gmsa_from_jd(times_jd))[:, 0]
+            ants_xyz = itrf_to_xyz(
+                ants_itrf,
+                Time(times_jd, format="jd").sidereal_time("mean", "greenwich").hour
+                * 15,
+            )[:, 0]
             rfi_xyz = get_satellite_positions(tles, times_jd)
             xyz = rfi_xyz - ants_xyz[None, :, :]
             radec = xyz_to_radec(xyz)
