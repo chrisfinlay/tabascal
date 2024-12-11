@@ -360,11 +360,15 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
                     random_seed=rand_["random_seed"],
                     n_beam=n_beam,
                 )
+                ra = (obs.ra + d_ra) % 360
+                dec = obs.dec + d_dec
+                dec = np.where(dec > 90, 180 - dec, dec)
+                dec = np.where(dec < -90, -180 - dec, dec)
 
                 if key == "point":
                     print()
                     print(f"Adding {rand_['n_src']} random {key} sources ...")
-                    methods[key](I[:, None, :], obs.ra + d_ra, obs.dec + d_dec)
+                    methods[key](I[:, None, :], ra, dec)
                 elif key == "gauss":
                     rng = np.random.default_rng(rand_["random_seed"] + 1)
                     pos_ang = rng.uniform(low=0.0, high=360.0, size=(rand_["n_src"],))
@@ -391,8 +395,8 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
                         major,
                         minor,
                         pos_ang,
-                        obs.ra + d_ra,
-                        obs.dec + d_dec,
+                        ra,
+                        dec,
                     )
                 elif key == "exp":
                     rng = np.random.default_rng(rand_["random_seed"] + 1)
@@ -405,7 +409,7 @@ def add_astro_sources(obs: Observation, obs_spec: dict) -> None:
                     )
                     print()
                     print(f"Adding {rand_['n_src']} random {key} sources ...")
-                    methods[key](I[:, None, :], shape, obs.ra + d_ra, obs.dec + d_dec)
+                    methods[key](I[:, None, :], shape, ra, dec)
 
 
 def gauss(A: float, mean: float, sigma: float, x: da.Array) -> da.Array:
