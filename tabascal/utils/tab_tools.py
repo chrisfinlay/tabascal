@@ -593,7 +593,7 @@ def calculate_estimates(ms_params, config, tles, gp_params):
     ast_k_est = jnp.fft.fft(vis_ast_est, axis=1)
 
     if config["model"]["func"] == "fixed_orbit_rfi_full_fft_standard_padded_model":
-        vis_ast_est_pad = vmap(jnp.pad, in_axes=(1, None, None))(
+        vis_ast_est_pad = vmap(jnp.pad, in_axes=(0, None, None))(
             vis_ast_est, gp_params["ast_pad"], "linear_ramp"
         )
         ast_k_est = jnp.fft.fft(vis_ast_est_pad, axis=1)
