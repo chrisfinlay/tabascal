@@ -55,7 +55,7 @@ def main():
     sif_path = args.sif_path
     suffix = args.suffix
 
-    if suffix is not None:
+    if suffix:
         suffix = "_" + suffix
     else:
         suffix = ""
@@ -127,7 +127,12 @@ def main():
                 write_perfect_flags(ms_path, thresh)
                 name = f"{thresh:.1f}sigma{suffix}"
             elif flag_type == "aoflagger":
-                run_aoflagger(ms_path, data_col, config[key]["flag"]["strategies"])
+                run_aoflagger(
+                    ms_path,
+                    data_col,
+                    config[key]["flag"]["strategies"],
+                    config[key]["flag"]["sif_path"],
+                )
                 name = f"aoflagger{suffix}"
             else:
                 print(
