@@ -38,10 +38,10 @@ flag2:
 image: 
   sif_path: ../../../../../sing/wsclean.sif
   params:
-    size: 426 426
+    size: 512 512
     scale: 12asec 
-    niter: 100000
-    mgain: 0.3
+    niter: 1000000
+    mgain: 0.1
     auto-threshold: 0.3
     pol: xx
     # weight: briggs -0.5

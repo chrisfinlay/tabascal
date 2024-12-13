@@ -40,8 +40,8 @@ image:
   params:
     size: 256 256 
     scale: 20asec 
-    niter: 100000
-    mgain: 0.3
+    niter: 1000000
+    mgain: 0.1
     auto-threshold: 0.3
     pol: xx
     # weight: briggs -0.5
