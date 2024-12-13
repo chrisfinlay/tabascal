@@ -9,7 +9,6 @@ from tqdm import tqdm
 import numpy as np
 
 from tabascal.utils.config import load_config, run_sim_config
-from tabascal.utils.run_tabascal import tabascal_subtraction
 
 
 def main():
@@ -30,6 +29,11 @@ def main():
         "-sp",
         "--sim_path",
         help="Path to the simulation files with prefix given, e.g. '/path/to/sims/sim_name*' ",
+    )
+    parser.add_argument(
+        "-st",
+        "--spacetrack_path",
+        help="Path to the SpaceTrack login details.",
     )
     parser.add_argument(
         "-r", "--rfi_amp", type=float, help="Path to the extraction config file."
@@ -53,6 +57,10 @@ def main():
     rfi_amp = args.rfi_amp
     r_seed_offset = args.random_seed_offset
     sim_dirs = args.sim_path
+    all_sim_dir = os.path.split(sim_dirs)[0]
+    spacetrack_path = args.spacetrack_path
+    suffix = args.suffix
+    tab_config = args.tab_config
 
     times = {
         "t0": datetime.now(),
@@ -86,32 +94,44 @@ def main():
         sim_dirs = [sim_dir]
 
         times["t0.1"] = datetime.now()
+        print(f"Simualtion time : {times['t0.1']-times['t0']}")
+
     elif sim_dirs:
         from glob import glob
 
         sim_dirs = sim_dirs if sim_dirs[-1] == "*" else sim_dirs + "*"
         sim_dirs = glob(sim_dirs)
 
-    if args.tab_config:
-        for sim_dir in tqdm(sim_dirs):
+    if tab_config:
+
+        completed = []
+        failed = []
+        n_sim = len(sim_dirs)
+        for i, sim_dir in enumerate(sim_dirs):
+            sim_name = os.path.split(sim_dir)[1]
+            print(f"Completed sims : {len(completed)}")
+            print(f"Failed sims    : {len(failed)}")
+            print(f"Running sim number : {i} / {n_sim}")
             print(f"Running TABASCAL on sim : {sim_dir}")
             times["t1"] = datetime.now()
 
             print(
                 "======================================================================"
             )
-            norad_path = os.path.join(sim_dir, "input_data/norad_ids.yaml")
-            norad_ids = [int(x) for x in np.loadtxt(norad_path)]
-            tab_config = load_config(args.tab_config, config_type="tab")
-            tabascal_subtraction(
-                config=tab_config,
-                sim_dir=sim_dir,
-                spacetrack_path=spacetrack_path,
-                norad_ids=norad_ids,
+            sub = subprocess.run(
+                f"tabascal -c {tab_config} -s {sim_dir} -st {spacetrack_path} -sx {suffix}",
+                shell=True,
+                executable="/bin/bash",
             )
-            # subprocess.run(f"tabascal -c {args.tab_config} -s {sim_dir}", shell=True, executable="/bin/bash")
+            if sub.returncode == 0:
+                completed.append(sim_name)
+            else:
+                print(f"TABASCAL FAILED for {sim_dir}")
+                failed.append(sim_name)
 
             times["t1.1"] = datetime.now()
+            print(f"TABASCAL time   : {times['t1.1']-times['t1']}")
+
     if args.extract_config:
         for sim_dir in tqdm(sim_dirs):
             print(f"Running SOURCE EXTRACTION on sim : {sim_dir}")
@@ -121,27 +141,32 @@ def main():
                 "======================================================================"
             )
             subprocess.run(
-                f"extract -c {args.extract_config} -s {sim_dir} -sx {args.suffix}",
+                f"extract -c {args.extract_config} -s {sim_dir} -sx {suffix}",
                 shell=True,
                 executable="/bin/bash",
             )
             times["t2.1"] = datetime.now()
+            print(f"Extraction time : {times['t2.1']-times['t2']}")
+
     times["t3"] = datetime.now()
-    print("\n==================================================================\n")
-    try:
-        print(f"Simualtion time : {times['t0.1']-times['t0']}")
-    except:
-        pass
-    try:
-        print(f"TABASCAL time   : {times['t1.1']-times['t1']}")
-    except:
-        pass
-    try:
-        print(f"Extraction time : {times['t2.1']-times['t2']}")
-    except:
-        pass
     print("========================================")
     print(f"Total time      : {times['t3']-times['t0']}")
+
+    if tab_config:
+        print()
+        print(f"Completed TABASCAL runs : {len(completed)}")
+        print(f"Failed TABASCAL runs : {len(failed)}")
+        for fail in failed:
+            print(fail)
+
+        with open(os.path.join(all_sim_dir, f"tab_failed_{suffix}.txt"), "w") as fp:
+            fp.write(f"Failed : {len(failed)} / {len(sim_dirs)} \n")
+            for fail in failed:
+                fp.write(f"{fail} \n")
+        with open(os.path.join(all_sim_dir, f"tab_completed_{suffix}.txt"), "w") as fp:
+            fp.write(f"Completed : {len(completed)} / {len(sim_dirs)} \n")
+            for success in completed:
+                fp.write(f"{success} \n")
 
 
 if __name__ == "__main__":

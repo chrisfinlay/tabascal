@@ -17,7 +17,7 @@ import jax.numpy as jnp
 
 import numpy as np
 
-from tabascal.utils.config import Tee, load_config, yaml_load
+from tabascal.utils.config import Tee, load_config
 
 from tab_opt.gp import (
     kernel,
@@ -59,6 +59,8 @@ from tabascal.utils.tab_tools import (
     check_antenna_and_satellite_positions,
 )
 
+from tabascal.utils.tle import id_generator
+
 
 def tabascal_subtraction(
     config: dict,
@@ -66,11 +68,15 @@ def tabascal_subtraction(
     ms_path: str = None,
     spacetrack_path: str = None,
     norad_ids: list = [],
+    suffix: str = "",
 ):
 
-    from tabascal.utils.tle import id_generator
+    if suffix:
+        suffix = "_" + suffix
 
-    log_path = f"log_tab_{id_generator()}.txt"
+    run_id = id_generator()
+
+    log_path = f"log_tab_{run_id}.txt"
     log = open(log_path, "w")
     backup = sys.stdout
     sys.stdout = Tee(sys.stdout, log)
@@ -94,7 +100,7 @@ def tabascal_subtraction(
 
     model_name = vis_model.__name__
     print(f"Model : {model_name}")
-    results_name = model_name
+    results_name = f"{model_name}{suffix}"
 
     if config["data"]["sim_dir"] is None:
         config["data"]["sim_dir"] = os.path.abspath(sim_dir)
@@ -122,7 +128,7 @@ def tabascal_subtraction(
 
     config["data"]["ms_path"] = ms_path
 
-    plot_dir = os.path.join(sim_dir, "plots")
+    plot_dir = os.path.join(sim_dir, f"plots/{suffix[1:]}")
     results_dir = os.path.join(sim_dir, "results")
     mem_dir = os.path.join(sim_dir, "memory_profiles")
 
@@ -467,11 +473,11 @@ def tabascal_subtraction(
     mem_i = save_memory(mem_dir, mem_i)
 
     log.close()
-    shutil.copy(log_path, sim_dir)
+    shutil.copy(log_path, plot_dir)
     os.remove(log_path)
     sys.stdout = backup
 
-    with open(os.path.join(sim_dir, "tab_config.yaml"), "w") as fp:
+    with open(os.path.join(plot_dir, f"tab_config_{run_id}.yaml"), "w") as fp:
         yaml.dump(config, fp)
 
 
@@ -492,6 +498,7 @@ def main():
     parser.add_argument(
         "-st", "--spacetrack", help="Path to Space-Track login details."
     )
+    parser.add_argument("-sx", "--suffix", default="", help="Image name suffix.")
     args = parser.parse_args()
     sim_dir = args.sim_dir
     conf_path = args.config
@@ -515,7 +522,9 @@ def main():
         config["satellites"]["spacetrack_path"] = config_st_path
         spacetrack_path = config_st_path
 
-    tabascal_subtraction(config, sim_dir, args.ms_path, spacetrack_path, norad_ids)
+    tabascal_subtraction(
+        config, sim_dir, args.ms_path, spacetrack_path, norad_ids, args.suffix
+    )
 
 
 if __name__ == "__main__":

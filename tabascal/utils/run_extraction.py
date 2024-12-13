@@ -176,7 +176,7 @@ def main():
     os.remove(log_path)
     sys.stdout = backup
 
-    with open(os.path.join(sim_dir, "extract_config.yaml"), "w") as fp:
+    with open(os.path.join(img_dir, f"extract_config{suffix}.yaml"), "w") as fp:
         yaml.dump(config, fp)
 
 
