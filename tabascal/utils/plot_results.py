@@ -248,7 +248,8 @@ def get_all_errors(zarr_files, ms_files, tab_files, bin_idx):
     return errors, errors_flags1, errors_flags2
 
 
-def get_file_names(data_dir: str, model_name: str):
+def get_file_names(data_dir: str, model_name: str, suffix: str = ""):
+
     data_dirs = np.array(glob(os.path.join(data_dir, "*")))
 
     data_dirs = np.array([d for d in data_dirs if "plots" not in d])
@@ -269,7 +270,7 @@ def get_file_names(data_dir: str, model_name: str):
         [
             os.path.join(
                 os.path.join(d, "results"),
-                f"{model_name}.zarr",
+                f"{model_name}{suffix}.zarr",
             )
             for d in data_dirs
         ]
@@ -651,7 +652,7 @@ def plot_aoflag_error_ax(
     plot_errors_ax(ax, errors, bin_idx, SNR, noise_std, hist_bins)
 
 
-def plot_errors_all(files, bin_idx, SNR, noise_std, hist_bins, data_dir):
+def plot_errors_all(files, bin_idx, SNR, noise_std, hist_bins, data_dir, suffix):
 
     fig, ax = plt.subplots(3, 1, figsize=(15, 15))
 
@@ -724,7 +725,7 @@ def plot_errors_all(files, bin_idx, SNR, noise_std, hist_bins, data_dir):
     plt.subplots_adjust(wspace=0, hspace=-0.03)  # figsize=(11.5,12)
 
     plt.savefig(
-        os.path.join(data_dir, "plots/Errors.pdf"),
+        os.path.join(data_dir, f"plots/Errors{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
@@ -759,7 +760,7 @@ def plot_sausage(all_med, all_q1, all_q2, names, x_name, y_name, error_alpha=0.1
 
 
 def plot_completeness(
-    all_med: dict, all_q1: dict, all_q2: dict, names: dict, data_dir: str
+    all_med: dict, all_q1: dict, all_q2: dict, names: dict, data_dir: str, suffix: str
 ):
     ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "rec")
 
@@ -773,14 +774,16 @@ def plot_completeness(
     ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
 
     plt.savefig(
-        os.path.join(data_dir, "plots/Completeness.pdf"),
+        os.path.join(data_dir, f"plots/Completeness{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
     )
 
 
-def plot_purity(all_med: dict, all_q1: dict, all_q2: dict, names: dict, data_dir: str):
+def plot_purity(
+    all_med: dict, all_q1: dict, all_q2: dict, names: dict, data_dir: str, suffix: str
+):
 
     ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "prec")
 
@@ -794,14 +797,16 @@ def plot_purity(all_med: dict, all_q1: dict, all_q2: dict, names: dict, data_dir
     ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
 
     plt.savefig(
-        os.path.join(data_dir, "plots/Purity.pdf"),
+        os.path.join(data_dir, f"plots/Purity{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
     )
 
 
-def plot_image_noise(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
+def plot_image_noise(
+    all_med, all_q1: dict, all_q2: dict, names, data_dir: str, suffix: str
+):
 
     ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "im_noise")
 
@@ -816,7 +821,7 @@ def plot_image_noise(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
     ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
 
     plt.savefig(
-        os.path.join(data_dir, "plots/ImageNoise.pdf"),
+        os.path.join(data_dir, f"plots/ImageNoise{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
@@ -824,7 +829,13 @@ def plot_image_noise(all_med, all_q1: dict, all_q2: dict, names, data_dir: str):
 
 
 def plot_flux_error(
-    all_med, all_q1: dict, all_q2: dict, names, data_dir: str, vbounds: list
+    all_med,
+    all_q1: dict,
+    all_q2: dict,
+    names,
+    data_dir: str,
+    vbounds: list,
+    suffix: str,
 ):
 
     ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "mean_I_error")
@@ -842,7 +853,7 @@ def plot_flux_error(
     ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
 
     plt.savefig(
-        os.path.join(data_dir, "plots/FluxError.pdf"),
+        os.path.join(data_dir, f"plots/FluxError{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
@@ -856,6 +867,7 @@ def plot_flag_noise(
     all_stats: dict,
     names: dict,
     data_dir: str,
+    suffix: str,
 ):
 
     flag_rate = np.linspace(0, 0.999, 100)
@@ -879,7 +891,7 @@ def plot_flag_noise(
     plt.legend()
 
     plt.savefig(
-        os.path.join(data_dir, "plots/ImageNoiseVsFlagRate.pdf"),
+        os.path.join(data_dir, f"plots/ImageNoiseVsFlagRate{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
@@ -893,6 +905,7 @@ def plot_theoretical_noise(
     all_stats: dict,
     names: dict,
     data_dir: str,
+    suffix: str,
 ):
 
     n_row = xds_from_ms(files["ms_files"][0])[0].DATA.data.shape[0]
@@ -929,7 +942,7 @@ def plot_theoretical_noise(
     plt.legend()
 
     plt.savefig(
-        os.path.join(data_dir, "plots/ImageNoiseVsTheory.pdf"),
+        os.path.join(data_dir, f"plots/ImageNoiseVsTheory{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
@@ -945,6 +958,7 @@ def plot_image(
     rfi_amp,
     data_dir,
     vbounds,
+    suffix,
     log: bool = False,
     cmap: str = "Greys_r",
 ):
@@ -1050,7 +1064,8 @@ def plot_image(
     plt.suptitle(f"Mean RFI Amplitude: {mean_rfi[idx]:.2f} Jy", y=0.91)
     plt.savefig(
         os.path.join(
-            data_dir, f"plots/CompImage{img_scale}_{cmap}_RFI_{mean_rfi[idx]:.2e}.pdf"
+            data_dir,
+            f"plots/CompImage{img_scale}_{cmap}_RFI_{mean_rfi[idx]:.2e}{suffix}.pdf",
         ),
         dpi=200,
         format="pdf",
@@ -1058,7 +1073,7 @@ def plot_image(
     )
 
 
-def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3):
+def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3, suffix=""):
     xds = xr.open_zarr(zarr_file)
     xds_tab = xr.open_zarr(tab_file)
 
@@ -1152,7 +1167,7 @@ def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3):
         a.grid()
 
     plt.savefig(
-        os.path.join(data_dir, f"plots/Vis_Ex_RFI_{mean_rfi:.2e}.pdf"),
+        os.path.join(data_dir, f"plots/Vis_Ex_RFI_{mean_rfi:.2e}{suffix}.pdf"),
         format="pdf",
         dpi=200,
         bbox_inches="tight",
@@ -1322,12 +1337,15 @@ def plot(
     vbounds: list,
     vbounds_flux: list,
     ps_dir: str,
+    suffix: str = "",
     model_name: str = "map_pred_fixed_orbit_rfi_full_fft_standard_padded_model",
 ):
+    if suffix:
+        suffix = "_" + suffix
 
-    files, data = get_file_names(data_dir, model_name)
+    files, data = get_file_names(data_dir, model_name, suffix)
 
-    names = get_names(suffix="")
+    names = get_names(suffix=suffix)
 
     noise_std = np.mean(data["vis_noise"])
     SNR = data["mean_rfi"] / data["vis_noise"]
@@ -1339,7 +1357,7 @@ def plot(
 
     if plots["error"]:
 
-        plot_errors_all(files, bin_idx, SNR, noise_std, n_hist_bins, data_dir)
+        plot_errors_all(files, bin_idx, SNR, noise_std, n_hist_bins, data_dir, suffix)
 
         # plot_tab_errors(
         #     files["zarr_files"],
@@ -1373,17 +1391,21 @@ def plot(
         keys = ["ideal", "tab", "flag1", "flag2"]
         img_names = {key: names["img_names"][key] for key in keys}
         for rfi_amp in rfi_amps:
-            plot_image(
-                files["img_dirs"],
-                img_names,
-                names["names"],
-                keys,
-                data["mean_rfi"],
-                rfi_amp,
-                data_dir,
-                vbounds,
-                log=False,
-            )
+            try:
+                plot_image(
+                    files["img_dirs"],
+                    img_names,
+                    names["names"],
+                    keys,
+                    data["mean_rfi"],
+                    rfi_amp,
+                    data_dir,
+                    vbounds,
+                    log=False,
+                    suffix=suffix,
+                )
+            except:
+                print(f"Unable to create image for RFI amp closest to {rfi_amp}")
 
     if plots["vis"]:
         for rfi_amp in rfi_amps:
@@ -1394,6 +1416,7 @@ def plot(
                 data_dir,
                 bl1=3e1,
                 bl2=1e3,
+                suffix=suffix,
             )
 
     #############################################################
@@ -1457,10 +1480,10 @@ def plot(
             for name, stat in all_stats.items()
         }
         print()
-        plot_completeness(all_med, all_q1, all_q2, names, data_dir)
-        plot_purity(all_med, all_q1, all_q2, names, data_dir)
-        plot_image_noise(all_med, all_q1, all_q2, names, data_dir)
-        plot_flux_error(all_med, all_q1, all_q2, names, data_dir, vbounds_flux)
+        plot_completeness(all_med, all_q1, all_q2, names, data_dir, suffix)
+        plot_purity(all_med, all_q1, all_q2, names, data_dir, suffix)
+        plot_image_noise(all_med, all_q1, all_q2, names, data_dir, suffix)
+        plot_flux_error(all_med, all_q1, all_q2, names, data_dir, vbounds_flux, suffix)
 
         # plot_flag_noise(files, noise_std, data, all_stats, names, data_dir)
         # plot_theoretical_noise(files, noise_std, data, all_stats, names, data_dir)
@@ -1551,7 +1574,12 @@ def main():
         default=None,
         help="Directory with precalculated power spectrum results.",
     )
-
+    parser.add_argument(
+        "-sx",
+        "--suffix",
+        default="",
+        help="Data suffix.",
+    )
     args = parser.parse_args()
     data_dir = args.data_dir
     plots_types = args.plots.split(",")
@@ -1582,6 +1610,7 @@ def main():
         vbounds,
         vbounds_flux,
         args.ps_dir,
+        suffix=args.suffix,
     )
 
 
