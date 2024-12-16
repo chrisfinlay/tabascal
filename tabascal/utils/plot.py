@@ -51,16 +51,20 @@ def plot_angular_seps(obs: Observation, save_path: str) -> None:
     """
 
     times, scale = time_units(obs.times_fine)
+    n_time = len(times)
+    if n_time > 100:
+        idx = np.arange(0, n_time, n_time // 100)
     plt.figure(figsize=(10, 7))
     if obs.n_rfi_satellite > 0:
         ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0).mean(axis=-1).T
-        plt.plot(times, ang_seps, label="Satellite")
+        plt.plot(times[idx], ang_seps[idx], label="Satellite")
     if obs.n_rfi_stationary > 0:
         ang_seps = np.concatenate(obs.rfi_stationary_ang_sep, axis=0).mean(axis=-1).T
-        plt.plot(times, ang_seps, label="Stationary")
+        plt.plot(times[idx], ang_seps[idx], label="Stationary")
     if obs.n_rfi_tle_satellite > 0:
-        ang_seps = np.concatenate(obs.rfi_tle_satellite_ang_sep, axis=0).mean(axis=-1).T
-        plt.plot(times, ang_seps, label="TLE Satellite")
+        ang_seps = np.concatenate(obs.rfi_tle_satellite_ang_sep, axis=0).mean(axis=-1)
+        for ang_sep, n_id in zip(np.atleast_2d(ang_seps), obs.norad_ids):
+            plt.plot(times[idx], ang_sep[idx], label=n_id.compute())
     plt.xlabel(f"Time [{scale}]")
     plt.ylabel("Angular Separation [deg]")
     plt.legend()
