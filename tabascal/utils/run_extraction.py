@@ -9,6 +9,7 @@ import subprocess
 from tabascal.utils.config import load_config, Tee
 from tabascal.utils.extract import extract
 from tabascal.utils.flag_data import write_perfect_flags, run_aoflagger
+from tabascal.utils.results_to_MS import write_results
 
 
 def main():
@@ -48,17 +49,21 @@ def main():
         default=None,
         help="Singularity image path if using singularity.",
     )
-    parser.add_argument("-sx", "--suffix", default=None, help="Image name suffix.")
+    parser.add_argument("-isx", "--im_suffix", default=None, help="Image name suffix.")
+    parser.add_argument("-tsx", "--tab_suffix", default=None, help="Image name suffix.")
     args = parser.parse_args()
     bash = args.bash_exec
     sim_dir = args.sim_dir
     sif_path = args.sif_path
-    suffix = args.suffix
+    im_suffix = args.im_suffix
+    tab_suffix = args.tab_suffix
 
-    if suffix:
-        suffix = "_" + suffix
-    else:
-        suffix = ""
+    im_suffix, tab_suffix = [
+        "_" + suffix if suffix else "" for suffix in [im_suffix, tab_suffix]
+    ]
+
+    model_name = "fixed_orbit_rfi_full_fft_standard_padded_model"
+    tab_path = os.path.join(sim_dir, f"results/map_pred_{model_name}{tab_suffix}.zarr")
 
     from tabascal.utils.tle import id_generator
 
@@ -125,15 +130,21 @@ def main():
             if flag_type == "perfect":
                 thresh = config[key]["flag"]["thresh"]
                 write_perfect_flags(ms_path, thresh)
-                name = f"{thresh:.1f}sigma{suffix}"
+                if key == "tab":
+                    name = f"{thresh:.1f}sigma{im_suffix}{tab_suffix}"
+                    write_results(ms_path, tab_path)
+                else:
+                    name = f"{thresh:.1f}sigma{im_suffix}"
             elif flag_type == "aoflagger":
+                overwrite_flags = False
                 run_aoflagger(
                     ms_path,
                     data_col,
                     config[key]["flag"]["strategies"],
                     config[key]["flag"]["sif_path"],
+                    overwrite_flags,
                 )
-                name = f"aoflagger{suffix}"
+                name = f"aoflagger{im_suffix}"
             else:
                 print(
                     "Incorrect flagging type chosen. Must be one of {perfect, aoflagger}."
@@ -150,10 +161,13 @@ def main():
         if "extract" in procs:
 
             if flag_type == "aoflagger":
-                name = f"aoflagger{suffix}"
+                name = f"aoflagger{im_suffix}"
             elif flag_type == "perfect":
+                if key == "tab":
+                    name = f"{thresh:.1f}sigma{im_suffix}{tab_suffix}"
+                else:
+                    name = f"{thresh:.1f}sigma{im_suffix}"
                 thresh = config[key]["flag"]["thresh"]
-                name = f"{thresh:.1f}sigma{suffix}"
             else:
                 print(
                     "Incorrect flagging type chosen. Must be one of {perfect, aoflagger}."
@@ -176,7 +190,9 @@ def main():
     os.remove(log_path)
     sys.stdout = backup
 
-    with open(os.path.join(img_dir, f"extract_config{suffix}.yaml"), "w") as fp:
+    with open(
+        os.path.join(img_dir, f"extract_config{im_suffix}{tab_suffix}.yaml"), "w"
+    ) as fp:
         yaml.dump(config, fp)
 
 
