@@ -51,7 +51,14 @@ def main():
     parser.add_argument(
         "-dec", "--dec", type=float, help="Declination of the observation."
     )
-    parser.add_argument("-sx", "--suffix", default="run1", help="Image name suffix.")
+    parser.add_argument("-isx", "--im_suffix", default="", help="Image name suffix.")
+    parser.add_argument("-tsx", "--tab_suffix", default="run1", help="TAB name suffix.")
+    parser.add_argument(
+        "-d",
+        "--data_types",
+        default="perfect,ideal,tab,flag1,flag2",
+        help="Data types to run extraction on. Default is 'perfect,ideal,tab,flag1,flag2'.",
+    )
     args = parser.parse_args()
     config_path = args.sim_config
     rfi_amp = args.rfi_amp
@@ -59,7 +66,8 @@ def main():
     sim_dirs = args.sim_path
     all_sim_dir = os.path.split(sim_dirs)[0]
     spacetrack_path = args.spacetrack_path
-    suffix = args.suffix
+    im_suffix = args.im_suffix
+    tab_suffix = args.tab_suffix
     tab_config = args.tab_config
 
     times = {
@@ -119,7 +127,7 @@ def main():
                 "======================================================================"
             )
             sub = subprocess.run(
-                f"tabascal -c {tab_config} -s {sim_dir} -st {spacetrack_path} -sx {suffix}",
+                f"tabascal -c {tab_config} -s {sim_dir} -st {spacetrack_path} -sx {tab_suffix}",
                 shell=True,
                 executable="/bin/bash",
             )
@@ -133,6 +141,9 @@ def main():
             print(f"TABASCAL time   : {times['t1.1']-times['t1']}")
 
     if args.extract_config:
+
+        data_cols = args.data_types
+
         for sim_dir in tqdm(sim_dirs):
             print(f"Running SOURCE EXTRACTION on sim : {sim_dir}")
             times["t2"] = datetime.now()
@@ -140,8 +151,9 @@ def main():
             print(
                 "======================================================================"
             )
+            im_suffix = f"-isx {im_suffix}" if im_suffix else ""
             subprocess.run(
-                f"extract -c {args.extract_config} -s {sim_dir} -sx {suffix}",
+                f"extract -c {args.extract_config} -s {sim_dir} {im_suffix} -tsx {tab_suffix} -d {data_cols}",
                 shell=True,
                 executable="/bin/bash",
             )
@@ -159,11 +171,13 @@ def main():
         for fail in failed:
             print(fail)
 
-        with open(os.path.join(all_sim_dir, f"tab_failed_{suffix}.txt"), "w") as fp:
+        with open(os.path.join(all_sim_dir, f"tab_failed_{tab_suffix}.txt"), "w") as fp:
             fp.write(f"Failed : {len(failed)} / {len(sim_dirs)} \n")
             for fail in failed:
                 fp.write(f"{fail} \n")
-        with open(os.path.join(all_sim_dir, f"tab_completed_{suffix}.txt"), "w") as fp:
+        with open(
+            os.path.join(all_sim_dir, f"tab_completed_{tab_suffix}.txt"), "w"
+        ) as fp:
             fp.write(f"Completed : {len(completed)} / {len(sim_dirs)} \n")
             for success in completed:
                 fp.write(f"{success} \n")
