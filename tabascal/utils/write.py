@@ -494,6 +494,7 @@ def construct_ms_data_table(
             "NOISE_DATA": (("row", "chan", "corr"), noise_data.astype(np.complex64)),
             "RFI_DATA": (("row", "chan", "corr"), rfi_resid.astype(np.complex64)),
             "AST_DATA": (("row", "chan", "corr"), no_rfi.astype(np.complex64)),
+            "3S_FLAGS": (("row", "chan", "corr"), flags),
         }
 
     dims = ("row", "chan", "corr")
