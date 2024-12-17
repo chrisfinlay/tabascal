@@ -63,12 +63,14 @@ def write_aoflags_to_flag(ms_path: str):
 
 def run_aoflagger(
     ms_path: str,
-    data_column: str = "DATA",
+    data_column: str = "CAL_DATA",
     strategy_paths: list = None,
     sif_path: str = None,
     bash_exec: str = "/bin/bash",
     rerun_aoflagger: bool = False,
 ):
+
+    reflagged = False
 
     if ms_path[-1] == "/":
         ms_path = ms_path[:-1]
@@ -82,7 +84,7 @@ def run_aoflagger(
         except:
             aoflags = None
 
-    if not aoflags and rerun_aoflagger:
+    if not aoflags or rerun_aoflagger:
 
         data_dir, ms_file = os.path.split(os.path.abspath(ms_path))
 
@@ -118,11 +120,12 @@ def run_aoflagger(
             print()
 
         write_to_aoflags(ms_path)
+        reflagged = True
 
     flags = xds_from_ms(ms_path)[0].FLAG.data
     print(f"Flag Rate      : {100*flags.mean().compute(): .1f} %")
 
-    return flags
+    return flags, reflagged
 
 
 def main():
