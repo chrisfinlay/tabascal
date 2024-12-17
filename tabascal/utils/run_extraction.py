@@ -135,14 +135,17 @@ def main():
                     write_results(ms_path, tab_path)
                 else:
                     name = f"{thresh:.1f}sigma{im_suffix}"
+
+                reflagged = True
+
             elif flag_type == "aoflagger":
-                overwrite_flags = False
-                run_aoflagger(
+                rerun_aoflagger = False
+                flags, reflagged = run_aoflagger(
                     ms_path,
                     data_col,
                     config[key]["flag"]["strategies"],
                     config[key]["flag"]["sif_path"],
-                    overwrite_flags,
+                    rerun_aoflagger=rerun_aoflagger,
                 )
                 name = f"aoflagger{im_suffix}"
             else:
@@ -150,15 +153,19 @@ def main():
                     "Incorrect flagging type chosen. Must be one of {perfect, aoflagger}."
                 )
 
-            wsclean_opts = "".join(
-                [f" -{k} {v}" for k, v in config["image"]["params"].items()]
-            )
-            img_cmd = f"image{singularity} -m {ms_path} -d {data_col} -n {name} -w '{wsclean_opts}'"
-            print()
-            print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
-            subprocess.run(img_cmd, shell=True, executable=bash)
+            if reflagged:
+                wsclean_opts = "".join(
+                    [f" -{k} {v}" for k, v in config["image"]["params"].items()]
+                )
+                img_cmd = f"image{singularity} -m {ms_path} -d {data_col} -n {name} -w '{wsclean_opts}'"
+                print()
+                print(f"Imaging {data_col} column of the MS file.\nUsing {img_cmd}")
+                subprocess.run(img_cmd, shell=True, executable=bash)
 
-        if "extract" in procs:
+        else:
+            reflagged = False
+
+        if "extract" in procs and reflagged:
 
             if flag_type == "aoflagger":
                 name = f"aoflagger{im_suffix}"
