@@ -142,7 +142,7 @@ def get_aoflagged(sim_file, ms_file):
 
     xds = xr.open_zarr(sim_file)
     xds_ms = xds_from_ms(ms_file)[0]
-    idx = np.where(xds_ms.FLAG.data[:, 0, 0] == 0)[0].compute()
+    idx = np.where(xds_ms["AO_FLAGS"].data[:, 0, 0] == 0)[0].compute()
     error = (
         (xds.vis_ast.data[:, :, 0].flatten()[idx] - xds_ms.CAL_DATA.data[idx, 0, 0])
         .flatten()
@@ -248,11 +248,11 @@ def get_all_errors(zarr_files, ms_files, tab_files, bin_idx):
     return errors, errors_flags1, errors_flags2
 
 
-def get_file_names(data_dir: str, model_name: str, suffix: str = ""):
+def get_file_names(data_dir: str, model_name: str, tab_suffix: str = ""):
 
     data_dirs = np.array(glob(os.path.join(data_dir, "*")))
 
-    data_dirs = np.array([d for d in data_dirs if "plots" not in d])
+    data_dirs = np.array([d for d in data_dirs if "SEED" in d])
 
     if len(data_dirs) == 0:
         raise ValueError(f"No data found in {data_dir}")
@@ -270,7 +270,7 @@ def get_file_names(data_dir: str, model_name: str, suffix: str = ""):
         [
             os.path.join(
                 os.path.join(d, "results"),
-                f"{model_name}{suffix}.zarr",
+                f"{model_name}{tab_suffix}.zarr",
             )
             for d in data_dirs
         ]
@@ -301,11 +301,12 @@ def get_file_names(data_dir: str, model_name: str, suffix: str = ""):
                 )
                 / (2 * xds.noise_std.data**2)
             ).compute()[0]
-            mean_rfi[i] = np.abs(xds_ms.RFI_MODEL_DATA.data).mean().compute()
-            mean_ast[i] = np.abs(xds_ms.AST_MODEL_DATA.data).mean().compute()
-            flags1[i] = np.abs(xds.flags).mean().compute()
-            flags2[i] = np.abs(xds_ms.FLAG.data).mean().compute()
-            vis_noise[i] = np.std(xds_ms.NOISE_DATA.data.real).compute()
+            mean_rfi[i] = np.abs(xds_ms["RFI_MODEL_DATA"].data).mean().compute()
+            mean_ast[i] = np.abs(xds_ms["AST_MODEL_DATA"].data).mean().compute()
+            # flags1[i] = np.abs(xds_ms["3S_FLAGS"]).mean().compute()
+            flags1[i] = np.abs(xds.flags.mean()).compute()
+            flags2[i] = np.abs(xds_ms["AO_FLAGS"].data).mean().compute()
+            vis_noise[i] = np.std(xds_ms["NOISE_DATA"].data.real).compute()
             if rchi2[i] < 1:
                 idx.append(i)
             else:
@@ -314,6 +315,23 @@ def get_file_names(data_dir: str, model_name: str, suffix: str = ""):
             no_tab.append(data_dirs[i])
 
     idx = np.array(idx)
+
+    print()
+    print(f"Total number of simulations      : {n_sim}")
+    print(f"Number of sims with good results : {len(idx)}")
+    print(f"Number of sims with rchi2 > 1    : {len(bad_tab)}")
+    print(f"Number of sims with no results   : {len(no_tab)}")
+    if len(bad_tab) > 0:
+        print()
+        print("Simulations with rchi2 > 1")
+        for bad in bad_tab:
+            print(bad)
+    if len(no_tab) > 0:
+        print()
+        print("Simulations with no results")
+        for no in no_tab:
+            print(no)
+
     files = {
         "data_dirs": data_dirs[idx],
         "img_dirs": img_dirs[idx],
@@ -332,26 +350,12 @@ def get_file_names(data_dir: str, model_name: str, suffix: str = ""):
         "vis_noise": vis_noise[idx],
     }
 
-    print()
-    print(f"Total number of simulations      : {n_sim}")
-    print(f"Number of sims with good results : {len(idx)}")
-    print(f"Number of sims with rchi2 > 1    : {len(bad_tab)}")
-    print(f"Number of sims with no results   : {len(no_tab)}")
-    if len(bad_tab) > 0:
-        print()
-        print("Simulations with rchi2 > 1")
-        for bad in bad_tab:
-            print(bad)
-    if len(no_tab) > 0:
-        print()
-        print("Simulations with no results")
-        for no in no_tab:
-            print(no)
-
     return files, data
 
 
-def get_names(suffix: str = ""):
+def get_names(tab_suffix: str = ""):
+
+    im_suffix = ""
 
     names = {
         "options": [
@@ -375,12 +379,19 @@ def get_names(suffix: str = ""):
             "flag1": "tab:red",
             "flag2": "tab:green",
         },
+        # "img_names": {
+        #     "perfect": f"AST_MODEL_DATA_0.0sigma{suffix}",
+        #     "ideal": f"AST_DATA_0.0sigma{suffix}",
+        #     "tab": f"TAB_DATA_0.0sigma{suffix}",
+        #     "flag1": f"CAL_DATA_3.0sigma{suffix}",
+        #     "flag2": f"CAL_DATA_aoflagger{suffix}",
+        # },
         "img_names": {
-            "perfect": f"AST_MODEL_DATA_0.0sigma{suffix}",
-            "ideal": f"AST_DATA_0.0sigma{suffix}",
-            "tab": f"TAB_DATA_0.0sigma{suffix}",
-            "flag1": f"CAL_DATA_3.0sigma{suffix}",
-            "flag2": f"CAL_DATA_aoflagger{suffix}",
+            "perfect": f"AST_MODEL_DATA_0.0sigma{im_suffix}",
+            "ideal": f"AST_DATA_0.0sigma{im_suffix}",
+            "tab": f"TAB_DATA_0.0sigma{im_suffix}{tab_suffix}",
+            "flag1": f"CAL_DATA_3.0sigma{im_suffix}",
+            "flag2": f"CAL_DATA_aoflagger{im_suffix}",
         },
     }
 
@@ -1179,9 +1190,10 @@ def extract_ms_data(ms_path: str, name: str) -> dict:
     xds = xds_from_ms(ms_path)[0]
 
     if name == "flag2":
-        flags = np.invert(xds.FLAG.data[:, 0, 0].compute().astype(bool))
+        flags = np.invert(xds["AO_FLAGS"].data[:, 0, 0].compute().astype(bool))
         data_col = "CAL_DATA"
     elif name == "flag1":
+        # flags = np.invert(xds["3S_FLAGS"].data[:, 0, 0].compute().astype(bool))
         flags = np.where(
             np.abs(xds.CAL_DATA.data[:, 0, 0] - xds.AST_MODEL_DATA.data[:, 0, 0])
             < 3 * np.sqrt(2) * xds.NOISE_DATA.data[0, 0, 0]
@@ -1337,15 +1349,15 @@ def plot(
     vbounds: list,
     vbounds_flux: list,
     ps_dir: str,
-    suffix: str = "",
+    tab_suffix: str = "",
     model_name: str = "map_pred_fixed_orbit_rfi_full_fft_standard_padded_model",
 ):
-    if suffix:
-        suffix = "_" + suffix
+    if tab_suffix:
+        tab_suffix = "_" + tab_suffix
 
-    files, data = get_file_names(data_dir, model_name, suffix)
+    files, data = get_file_names(data_dir, model_name, tab_suffix)
 
-    names = get_names(suffix=suffix)
+    names = get_names(tab_suffix=tab_suffix)
 
     noise_std = np.mean(data["vis_noise"])
     SNR = data["mean_rfi"] / data["vis_noise"]
@@ -1357,7 +1369,9 @@ def plot(
 
     if plots["error"]:
 
-        plot_errors_all(files, bin_idx, SNR, noise_std, n_hist_bins, data_dir, suffix)
+        plot_errors_all(
+            files, bin_idx, SNR, noise_std, n_hist_bins, data_dir, tab_suffix
+        )
 
         # plot_tab_errors(
         #     files["zarr_files"],
@@ -1402,7 +1416,7 @@ def plot(
                     data_dir,
                     vbounds,
                     log=False,
-                    suffix=suffix,
+                    suffix=tab_suffix,
                 )
             except:
                 print(f"Unable to create image for RFI amp closest to {rfi_amp}")
@@ -1416,7 +1430,7 @@ def plot(
                 data_dir,
                 bl1=3e1,
                 bl2=1e3,
-                suffix=suffix,
+                suffix=tab_suffix,
             )
 
     #############################################################
@@ -1480,10 +1494,12 @@ def plot(
             for name, stat in all_stats.items()
         }
         print()
-        plot_completeness(all_med, all_q1, all_q2, names, data_dir, suffix)
-        plot_purity(all_med, all_q1, all_q2, names, data_dir, suffix)
-        plot_image_noise(all_med, all_q1, all_q2, names, data_dir, suffix)
-        plot_flux_error(all_med, all_q1, all_q2, names, data_dir, vbounds_flux, suffix)
+        plot_completeness(all_med, all_q1, all_q2, names, data_dir, tab_suffix)
+        plot_purity(all_med, all_q1, all_q2, names, data_dir, tab_suffix)
+        plot_image_noise(all_med, all_q1, all_q2, names, data_dir, tab_suffix)
+        plot_flux_error(
+            all_med, all_q1, all_q2, names, data_dir, vbounds_flux, tab_suffix
+        )
 
         # plot_flag_noise(files, noise_std, data, all_stats, names, data_dir)
         # plot_theoretical_noise(files, noise_std, data, all_stats, names, data_dir)
@@ -1491,16 +1507,6 @@ def plot(
     ###########################################
     # Plot Power Spectrum Recovery
     ###########################################
-
-    # print(files["ms_files"], SNR, bin_idx, names, data_dir)
-
-    # print(len(SNR), SNR)
-    # print(len(bin_idx), bin_idx)
-    # print([np.mean(SNR[idx]) for idx in bin_idx])
-
-    # import sys
-
-    # sys.exit(0)
 
     if plots["pow_spec"]:
         if ps_dir:
@@ -1610,7 +1616,7 @@ def main():
         vbounds,
         vbounds_flux,
         args.ps_dir,
-        suffix=args.suffix,
+        tab_suffix=args.suffix,
     )
 
 
