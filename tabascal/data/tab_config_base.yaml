@@ -63,6 +63,7 @@ satellites:
   norad_ids: []         # Optional - NORAD IDs of satellites to include
   spacetrack_path: null # Required if any TLE satellites are included - Path to the Space-Track login config file
   tle_dir: ./tles       # Optional - Path of the directory where TLEs will be saved for future runs
+  tle_offset: 0         # Optional - Time offset (in days) for the TLE that is used in tabascal. Specifically for testing 
   sat_ids: []           # Optional - Satellite IDs of satellites with circular trajectories to include
   ole_path: null        # Optional - Path to the csv '.ole' file containing circular trajectory-based satellite orbit parameters
 ###########################################

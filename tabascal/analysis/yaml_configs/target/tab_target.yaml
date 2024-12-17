@@ -59,6 +59,7 @@ satellites:
   # norad_ids: []
   spacetrack_path: ../eda2/spacetrack_login.yaml
   tle_dir: ../aux_data/tles
+  tle_offset: -2
   # sat_ids: []
   # ole_path: ../aux_data/satellite.ole
 

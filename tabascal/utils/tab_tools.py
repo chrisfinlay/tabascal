@@ -256,7 +256,7 @@ def read_ms(ms_path, freq: float = None, corr: str = "xx"):
     return data
 
 
-def get_tles(config, ms_params, norad_ids, spacetrack_path):
+def get_tles(config, ms_params, norad_ids, spacetrack_path, tle_offset=-1):
     if config["satellites"]["norad_ids_path"]:
         norad_ids += [
             int(x) for x in yaml_load(config["satellites"]["norad_ids_path"]).split()
@@ -281,7 +281,7 @@ def get_tles(config, ms_params, norad_ids, spacetrack_path):
             st_config["username"],
             st_config["password"],
             norad_ids,
-            mjd_to_jd(jnp.mean(ms_params["times_mjd"])),
+            mjd_to_jd(jnp.mean(ms_params["times_mjd"])) + tle_offset,
             tle_dir=config["satellites"]["tle_dir"],
         )
         tles = np.atleast_2d(tles_df[["TLE_LINE1", "TLE_LINE2"]].values)
@@ -1143,7 +1143,7 @@ def run_fisher(
     pred = Predictive(model, posterior_samples=samples)
     fisher_pred = pred(subkeys[1], args=args)
 
-    fisher_xds = write_xds(fisher_pred, ms_params["times"], fisher_path)
+    fisher_xds = write_params_xds(fisher_pred, ms_params["times"], fisher_path)
 
     plot_predictions(
         times=ms_params["times"],

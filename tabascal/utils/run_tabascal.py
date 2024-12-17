@@ -149,7 +149,13 @@ def tabascal_subtraction(
     #####################################################
 
     ms_params = read_ms(ms_path, config["data"]["freq"], config["data"]["corr"])
-    n_rfi, norad_ids, tles = get_tles(config, ms_params, norad_ids, spacetrack_path)
+    n_rfi, norad_ids, tles = get_tles(
+        config,
+        ms_params,
+        norad_ids,
+        spacetrack_path,
+        config["satellites"]["tle_offset"],
+    )
 
     config["satellites"]["norad_ids"] = norad_ids
     config["satellites"]["norad_ids_path"] = None
