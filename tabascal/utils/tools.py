@@ -8,6 +8,27 @@ import numpy as np
 pkg_dir = Path(__file__).parent.absolute()
 
 
+import signal
+from contextlib import contextmanager
+
+
+class TimeoutException(Exception):
+    pass
+
+
+@contextmanager
+def time_limit(seconds):
+    def signal_handler(signum, frame):
+        raise TimeoutException("Timed out!")
+
+    signal.signal(signal.SIGALRM, signal_handler)
+    signal.alarm(seconds)
+    try:
+        yield
+    finally:
+        signal.alarm(0)
+
+
 def beam_size(diameter: float, frequency: float, fwhp: bool = True):
     """
     Calculate the beam size of an antenna or an array. For an array use
@@ -88,4 +109,3 @@ def str2bool(v: str):
         return False
     else:
         raise argparse.ArgumentTypeError("Boolean value expected.")
-
