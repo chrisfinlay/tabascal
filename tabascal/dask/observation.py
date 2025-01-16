@@ -310,7 +310,7 @@ class Observation(Telescope):
         self.noise_std = SEFD_to_noise_std(self.SEFD, self.chan_width, self.int_time)
 
         self.dish_d = da.asarray(dish_d)
-        self.fov = beam_size(dish_d, freqs.max())
+        self.fov = beam_size(dish_d, freqs.max(), fwhp=False)
 
         self.ants_uvw = ITRF_to_UVW(self.ITRF, self.gha, self.dec)
 
@@ -916,9 +916,10 @@ Number of stationary RFI :  {n_stat}"""
         )
         if flags:
             if self.noise_std.mean() > 0:
-                self.flags = da.abs(self.vis_cal - self.vis_ast) > 3.0 * self.noise_std[
-                    None, None, :
-                ] * da.sqrt(2)
+                self.flags = (
+                    da.abs(self.vis_cal - self.vis_ast)
+                    > 3.0 * self.noise_std[None, None, :]
+                )  # * da.sqrt(2)
             else:
                 self.flags = (
                     da.abs(self.vis_cal - self.vis_ast)
