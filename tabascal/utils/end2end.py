@@ -64,7 +64,10 @@ def main():
     rfi_amp = args.rfi_amp
     r_seed_offset = args.random_seed_offset
     sim_dirs = args.sim_path
-    all_sim_dir = os.path.split(sim_dirs)[0]
+    if sim_dirs:
+        all_sim_dir = os.path.split(sim_dirs)[0]
+    else:
+        all_sim_dir = []
     spacetrack_path = args.spacetrack_path
     im_suffix = args.im_suffix
     tab_suffix = args.tab_suffix
