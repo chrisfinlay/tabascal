@@ -34,6 +34,7 @@ from tab_opt.models import (
 )
 
 from tabascal.utils.tab_tools import (
+    split_args,
     read_ms,
     get_tles,
     estimate_sampling,
@@ -44,6 +45,7 @@ from tabascal.utils.tab_tools import (
     calculate_true_values,
     get_prior_means,
     pow_spec_sqrt,
+    pow_spec,
     save_memory,
     inv_transform,
     get_init_params,
@@ -51,7 +53,7 @@ from tabascal.utils.tab_tools import (
     plot_init,
     plot_truth,
     plot_prior,
-    run_mcmc,
+    # run_mcmc,
     run_opt,
     run_fisher,
     write_results_xds,
@@ -95,8 +97,8 @@ def tabascal_subtraction(
     # vis_model = fixed_orbit_rfi_full_fft_standard_model_otf # RFI resampling is performed On-The-Fly
     # vis_model = fixed_orbit_rfi_full_fft_standard_model_otf_fft  # RFI resampling is performed On-The-Fly with FFT - Not working yet
 
-    def model(args, v_obs=None):
-        return fixed_orbit_rfi_fft_standard(args, vis_model, v_obs)
+    def model(static_args, array_args, v_obs=None):
+        return fixed_orbit_rfi_fft_standard(static_args, array_args, vis_model, v_obs)
 
     model_name = vis_model.__name__
     print(f"Model : {model_name}")
@@ -148,7 +150,12 @@ def tabascal_subtraction(
     # Calculate parameters from MS file
     #####################################################
 
-    ms_params = read_ms(ms_path, config["data"]["freq"], config["data"]["corr"])
+    ms_params = read_ms(
+        ms_path,
+        config["data"]["freq"],
+        config["data"]["corr"],
+        config["data"]["data_col"],
+    )
     n_rfi, norad_ids, tles = get_tles(
         config,
         ms_params,
@@ -258,22 +265,7 @@ def tabascal_subtraction(
 
     # Set Constant Parameters
     args = {
-        "noise": ms_params["noise"] if ms_params["noise"] > 0 else 1.0,
-        "vis_ast_true": jnp.nan
-        * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex),
-        "vis_rfi_true": jnp.nan
-        * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex),
-        "gains_true": jnp.nan
-        * jnp.zeros((ms_params["n_ant"], ms_params["n_time"]), dtype=complex),
-        "times": ms_params["times"],
-        "times_fine": times_fine,
-        "times_mjd_fine": times_mjd_fine,
-        "g_times": gp_params["g_times"],
-        "rfi_times": gp_params["rfi_times"],
-        "k_ast": k_ast,
         "ast_pad": gp_params["ast_pad"],
-        "rfi_var": gp_params["rfi_var"],
-        "rfi_l": gp_params["rfi_l"],
         "n_int_samples": n_int_samples,
         "n_rfi_factor": ms_params["n_time"] * n_int_samples // gp_params["n_rfi_times"],
         "n_time": ms_params["n_time"],
@@ -287,6 +279,22 @@ def tabascal_subtraction(
         "n_bl_chunk": 1,
         # "n_bl_chunk": n_bl_chunk,
         # "chunk_rfi": False,
+        ### Define constant arrays
+        "noise": ms_params["noise"] if ms_params["noise"] > 0 else 1.0,
+        "vis_ast_true": jnp.nan
+        * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex),
+        "vis_rfi_true": jnp.nan
+        * jnp.zeros((ms_params["n_bl"], ms_params["n_time"]), dtype=complex),
+        "gains_true": jnp.nan
+        * jnp.zeros((ms_params["n_ant"], ms_params["n_time"]), dtype=complex),
+        "times": ms_params["times"],
+        "times_fine": times_fine,
+        "times_mjd_fine": times_mjd_fine,
+        "g_times": gp_params["g_times"],
+        "rfi_times": gp_params["rfi_times"],
+        "k_ast": k_ast,
+        "rfi_var": gp_params["rfi_var"],
+        "rfi_l": gp_params["rfi_l"],
         "a1": ms_params["a1"],
         "a2": ms_params["a2"],
         "bl": jnp.arange(ms_params["n_bl"]),
@@ -311,7 +319,7 @@ def tabascal_subtraction(
         ),
         "sigma_ast_k": jnp.array(
             [
-                pow_spec_sqrt(k_ast, **config["ast"]["pow_spec"])
+                jnp.sqrt(pow_spec(k_ast, **config["ast"]["pow_spec"]))
                 for _ in range(ms_params["n_bl"])
             ]
         ),
@@ -358,18 +366,7 @@ def tabascal_subtraction(
         "sigma_ast_k": 1.0 / args["sigma_ast_k"],
     }
 
-    # static_args = {}
-    # array_args = {}
-    # for key, value in args.items():
-    #     if hasattr(value, "shape"):
-    #         array_args.update({key: value})
-    #     else:
-    #         static_args.update({key: value})
-
-    # args = {
-    #     "static_args": static_args,
-    #     "array_args": array_args,
-    # }
+    static_args, array_args = split_args(args)
 
     ##############################################
     # Initial parameters for optimization
@@ -386,11 +383,13 @@ def tabascal_subtraction(
     mem_i = save_memory(mem_dir, mem_i)
 
     ### Check and Plot Model at init params
-    init_params_base = inv_transform(init_params, args, inv_scaling)
+    init_params_base = inv_transform(init_params, array_args, inv_scaling)
 
     key, subkey = random.split(key)
-    init_pred = init_predict(ms_params, model, args, subkey, init_params_base)
-    write_results_xds(init_pred, args, init_pred_path)
+    init_pred = init_predict(
+        ms_params, model, static_args, array_args, subkey, init_params_base
+    )
+    write_results_xds(init_pred, array_args, init_pred_path)
     # write_params_xds(
     #     {key + "_auto_loc": value for key, value in init_params_base.items()},
     #     gp_params,
@@ -399,7 +398,7 @@ def tabascal_subtraction(
     # )
 
     if config["plots"]["init"]:
-        plot_init(ms_params, config, init_pred, args, model_name, plot_dir)
+        plot_init(ms_params, config, init_pred, array_args, model_name, plot_dir)
 
     ### Check and Plot Model at true parameters
     if config["plots"]["truth"]:
@@ -407,7 +406,8 @@ def tabascal_subtraction(
         plot_truth(
             zarr_path,
             ms_params,
-            args,
+            static_args,
+            array_args,
             model,
             model_name,
             subkey,
@@ -423,14 +423,23 @@ def tabascal_subtraction(
     ### Check and Plot Model at prior parameters
     key, subkey = random.split(key)
     if config["plots"]["prior"]:
-        plot_prior(config, ms_params, model, model_name, args, subkey, plot_dir)
+        plot_prior(
+            config,
+            ms_params,
+            model,
+            model_name,
+            static_args,
+            array_args,
+            subkey,
+            plot_dir,
+        )
 
     ### Run MCMC Inference
     key, *subkeys = random.split(key, 3)
-    if config["inference"]["mcmc"]:
-        mcmc_pred = run_mcmc(
-            ms_params, model, model_name, subkeys, args, init_params_base, plot_dir
-        )
+    # if config["inference"]["mcmc"]:
+    #     mcmc_pred = run_mcmc(
+    #         ms_params, model, model_name, subkeys, args, init_params_base, plot_dir
+    #     )
 
     mem_i = save_memory(mem_dir, mem_i)
 
@@ -443,7 +452,8 @@ def tabascal_subtraction(
             gp_params,
             model,
             model_name,
-            args,
+            static_args,
+            array_args,
             subkeys,
             init_params_base,
             plot_dir,
@@ -454,22 +464,32 @@ def tabascal_subtraction(
 
     mem_i = save_memory(mem_dir, mem_i)
 
+    max_fisher_time = 5 * 60  # seconds
+
     ### Run Fisher Covariance Prediction
     key, *subkeys = random.split(key, 3)
-    if config["inference"]["fisher"] and rchi2 < 1.1:
-        run_fisher(
-            config,
-            ms_params,
-            model,
-            model_name,
-            subkeys,
-            vis_model,
-            args,
-            vi_params,
-            init_params_base,
-            plot_dir,
-            fisher_path,
-        )
+    if config["inference"]["fisher"] and rchi2 < 1.1 and n_int_samples < 19:
+        from tabascal.utils.tools import time_limit, TimeoutException
+
+        try:
+            with time_limit(max_fisher_time):
+                run_fisher(
+                    config,
+                    gp_params,
+                    ms_params,
+                    model,
+                    model_name,
+                    subkeys,
+                    vis_model,
+                    static_args,
+                    array_args,
+                    vi_params,
+                    init_params_base,
+                    plot_dir,
+                    fisher_path,
+                )
+        except TimeoutException as e:
+            print("Timed out!")
 
     print()
     end_time = datetime.now()

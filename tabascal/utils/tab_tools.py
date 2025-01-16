@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 
 import jax
 import jax.numpy as jnp
-from jax import jit, vmap
+from jax import jit, vmap, random
 from jax.tree_util import tree_map
 
 from numpyro.infer import MCMC, NUTS, Predictive
@@ -43,6 +43,21 @@ from tab_opt.vis import get_rfi_phase
 from tab_opt.opt import run_svi, svi_predict, f_model_flat, flatten_obs, post_samples
 
 # from tab_opt.data import extract_data
+
+
+def split_args(args):
+
+    static_args = {}
+    array_args = {}
+    for key, value in args.items():
+        if hasattr(value, "shape"):
+            array_args.update({key: value})
+        else:
+            static_args.update({key: value})
+
+    static_args = frozendict(static_args)
+
+    return static_args, array_args
 
 
 def print_rfi_signal_error(zarr_path, ms_params, true_params, gp_params):
@@ -196,7 +211,7 @@ def inv_transform(params, loc, inv_scaling):
     return params_trans
 
 
-def read_ms(ms_path, freq: float = None, corr: str = "xx"):
+def read_ms(ms_path, freq: float = None, corr: str = "xx", data_col: str = "DATA"):
 
     correlations = {"xx": 0, "xy": 1, "yx": 2, "yy": 3}
     corr = correlations[corr]
@@ -244,9 +259,9 @@ def read_ms(ms_path, freq: float = None, corr: str = "xx"):
         "freqs": freqs[chan],
         "ants_itrf": ants_itrf,
         "vis_obs": jnp.array(
-            xds.DATA.data.reshape(n_time, n_bl, n_freq, n_corr).compute()[
-                :, :, chan, corr
-            ]
+            xds[data_col]
+            .data.reshape(n_time, n_bl, n_freq, n_corr)
+            .compute()[:, :, chan, corr]
         ),
         "noise": jnp.array(xds.SIGMA.data.mean().compute()),
         "a1": jnp.array(xds.ANTENNA1.data.reshape(n_time, n_bl)[0, :].compute()),
@@ -407,6 +422,8 @@ def get_truth_conditional(config):
             bool(config["plots"]["truth"]),
             config["gains"]["amp_mean"] == "truth",
             config["gains"]["phase_mean"] == "truth",
+            "sigma" in str(config["gains"]["amp_mean"]),
+            "sigma" in str(config["gains"]["phase_mean"]),
             config["ast"]["mean"] == "truth",
             config["rfi"]["mean"] == "truth",
             config["ast"]["mean"] == "truth_mean",
@@ -419,6 +436,21 @@ def get_truth_conditional(config):
     return jnp.any(truth_cond)
 
 
+def get_observation_data_type(data_col):
+
+    ast = ["DATA", "CAL_DATA", "AST_DATA", "AST_MODEL_DATA"]
+    rfi = ["DATA", "CAL_DATA", "RFI_DATA", "RFI_MODEL_DATA"]
+    gains = ["DATA"]
+
+    data_type = {
+        "ast": data_col in ast,
+        "rfi": data_col in rfi,
+        "gains": data_col in gains,
+    }
+
+    return data_type
+
+
 def calculate_true_values(
     zarr_path: str,
     config: dict,
@@ -429,9 +461,23 @@ def calculate_true_values(
 ):
     xds = xr.open_zarr(zarr_path)
 
-    vis_ast = xds.vis_ast.data[:, :, 0].compute()
-    vis_rfi = xds.vis_rfi.data[:, :, 0].compute()
-    gains_ants = xds.gains_ants.data[:, :, 0].compute()
+    data_type = get_observation_data_type(config["data"]["data_col"])
+
+    vis_ast = (
+        xds.vis_ast.data[:, :, 0].compute()
+        if data_type["ast"]
+        else jnp.zeros_like((xds.vis_ast.data[:, :, 0]))
+    )
+    vis_rfi = (
+        xds.vis_rfi.data[:, :, 0].compute()
+        if data_type["rfi"]
+        else jnp.zeros_like((xds.vis_rfi.data[:, :, 0]))
+    )
+    gains_ants = (
+        xds.gains_ants.data[:, :, 0].compute()
+        if data_type["gains"]
+        else jnp.ones_like((xds.gains_ants.data[:, :, 0]))
+    )
     a1 = xds.antenna1.data.compute()
     a2 = xds.antenna2.data.compute()
 
@@ -441,35 +487,35 @@ def calculate_true_values(
     print()
     print(f"Reduced Chi^2 @ truth : {rchi2}")
 
-    if len(config["satellites"]["sat_ids"]) > 0:
-        corr_time_params = [
-            {
-                "sat_xyz": xds.rfi_sat_xyz.data[i, xds.time_idx].compute(),
-                "ants_xyz": xds.ants_xyz.data[xds.time_idx].compute(),
-                "orbit_el": xds.rfi_sat_orbit.data[i, 0].compute(),
-                "lat": xds.tel_latitude,
-                "dish_d": xds.dish_diameter,
-                "freqs": ms_params["freqs"],
-            }
-            for i in range(n_rfi)
-        ]
+    # if len(config["satellites"]["sat_ids"]) > 0:
+    #     corr_time_params = [
+    #         {
+    #             "sat_xyz": xds.rfi_sat_xyz.data[i, xds.time_idx].compute(),
+    #             "ants_xyz": xds.ants_xyz.data[xds.time_idx].compute(),
+    #             "orbit_el": xds.rfi_sat_orbit.data[i, 0].compute(),
+    #             "lat": xds.tel_latitude,
+    #             "dish_d": xds.dish_diameter,
+    #             "freqs": ms_params["freqs"],
+    #         }
+    #         for i in range(n_rfi)
+    #     ]
 
-        l = jnp.min(
-            jnp.array(
-                [calculate_sat_corr_time(**corr_time_params[i]) for i in range(n_rfi)]
-            )
-        )
+    #     l = jnp.min(
+    #         jnp.array(
+    #             [calculate_sat_corr_time(**corr_time_params[i]) for i in range(n_rfi)]
+    #         )
+    #     )
 
-        rfi_induce = jnp.array(
-            [
-                vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
-                    gp_params["rfi_times"],
-                    xds.time_fine.data,
-                    xds.rfi_sat_A[:, :, :, 0].data.compute()[i],
-                )
-                for i in range(n_rfi)
-            ]
-        )
+    #     rfi_induce = jnp.array(
+    #         [
+    #             vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
+    #                 gp_params["rfi_times"],
+    #                 xds.time_fine.data,
+    #                 xds.rfi_sat_A[:, :, :, 0].data.compute()[i],
+    #             )
+    #             for i in range(n_rfi)
+    #         ]
+    #     )
 
     if len(norad_ids) > 0:
         corr_time_params = [
@@ -498,7 +544,11 @@ def calculate_true_values(
                 vmap(jnp.interp, in_axes=(None, None, 1), out_axes=(0))(
                     gp_params["rfi_times"],
                     xds.time_fine.data,
-                    xds.rfi_tle_sat_A[:, :, :, 0].data.compute()[i],
+                    (
+                        xds.rfi_tle_sat_A[:, :, :, 0].data.compute()[i]
+                        if data_type["rfi"]
+                        else jnp.zeros_like(xds.rfi_tle_sat_A[0, :, :, 0].data)
+                    ),
                 )
                 for i in range(n_rfi)
             ]
@@ -508,6 +558,7 @@ def calculate_true_values(
     print(
         f"Minimum expected RFI correlation time : {l:.0f} s ({gp_params['rfi_l']:.0f} s used)"
     )
+    print(f"RFI Var used : {gp_params['rfi_var']:.1e} Jy")
     print()
     print(f"Mean RFI Amp. : {jnp.mean(jnp.abs(vis_rfi)):.1f} Jy")
     print(f"Mean AST Amp. : {jnp.mean(jnp.abs(vis_ast)):.1f} Jy")
@@ -655,21 +706,52 @@ def get_prior_means(config, ms_params, estimates, true_params, n_rfi, gp_params)
     # Set Gain Prior Mean
     if config["gains"]["amp_mean"] == "truth":
         g_amp_prior_mean = true_params["g_amp_induce"]
+    elif "sigma" in str(config["gains"]["amp_mean"]):
+        n_sig = float(config["gains"]["amp_mean"].replace("sigma", ""))
+        seed = int(1e3 * jnp.mean(true_params["g_phase_induce"][0, 0]))
+        g_amp_prior_mean = true_params["g_amp_induce"] + n_sig * jnp.sqrt(
+            gp_params["g_amp_var"]
+        ) * random.normal(random.PRNGKey(1 * seed), (ms_params["n_ant"], 1))
+    #     g_amp_prior_mean = true_params["g_amp_induce"] + vmap(
+    #         jnp.dot, in_axes=(None, 0)
+    #     )(
+    #         gp_params["L_G_amp"],
+    #         random.normal(
+    #             random.PRNGKey(1), (ms_params["n_ant"], gp_params["n_g_times"])
+    #         ),
+    #     )
     elif isinstance(config["gains"]["amp_mean"], numbers.Number):
         g_amp_prior_mean = config["gains"]["amp_mean"] * jnp.ones(
             (ms_params["n_ant"], gp_params["n_g_times"])
         )
     else:
-        ValueError("gains: amp_mean: must be a number or 'truth'.")
+        ValueError("gains: amp_mean: must be a number, 'truth', or 'Xsigma'.")
 
     if config["gains"]["phase_mean"] == "truth":
         g_phase_prior_mean = true_params["g_phase_induce"]
+    elif "sigma" in str(config["gains"]["phase_mean"]):
+        n_sig = float(config["gains"]["phase_mean"].replace("sigma", ""))
+        seed = int(1e3 * jnp.mean(true_params["g_phase_induce"][0, 0]))
+        g_phase_prior_mean = (
+            true_params["g_phase_induce"]
+            + n_sig
+            * jnp.sqrt(gp_params["g_phase_var"])
+            * random.normal(random.PRNGKey(1 * seed), (ms_params["n_ant"], 1))[:-1]
+        )
+        # g_amp_prior_mean = true_params["g_phase_induce"] + vmap(
+        #     jnp.dot, in_axes=(None, 0)
+        # )(
+        #     gp_params["L_G_phase"],
+        #     random.normal(
+        #         random.PRNGKey(1), (ms_params["n_ant"] - 1, gp_params["n_g_times"])
+        #     ),
+        # )
     elif isinstance(config["gains"]["phase_mean"], numbers.Number):
         g_phase_prior_mean = jnp.deg2rad(config["gains"]["phase_mean"]) * jnp.ones(
             (ms_params["n_ant"] - 1, gp_params["n_g_times"])
         )
     else:
-        ValueError("gains: phase_mean: must be a number or 'truth'.")
+        ValueError("gains: phase_mean: must be a number, 'truth', or 'Xsigma'.")
 
     # Set Astronomical Prior Mean
     if config["ast"]["mean"] == 0:
@@ -778,12 +860,12 @@ def get_gp_params(config, ms_params):
     g_l = 60.0 * config["gains"]["corr_time"]  # convert minutes to seconds
 
     # RFI GP Parameters
-    if config["rfi"]["var"] is not None:
+    if config["rfi"]["var"]:
         rfi_var = config["rfi"]["var"]
     else:
         rfi_var = estimate_max_rfi_vis(ms_params)
     # rfi_l can be calculated based on RFI positions. Check True value definitions
-    rfi_l = config["rfi"]["corr_time"]
+    rfi_l = jnp.array(config["rfi"]["corr_time"])
 
     ### Gain Sampling Times
     g_times = get_times(ms_params["times"], g_l)
@@ -817,6 +899,17 @@ def pow_spec_sqrt(k, P0=1e3, k0=1e-3, gamma=1.0):
 
     k_ = (k / k0) ** 2
     Pk = P0 * 0.5 * (jnp.exp(-0.5 * k_) + 1.0 / ((1.0 + k_) ** (gamma / 2)))
+
+    return Pk
+
+
+@jit
+def pow_spec(k, P0=1e7, k0=1e-3, gamma=1.0):
+
+    k_ = k / k0
+    Pk = P0 * 0.5 * (jnp.exp(-(k_**2)) + (1.0 + k_**2) ** -gamma)
+    # Pk = P0 / (1.0 + k_**2) ** gamma
+    # Pk = P0 * jnp.exp(-(k_**2)) # Leads to NaN values after division
 
     return Pk
 
@@ -966,43 +1059,44 @@ def get_rfi_phase(ms_params: dict, norad_ids: list, tles: list, n_int_samples: i
     return rfi_phase, rfi_amp_ratios, times_fine, times_mjd_fine
 
 
-def run_mcmc(ms_params, model, model_name, subkeys, args, init_params, plot_dir):
+# def run_mcmc(ms_params, model, model_name, subkeys, static_args, array_args, init_params, plot_dir):
 
-    num_warmup = 500
-    num_samples = 1000
-    print(
-        f"Running MCMC with {num_warmup:.0f} Warm Up Samples and for {num_samples:.0f} Samples"
-    )
-    start = datetime.now()
+#     num_warmup = 500
+#     num_samples = 1000
+#     print(
+#         f"Running MCMC with {num_warmup:.0f} Warm Up Samples and for {num_samples:.0f} Samples"
+#     )
+#     start = datetime.now()
 
-    nuts_kernel = NUTS(model, dense_mass=False)  # [('g_phase_0', 'g_phase_1')])
-    mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples)
-    mcmc.run(
-        subkeys[0],
-        args=args,
-        v_obs=args["v_obs_ri"],
-        extra_fields=("potential_energy",),
-        init_params=init_params,
-    )
-    print()
-    print(f"MCMC Run Time : {datetime.now() - start}")
-    print(f"{datetime.now()}")
-    start = datetime.now()
+#     nuts_kernel = NUTS(model, dense_mass=False)  # [('g_phase_0', 'g_phase_1')])
+#     mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples)
+#     mcmc.run(
+#         subkeys[0],
+#         static_args=static_args,
+#         array_args=array_args,
+#         v_obs=array_args["v_obs_ri"],
+#         extra_fields=("potential_energy",),
+#         init_params=init_params,
+#     )
+#     print()
+#     print(f"MCMC Run Time : {datetime.now() - start}")
+#     print(f"{datetime.now()}")
+#     start = datetime.now()
 
-    pred = Predictive(model, posterior_samples=mcmc.get_samples())
-    mcmc_pred = pred(subkeys[1], args=args)
-    plot_predictions(
-        times=ms_params["times"],
-        pred=mcmc_pred,
-        args=args,
-        type="mcmc",
-        model_name=model_name,
-        max_plots=10,
-        save_dir=plot_dir,
-    )
-    print()
-    print(f"MCMC Plot Time : {datetime.now() - start}")
-    print(f"{datetime.now()}")
+#     pred = Predictive(model, posterior_samples=mcmc.get_samples())
+#     mcmc_pred = pred(subkeys[1], args=args)
+#     plot_predictions(
+#         times=ms_params["times"],
+#         pred=mcmc_pred,
+#         args=array_args,
+#         type="mcmc",
+#         model_name=model_name,
+#         max_plots=10,
+#         save_dir=plot_dir,
+#     )
+#     print()
+#     print(f"MCMC Plot Time : {datetime.now() - start}")
+#     print(f"{datetime.now()}")
 
 
 def run_opt(
@@ -1011,7 +1105,9 @@ def run_opt(
     gp_params,
     model,
     model_name,
-    args,
+    # args,
+    static_args,
+    array_args,
     subkeys,
     init_params,
     plot_dir,
@@ -1029,8 +1125,10 @@ def run_opt(
     guide_family = guides[config["opt"]["guide"]]
     vi_results, vi_guide = run_svi(
         model=model,
-        args=args,
-        obs=args["v_obs_ri"],
+        # args=args,
+        static_args=static_args,
+        array_args=array_args,
+        obs=array_args["v_obs_ri"],
         max_iter=config["opt"]["max_iter"],
         guide_family=guide_family,
         init_params={
@@ -1045,7 +1143,9 @@ def run_opt(
         model=model,
         guide=vi_guide,
         vi_params=vi_params,
-        args=args,
+        static_args=static_args,
+        array_args=array_args,
+        # args=args,
         num_samples=1,
         key=subkeys[1],
     )
@@ -1054,13 +1154,13 @@ def run_opt(
     print(f"{datetime.now()}")
     start = datetime.now()
 
-    write_results_xds(vi_pred, args, map_path)
+    write_results_xds(vi_pred, array_args, map_path)
     # write_params_xds(vi_params, gp_params, ms_params, params_path, overwrite=True)
 
     plot_predictions(
         ms_params["times"],
         pred=vi_pred,
-        args=args,
+        args=array_args,
         type=config["opt"]["guide"],
         model_name=model_name,
         max_plots=10,
@@ -1097,14 +1197,27 @@ def run_opt(
     return vi_params, rchi2
 
 
+from functools import partial
+from frozendict import frozendict
+
+
+@partial(jit, static_argnums=(0, 2))
+def f_model_flat(model, params, static_args, array_args):
+    vis_obs = model(params, static_args, array_args)
+    vis_obs_flat = flatten_obs(vis_obs)
+    return vis_obs_flat
+
+
 def run_fisher(
     config,
+    gp_params,
     ms_params,
     model,
     model_name,
     subkeys,
     vis_model,
-    args,
+    static_args,
+    array_args,
     vi_params,
     init_params,
     plot_dir,
@@ -1115,8 +1228,13 @@ def run_fisher(
     n_fisher = config["fisher"]["n_samples"]
     print(f"Calculating {n_fisher:.0f} Fisher Samples ...")
 
-    f_model = lambda params, args: vis_model(params, args)[0]
-    model_flat = lambda params: f_model_flat(f_model, params, args)
+    # f_model = lambda params, args: vis_model(params, args)[0]
+    # model_flat = lambda params: f_model_flat(f_model, params, args)
+
+    f_model = lambda params, static_args, array_args: vis_model(
+        params, static_args, array_args
+    )[0]
+    model_flat = lambda params: f_model_flat(f_model, params, static_args, array_args)
 
     post_mean = (
         {k[:-9]: v for k, v in vi_params.items()}
@@ -1141,14 +1259,15 @@ def run_fisher(
     samples = tree_map(jnp.add, post_mean, dtheta)
 
     pred = Predictive(model, posterior_samples=samples)
-    fisher_pred = pred(subkeys[1], args=args)
+    fisher_pred = pred(subkeys[1], static_args=static_args, array_args=array_args)
 
-    fisher_xds = write_params_xds(fisher_pred, ms_params["times"], fisher_path)
+    write_results_xds(fisher_pred, array_args, fisher_path)
+    # fisher_xds = write_params_xds(fisher_pred, gp_params, ms_params, fisher_path)
 
     plot_predictions(
         times=ms_params["times"],
         pred=fisher_pred,
-        args=args,
+        args=array_args,
         type="fisher_opt" if config["inference"]["opt"] else "fisher_true",
         model_name=model_name,
         max_plots=10,
@@ -1159,14 +1278,31 @@ def run_fisher(
     print(f"{datetime.now()}")
 
 
-def init_predict(ms_params, model, args, subkey, init_params):
+# def init_predict(ms_params, model, args, subkey, init_params):
+
+#     pred = Predictive(
+#         model=model,
+#         posterior_samples=tree_map(lambda x: x[None, :], init_params),
+#         batch_ndims=1,
+#     )
+#     init_pred = pred(subkey, args=args)
+#     rchi2 = reduced_chi2(
+#         init_pred["vis_obs"][0], ms_params["vis_obs"].T, ms_params["noise"]
+#     )
+#     print()
+#     print(f"Reduced Chi^2 @ init params : {rchi2}")
+
+#     return init_pred
+
+
+def init_predict(ms_params, model, static_args, array_args, subkey, init_params):
 
     pred = Predictive(
         model=model,
         posterior_samples=tree_map(lambda x: x[None, :], init_params),
         batch_ndims=1,
     )
-    init_pred = pred(subkey, args=args)
+    init_pred = pred(subkey, static_args=static_args, array_args=array_args)
     rchi2 = reduced_chi2(
         init_pred["vis_obs"][0], ms_params["vis_obs"].T, ms_params["noise"]
     )
@@ -1176,7 +1312,7 @@ def init_predict(ms_params, model, args, subkey, init_params):
     return init_pred
 
 
-def plot_init(ms_params, config, init_pred, args, model_name, plot_dir):
+def plot_init(ms_params, config, init_pred, array_args, model_name, plot_dir):
 
     start = datetime.now()
     print()
@@ -1184,7 +1320,7 @@ def plot_init(ms_params, config, init_pred, args, model_name, plot_dir):
     plot_predictions(
         times=ms_params["times"],
         pred=init_pred,
-        args=args,
+        args=array_args,
         type="init",
         model_name=model_name,
         max_plots=10,
@@ -1205,7 +1341,8 @@ def plot_init(ms_params, config, init_pred, args, model_name, plot_dir):
 def plot_truth(
     zarr_path,
     ms_params,
-    args,
+    static_args,
+    array_args,
     model,
     model_name,
     subkey,
@@ -1234,14 +1371,14 @@ def plot_truth(
     rfi_amp = true_params["rfi_r_induce"] + 1.0j * true_params["rfi_i_induce"]
     rfi_A_pred = vmap(lambda x, y: x @ y.T, in_axes=(0, None))(rfi_amp, rfi_resample)
 
-    true_params_base = inv_transform(true_params, args, inv_scaling)
+    true_params_base = inv_transform(true_params, array_args, inv_scaling)
     pred = Predictive(
         model=model,
         posterior_samples=tree_map(lambda x: x[None, :], true_params_base),
         batch_ndims=1,
     )
-    true_pred = pred(subkey, args=args)
-    write_results_xds(true_pred, args, true_path)
+    true_pred = pred(subkey, static_args=static_args, array_args=array_args)
+    write_results_xds(true_pred, array_args, true_path)
 
     # true_pred keys are ['ast_vis', 'gains', 'rfi_vis', 'rmse_ast', 'rmse_gains', 'rmse_rfi', 'vis_obs']
     print(f"RMSE Gains      : {jnp.mean(true_pred['rmse_gains']):.5f}")
@@ -1260,7 +1397,7 @@ def plot_truth(
     plot_predictions(
         times=ms_params["times"],
         pred=true_pred,
-        args=args,
+        args=array_args,
         type="true",
         model_name=model_name,
         max_plots=10,
@@ -1271,19 +1408,21 @@ def plot_truth(
     print(f"{datetime.now()}")
 
 
-def plot_prior(config, ms_params, model, model_name, args, subkey, plot_dir):
+def plot_prior(
+    config, ms_params, model, model_name, static_args, array_args, subkey, plot_dir
+):
 
     start = datetime.now()
     n_prior = config["plots"]["prior_samples"]
     print()
     print(f"Plotting {n_prior:.0f} Prior Parameter Samples")
     pred = Predictive(model, num_samples=n_prior)
-    prior_pred = pred(subkey, args=args)
+    prior_pred = pred(subkey, static_args=static_args, array_args=array_args)
     print("Prior Samples Drawn")
     plot_predictions(
         times=ms_params["times"],
         pred=prior_pred,
-        args=args,
+        args=array_args,
         type="prior",
         model_name=model_name,
         max_plots=10,

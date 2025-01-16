@@ -5,6 +5,7 @@ data:
   sim_dir: null           # Optional - Can be provided when running tabascal   
   ms_path: null           # Optional - Can be provided when running tabascal 
   freq: null              # Optional - Defaults to channel 0
+  data_col: DATA          # Optional - Defaults to 'DATA'
   corr: xx                # Optional - Defaults to 'xx' polarization, i.e. correlation 0
 ######################
 # Plotting parameters
