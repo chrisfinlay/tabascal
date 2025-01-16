@@ -29,6 +29,7 @@ def get_stats(
     TP = np.zeros(n_dir)
     im_noise = np.nan * np.zeros(n_dir)
     mean_I_error = np.nan * np.zeros(n_dir)
+    mean_abs_I_error = np.nan * np.zeros(n_dir)
     std_I_error = np.nan * np.zeros(n_dir)
     det = np.zeros(n_dir)
 
@@ -44,20 +45,38 @@ def get_stats(
             n_src = len(df)
             if n_src > 0:
                 im_noise[i] = df["Image_noise [mJy/beam]"].values[0]
-                idx = np.where(df["SNR"].values > n_sigma)[0]
+                # idx = np.where(df["SNR"].values > n_sigma)[0]
+                idx = np.where(
+                    df["Total_flux_image [mJy]"]
+                    > n_sigma * 1e3 * stats_base["im_noise_theory"][i]
+                )[0]
                 n_match = len(idx)
+                print(
+                    f"{df['Total_flux_image [mJy]'].min():.2f}, {df['Total_flux_image [mJy]'].max():.2f}, {n_sigma * 1e3 * stats_base['im_noise_theory'][i]:.2f}, {n_match}"
+                )
+
                 if n_match > 0:
                     TP[i] = n_match
                     mean_I_error[i] = np.mean(
                         df["Total_flux_image [mJy]"].iloc[idx]
                         - df["Total_flux_true [mJy]"].iloc[idx]
                     )
+                    mean_abs_I_error[i] = np.mean(
+                        np.abs(
+                            df["Total_flux_image [mJy]"].iloc[idx]
+                            - df["Total_flux_true [mJy]"].iloc[idx]
+                        )
+                    )
                     std_I_error[i] = np.mean(df["Total_flux_std [mJy]"].iloc[idx])
 
                     bdsf_df = pd.read_csv(bdsf_path, skiprows=5)
                     if len(bdsf_df) > 0:
+                        # det[i] = np.sum(
+                        #     bdsf_df[" Total_flux"] > n_sigma * 1e-3 * im_noise[i]
+                        # )
                         det[i] = np.sum(
-                            bdsf_df[" Total_flux"] > n_sigma * 1e-3 * im_noise[i]
+                            bdsf_df[" Total_flux"]
+                            > n_sigma * stats_base["im_noise_theory"][i]
                         )
                 else:
                     no_match.append(img_path)
@@ -67,7 +86,8 @@ def get_stats(
     stats = {
         "TP": TP,
         "im_noise": im_noise,
-        "mean_I_error": mean_I_error,
+        "mean_I_error": np.abs(mean_I_error),
+        "mean_abs_I_error": mean_abs_I_error,
         "std_I_error": std_I_error,
         "det": det,
     }
@@ -123,6 +143,303 @@ def bin_stats(stats, n_bins, statistic, bin_array):
         binned[key] = binned_stat
 
     return binned
+
+
+def get_gain_std(zarr_file, fish_file, data_col="DATA"):
+
+    xds = xr.open_zarr(zarr_file)
+    xds_fish = xr.open_zarr(fish_file)
+    gains = (
+        xds.gains_ants.data[:, :, 0]
+        if data_col == "DATA"
+        else np.ones_like(xds.gains_ants.data[:, :, 0])
+    )
+    fish_gains = xds_fish.gains.data
+    amp_std = (
+        100 * np.nanmean(np.std(np.abs(fish_gains), axis=0).T / np.abs(gains)).compute()
+    )
+    if len(np.where(np.std(np.angle(fish_gains), axis=0) == 0)[0]) > 0:
+        print(os.path.split(zarr_file)[1])
+    phase_std = np.rad2deg(np.nanmean(np.std(np.angle(fish_gains), axis=0))).compute()
+
+    return amp_std, phase_std
+
+
+def get_binned_gain_std(
+    zarr_files, fish_files, bin_idx, percentiles=[16, 50, 84], data_col="DATA"
+):
+
+    binned_bias = np.zeros((2, len(bin_idx), 3))
+
+    for i, idx in enumerate(bin_idx):
+
+        biases = []
+        for zarr_file, fish_file in zip(zarr_files[idx], fish_files[idx]):
+            try:
+                biases.append(get_gain_std(zarr_file, fish_file, data_col))
+            except:
+                pass
+
+        if len(biases) > 0:
+            binned_bias[:, i] = np.array(
+                [np.percentile(biases, p, axis=0) for p in percentiles]
+            ).T
+
+    return binned_bias
+
+
+def plot_gain_std(binned_snr, binned_bias, data_dir, tab_suffix):
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+
+    ax.plot(
+        binned_snr,
+        binned_bias[0, :, 1],
+        "o-",
+        label="Amplitude",
+        color="tab:blue",
+    )
+    ax.fill_between(
+        x=binned_snr,
+        y1=binned_bias[0, :, 0],
+        y2=binned_bias[0, :, 2],
+        color="tab:blue",
+        alpha=0.1,
+    )
+    ax.legend(loc="upper right")
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Mean Gain Amp Post. Std [%]")
+    # ax.semilogx()
+    ax.loglog()
+
+    ax2 = ax.twinx()
+    ax2.plot(
+        binned_snr,
+        binned_bias[1, :, 1],
+        "o-",
+        label="Phase",
+        color="tab:orange",
+    )
+    ax2.fill_between(
+        x=binned_snr,
+        y1=binned_bias[1, :, 0],
+        y2=binned_bias[1, :, 2],
+        color="tab:orange",
+        alpha=0.1,
+    )
+    ax2.legend(loc="center right")
+    ax2.loglog()
+    ax2.set_ylabel("Gain Phase Post. Std [deg]")
+
+    plt.savefig(
+        os.path.join(data_dir, f"plots/Gain_Std{tab_suffix}.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def get_gain_bias(sim_file, fish_file, data_col="DATA"):
+
+    xds = xr.open_zarr(sim_file)
+    xds_fish = xr.open_zarr(fish_file)
+    gains = (
+        xds.gains_ants.data[:, :, 0].compute()
+        if data_col == "DATA"
+        else np.ones_like(xds.gains_ants.data[:, :, 0]).compute()
+    )
+    fish_gains = xds_fish.gains.data
+    amp_bias = np.abs(
+        (np.mean(np.abs(fish_gains), axis=0).T - np.abs(gains))
+        / np.std(np.abs(fish_gains), axis=0).T
+    ).compute()
+    phase_bias = np.abs(
+        (np.mean(np.angle(fish_gains), axis=0).T - np.angle(gains))
+        / np.std(np.angle(fish_gains), axis=0).T
+    ).compute()
+    # Maybe this should be an RMSE
+    error_amp = np.nanmean(amp_bias)
+    error_phase = np.nanmean(phase_bias)
+
+    return error_amp, error_phase
+
+
+def get_binned_gain_bias(
+    zarr_files, fish_files, bin_idx, percentiles=[16, 50, 84], data_col="DATA"
+):
+
+    binned_bias = np.zeros((2, len(bin_idx), 3))
+
+    for i, idx in enumerate(bin_idx):
+
+        biases = []
+        for zarr_file, fish_file in zip(zarr_files[idx], fish_files[idx]):
+            try:
+                biases.append(get_gain_bias(zarr_file, fish_file, data_col))
+            except:
+                pass
+
+        if len(biases) > 0:
+            binned_bias[:, i] = np.array(
+                [np.percentile(biases, p, axis=0) for p in percentiles]
+            ).T
+
+    # print(binned_errors[:, -1, :])
+
+    return binned_bias
+
+
+def plot_gain_bias(binned_snr, binned_bias, data_dir, tab_suffix):
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+
+    ax.plot(
+        binned_snr,
+        binned_bias[0, :, 1],
+        "o-",
+        label="Amplitude",
+        color="tab:blue",
+    )
+    ax.fill_between(
+        x=binned_snr,
+        y1=binned_bias[0, :, 0],
+        y2=binned_bias[0, :, 2],
+        color="tab:blue",
+        alpha=0.1,
+    )
+    ax.legend(loc="upper right")
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Gain Amp Normalized Bias")
+    # ax.semilogx()
+    ax.loglog()
+
+    ax2 = ax.twinx()
+    ax2.plot(
+        binned_snr,
+        binned_bias[1, :, 1],
+        "o-",
+        label="Phase",
+        color="tab:orange",
+    )
+    ax2.fill_between(
+        x=binned_snr,
+        y1=binned_bias[1, :, 0],
+        y2=binned_bias[1, :, 2],
+        color="tab:orange",
+        alpha=0.1,
+    )
+    ax2.legend(loc="center right")
+    ax2.loglog()
+    ax2.set_ylabel("Gain Phase Normalized Bias")
+
+    plt.savefig(
+        os.path.join(data_dir, f"plots/Gain_Bias{tab_suffix}.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
+def get_gain_error(sim_file, tab_file, data_col="DATA"):
+
+    xds = xr.open_zarr(sim_file)
+    xds_tab = xr.open_zarr(tab_file)
+    gains = (
+        xds.gains_ants.data[:, :, 0]
+        if data_col == "DATA"
+        else np.ones_like(xds.gains_ants.data[:, :, 0])
+    )
+    error_amp = (
+        100
+        * np.sqrt(
+            np.mean((np.abs(xds_tab.gains.data[0, :, :]).T - np.abs(gains)) ** 2)
+        ).compute()
+    )
+    error_phase = np.sqrt(
+        np.mean(
+            np.rad2deg(
+                (
+                    np.unwrap(np.angle(xds_tab.gains.data[0, :, :]).T.compute(), axis=0)
+                    - np.unwrap(np.angle(gains).compute(), axis=0)
+                )
+            )
+            ** 2
+        )
+    )
+
+    return error_amp, error_phase
+
+
+def get_binned_gain_errors(
+    zarr_files, tab_files, bin_idx, percentiles=[16, 50, 84], data_col="DATA"
+):
+
+    binned_errors = np.zeros((2, len(bin_idx), 3))
+
+    for i, idx in enumerate(bin_idx):
+
+        errors = np.array(
+            [
+                get_gain_error(zarr_file, tab_file, data_col)
+                for zarr_file, tab_file in zip(zarr_files[idx], tab_files[idx])
+            ]
+        )
+        binned_errors[:, i] = np.array(
+            [np.percentile(errors, p, axis=0) for p in percentiles]
+        ).T
+
+    return binned_errors
+
+
+def plot_gain_errors(binned_snr, binned_errors, data_dir, tab_suffix):
+
+    fig, ax = plt.subplots(1, 1, figsize=(7, 6))
+
+    ax.plot(
+        binned_snr,
+        binned_errors[0, :, 1],
+        "o-",
+        label="Amplitude",
+        color="tab:blue",
+    )
+    ax.fill_between(
+        x=binned_snr,
+        y1=binned_errors[0, :, 0],
+        y2=binned_errors[0, :, 2],
+        color="tab:blue",
+        alpha=0.1,
+    )
+    ax.legend(loc="upper right")
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Gain Amp RMSE [%]")
+    # ax.semilogx()
+    ax.loglog()
+
+    ax2 = ax.twinx()
+    ax2.plot(
+        binned_snr,
+        binned_errors[1, :, 1],
+        "o-",
+        label="Phase",
+        color="tab:orange",
+    )
+    ax2.fill_between(
+        x=binned_snr,
+        y1=binned_errors[1, :, 0],
+        y2=binned_errors[1, :, 2],
+        color="tab:orange",
+        alpha=0.1,
+    )
+    ax2.legend(loc="center right")
+    ax2.loglog()
+    ax2.set_ylabel("Gain Phase RMSE [deg]")
+
+    plt.savefig(
+        os.path.join(data_dir, f"plots/Gain_Error{tab_suffix}.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
 
 
 def get_error(sim_file, tab_file):
@@ -248,7 +565,9 @@ def get_all_errors(zarr_files, ms_files, tab_files, bin_idx):
     return errors, errors_flags1, errors_flags2
 
 
-def get_file_names(data_dir: str, model_name: str, tab_suffix: str = ""):
+def get_file_names(
+    data_dir: str, model_name: str, tab_suffix: str = "", data_col: str = "DATA"
+):
 
     data_dirs = np.array(glob(os.path.join(data_dir, "*")))
 
@@ -275,11 +594,22 @@ def get_file_names(data_dir: str, model_name: str, tab_suffix: str = ""):
             for d in data_dirs
         ]
     )
+    fish_files = np.array(
+        [
+            os.path.join(
+                os.path.join(d, "results"),
+                f"fisher{model_name[3:]}{tab_suffix}.zarr",
+            )
+            for d in data_dirs
+        ]
+    )
 
     n_sim = len(data_dirs)
 
+    im_noise_theory = np.zeros(n_sim)
     rchi2 = np.zeros(n_sim)
     mean_rfi = np.zeros(n_sim)
+    max_rfi = np.zeros(n_sim)
     mean_ast = np.zeros(n_sim)
     vis_noise = np.zeros(n_sim)
     flags1 = np.zeros(n_sim)
@@ -288,25 +618,33 @@ def get_file_names(data_dir: str, model_name: str, tab_suffix: str = ""):
 
     no_tab = []
     bad_tab = []
+    no_fish = []
 
     for i in tqdm(range(n_sim)):
+
+        try:
+            xds = xr.open_zarr(fish_files[i])
+        except:
+            no_fish.append(data_dirs[i])
+
         try:
             xds_ms = xds_from_ms(ms_files[i])[0]
             xds = xr.open_zarr(zarr_files[i])
             xds_res = xr.open_zarr(tab_files[i])
+            vis_obs = xds_ms[data_col].data[:, 0, 0].reshape(xds.n_time, xds.n_bl)
+            # vis_obs = xds.vis_obs.data[:, :, 0]
             rchi2[i] = (
-                np.mean(
-                    np.abs(xds.vis_obs.data[:, :, 0] - xds_res.vis_obs.data[0, :, :].T)
-                    ** 2
-                )
+                np.mean(np.abs(vis_obs - xds_res.vis_obs.data[0, :, :].T) ** 2)
                 / (2 * xds.noise_std.data**2)
             ).compute()[0]
             mean_rfi[i] = np.abs(xds_ms["RFI_MODEL_DATA"].data).mean().compute()
+            max_rfi[i] = np.abs(xds_ms["RFI_MODEL_DATA"].data).max().compute()
             mean_ast[i] = np.abs(xds_ms["AST_MODEL_DATA"].data).mean().compute()
             # flags1[i] = np.abs(xds_ms["3S_FLAGS"]).mean().compute()
             flags1[i] = np.abs(xds.flags.mean()).compute()
             flags2[i] = np.abs(xds_ms["AO_FLAGS"].data).mean().compute()
             vis_noise[i] = np.std(xds_ms["NOISE_DATA"].data.real).compute()
+            im_noise_theory[i] = vis_noise[i] / np.sqrt(xds_ms["DATA"].data.shape[0])
             if rchi2[i] < 1:
                 idx.append(i)
             else:
@@ -315,21 +653,28 @@ def get_file_names(data_dir: str, model_name: str, tab_suffix: str = ""):
             no_tab.append(data_dirs[i])
 
     idx = np.array(idx)
+    bad_rchi2 = rchi2[rchi2 > 1]
 
     print()
     print(f"Total number of simulations      : {n_sim}")
     print(f"Number of sims with good results : {len(idx)}")
     print(f"Number of sims with rchi2 > 1    : {len(bad_tab)}")
     print(f"Number of sims with no results   : {len(no_tab)}")
+    print(f"Number of sims with no Fisher    : {len(no_fish)}")
     if len(bad_tab) > 0:
         print()
         print("Simulations with rchi2 > 1")
-        for bad in bad_tab:
-            print(bad)
+        for bad, rchi2_ in zip(bad_tab, bad_rchi2):
+            print(bad, rchi2_)
     if len(no_tab) > 0:
         print()
         print("Simulations with no results")
         for no in no_tab:
+            print(no)
+    if len(no_fish) > 0:
+        print()
+        print("Simulations with no Fisher")
+        for no in no_fish:
             print(no)
 
     files = {
@@ -339,15 +684,18 @@ def get_file_names(data_dir: str, model_name: str, tab_suffix: str = ""):
         "ms_files": ms_files[idx],
         "zarr_files": zarr_files[idx],
         "tab_files": tab_files[idx],
+        "fish_files": fish_files[idx],
     }
 
     data = {
         "rchi2": rchi2[idx],
         "mean_rfi": mean_rfi[idx],
+        "max_rfi": max_rfi[idx],
         "mean_ast": mean_ast[idx],
         "flags1": flags1[idx],
         "flags2": flags2[idx],
         "vis_noise": vis_noise[idx],
+        "im_noise_theory": im_noise_theory[idx],
     }
 
     return files, data
@@ -359,21 +707,21 @@ def get_names(tab_suffix: str = ""):
 
     names = {
         "options": [
-            "perfect",
+            # "perfect",
             "ideal",
             "tab",
             "flag1",
             "flag2",
         ],
         "names": {
-            "perfect": "No Noise, No RFI",
+            # "perfect": "No Noise, No RFI",
             "ideal": "Uncontaminated",
             "tab": "TABASCAL",
             "flag1": "Perfect Flagging",
             "flag2": "AOFlagger",
         },
         "colors": {
-            "perfect": "tab:purple",
+            # "perfect": "tab:purple",
             "ideal": "tab:blue",
             "tab": "tab:orange",
             "flag1": "tab:red",
@@ -387,7 +735,7 @@ def get_names(tab_suffix: str = ""):
         #     "flag2": f"CAL_DATA_aoflagger{suffix}",
         # },
         "img_names": {
-            "perfect": f"AST_MODEL_DATA_0.0sigma{im_suffix}",
+            # "perfect": f"AST_MODEL_DATA_0.0sigma{im_suffix}",
             "ideal": f"AST_DATA_0.0sigma{im_suffix}",
             "tab": f"TAB_DATA_0.0sigma{im_suffix}{tab_suffix}",
             "flag1": f"CAL_DATA_3.0sigma{im_suffix}",
@@ -839,6 +1187,39 @@ def plot_image_noise(
     )
 
 
+def plot_abs_flux_error(
+    all_med,
+    all_q1: dict,
+    all_q2: dict,
+    names,
+    data_dir: str,
+    vbounds: list,
+    suffix: str,
+):
+
+    ax = plot_sausage(all_med, all_q1, all_q2, names, "SNR_RFI", "mean_abs_I_error")
+
+    ax.axhline(0, ls="--", color="k")
+    ax.set_xlabel("SNR$(|V^{RFI}|)$")
+    ax.set_ylabel("Mean Absolute Flux Error [mJy]")
+    # ax.semilogx()
+    ax.loglog()
+    # ax.xticks(10**np.arange(-1.0, 2.0, 1.0), 10**np.arange(-1.0, 2.0, 1.0))
+    ax.set_ylim(vbounds[0], vbounds[1])
+
+    ax2 = ax.twiny()
+    ax2.plot(all_med["ideal"]["RFI/AST"], all_med["ideal"]["mean_abs_I_error"], alpha=0)
+    ax2.semilogx()
+    ax2.set_xlabel("$|V^{RFI}| / |V^{AST}|$")
+
+    plt.savefig(
+        os.path.join(data_dir, f"plots/AbsFluxError{suffix}.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+
+
 def plot_flux_error(
     all_med,
     all_q1: dict,
@@ -854,7 +1235,8 @@ def plot_flux_error(
     ax.axhline(0, ls="--", color="k")
     ax.set_xlabel("SNR$(|V^{RFI}|)$")
     ax.set_ylabel("Mean Flux Error [mJy]")
-    ax.semilogx()
+    # ax.semilogx()
+    ax.loglog()
     # ax.xticks(10**np.arange(-1.0, 2.0, 1.0), 10**np.arange(-1.0, 2.0, 1.0))
     ax.set_ylim(vbounds[0], vbounds[1])
 
@@ -1113,7 +1495,7 @@ def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3, suffix=""):
         bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
     )
     # ax[0,0].legend(loc="center left")
-    ax[0, 0].legend()
+    # ax[0, 0].legend()
 
     ax[0, 1].plot(time, np.abs(xds.vis_rfi.data[:, bl2]), label="Truth")
     ax[0, 1].plot(
@@ -1132,7 +1514,7 @@ def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3, suffix=""):
         fontsize=14,
         bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
     )
-    ax[0, 1].legend(loc="center left")
+    # ax[0, 1].legend(loc="center left")
     # ax[0,1].legend()
 
     ax[1, 0].plot(time, np.abs(xds.vis_ast.data[:, bl1]), label="Truth")
@@ -1150,7 +1532,7 @@ def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3, suffix=""):
         bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
     )
     # ax[1,0].legend(loc="center left")
-    ax[1, 0].legend()
+    # ax[1, 0].legend()
 
     ax[1, 1].plot(time, np.abs(xds.vis_ast.data[:, bl2]), label="Truth")
     ax[1, 1].plot(
@@ -1170,12 +1552,13 @@ def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3, suffix=""):
         bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
     )
     # ax[1,1].legend(loc="center left")
-    ax[1, 1].legend()
+    # ax[1, 1].legend()
 
     plt.subplots_adjust(wspace=0, hspace=-0.03)  # figsize=(11.5,12)
 
     for a in ax.flatten():
         a.grid()
+        a.legend("lower right")
 
     plt.savefig(
         os.path.join(data_dir, f"plots/Vis_Ex_RFI_{mean_rfi:.2e}{suffix}.pdf"),
@@ -1183,6 +1566,172 @@ def plot_vis_ex(zarr_file, tab_file, data_dir, bl1=3e1, bl2=1e3, suffix=""):
         dpi=200,
         bbox_inches="tight",
     )
+
+
+def plot_vis_ex_multi(zarr_file, tab_files, data_dir, bl1=3e1, bl2=1e3, suffix=""):
+
+    plt.rcParams["font.size"] = 14
+
+    xds = xr.open_zarr(zarr_file)
+    xds_tab = [xr.open_zarr(tab_file) for tab_file in tab_files]
+    n_tab = len(tab_files)
+
+    mean_rfi = np.mean(np.abs(xds.vis_rfi.data)).compute()
+
+    bl_norm = np.linalg.norm(xds.bl_uvw.data[0, :, :-1], axis=-1).compute()
+
+    bl1 = np.argmin(np.abs(bl_norm - bl1))
+    bl2 = np.argmin(np.abs(bl_norm - bl2))
+
+    time = xds.time.data / 60
+    fig, ax = plt.subplots(n_tab + 1, 2, figsize=(7, 11))
+
+    ax[0, 0].plot(time, np.abs(xds.vis_rfi.data[:, bl1]), label="Truth")
+    ax[0, 0].plot(
+        time, np.abs(xds_tab[0].rfi_vis.data[0, bl1]), ".-", alpha=0.5, label="tabascal"
+    )
+    ax[0, 0].set_ylabel("$|V^\\text{RFI}|$ [Jy]")  # , fontsize=11)
+    ax[0, 0].tick_params(axis="x", labelbottom=False)
+    # y_pos = ax[0, 0].get_ylim()[0] + np.diff(ax[0, 0].get_ylim()) * 0.9
+    # ax[0, 0].text(
+    #     0.1,
+    #     y_pos,
+    #     f"|uv| = {bl_norm[bl1]:.0f} m",
+    #     fontsize=14,
+    #     bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
+    # )
+    ax[0, 0].set_title(f"|uv| = {bl_norm[bl1]:.0f} m")
+
+    ax[0, 1].plot(time, np.abs(xds.vis_rfi.data[:, bl2]), label="Truth")
+    ax[0, 1].plot(
+        time, np.abs(xds_tab[0].rfi_vis.data[0, bl2]), ".-", alpha=0.5, label="tabascal"
+    )
+    ax[0, 1].tick_params(axis="x", labelbottom=False)
+    ax[0, 1].tick_params(
+        axis="y", labelleft=False, labelright=True, left=False, right=True
+    )
+    # y_pos = ax[0, 1].get_ylim()[0] + np.diff(ax[0, 1].get_ylim()) * 0.90
+    # ax[0, 1].text(
+    #     0.1,
+    #     y_pos,
+    #     f"|uv| = {bl_norm[bl2]:.0f} m",
+    #     fontsize=14,
+    #     bbox={"facecolor": "white", "boxstyle": "round", "pad": 0.3, "edgecolor": "k"},
+    # )
+    ax[0, 1].set_title(f"|uv| = {bl_norm[bl2]:.0f} m")
+
+    y_range1 = [
+        1.1 * np.min([np.min(np.real(tab.ast_vis.data[0, bl1])) for tab in xds_tab]),
+        1.1 * np.max([np.max(np.real(tab.ast_vis.data[0, bl1])) for tab in xds_tab]),
+    ]
+    y_range2 = [
+        1.1 * np.min([np.min(np.real(tab.ast_vis.data[0, bl2])) for tab in xds_tab]),
+        1.1 * np.max([np.max(np.real(tab.ast_vis.data[0, bl2])) for tab in xds_tab]),
+    ]
+
+    k0 = [-2, -3, -4]
+
+    for i in range(n_tab):
+
+        # Left Panel
+        ax[i + 1, 0].plot(time, np.real(xds.vis_ast.data[:, bl1]), label="Truth")
+        ax[i + 1, 0].plot(
+            time,
+            np.real(xds_tab[i].ast_vis.data[0, bl1]),
+            ".-",
+            alpha=0.5,
+            label="tabascal",
+        )
+        ax[i + 1, 0].set_ylim(*y_range1)
+        ax[i + 1, 0].set_ylabel("$Re(V^\\text{AST})$ [Jy]")  # , fontsize=12)
+        ax[i + 1, 0].tick_params(axis="x", labelbottom=False, bottom=False)
+        y_pos = ax[i + 1, 0].get_ylim()[0] + np.diff(ax[i + 1, 0].get_ylim()) * 0.9
+        # ax[i + 1, 0].text(
+        #     0.1,
+        #     y_pos,
+        #     f"|uv| = {bl_norm[bl1]:.0f} m",
+        #     fontsize=14,
+        #     bbox={
+        #         "facecolor": "white",
+        #         "boxstyle": "round",
+        #         "pad": 0.3,
+        #         "edgecolor": "k",
+        #     },
+        # )
+        ax[i + 1, 0].text(
+            7.5,
+            y_pos,
+            "$k_0 = 10^{" + f"{k0[i]}" + "}$ Hz",
+            fontsize=14,
+            horizontalalignment="center",
+            bbox={
+                "facecolor": "white",
+                "boxstyle": "round",
+                "pad": 0.3,
+                "edgecolor": "k",
+            },
+        )
+
+        # Right Panel
+        ax[i + 1, 1].plot(time, np.real(xds.vis_ast.data[:, bl2]), label="Truth")
+        ax[i + 1, 1].plot(
+            time,
+            np.real(xds_tab[i].ast_vis.data[0, bl2]),
+            ".-",
+            alpha=0.5,
+            label="tabascal",
+        )
+        ax[i + 1, 1].set_ylim(*y_range2)
+        ax[i + 1, 1].tick_params(
+            axis="y", labelleft=False, labelright=True, left=False, right=True
+        )
+        ax[i + 1, 1].tick_params(axis="x", labelbottom=False, bottom=False)
+        y_pos = ax[i + 1, 1].get_ylim()[0] + np.diff(ax[i + 1, 1].get_ylim()) * 0.9
+        # ax[i + 1, 1].text(
+        #     0.1,
+        #     y_pos,
+        #     f"|uv| = {bl_norm[bl2]:.0f} m",
+        #     fontsize=14,
+        #     bbox={
+        #         "facecolor": "white",
+        #         "boxstyle": "round",
+        #         "pad": 0.3,
+        #         "edgecolor": "k",
+        #     },
+        # )
+        ax[i + 1, 1].text(
+            7.5,
+            y_pos,
+            "$k_0 = 10^{" + f"{k0[i]}" + "}$ Hz",
+            fontsize=14,
+            horizontalalignment="center",
+            bbox={
+                "facecolor": "white",
+                "boxstyle": "round",
+                "pad": 0.3,
+                "edgecolor": "k",
+            },
+        )
+
+    ax[-1, 0].tick_params(axis="x", labelbottom=True)
+    ax[-1, 1].tick_params(axis="x", labelbottom=True)
+    ax[-1, 0].set_xlabel("Time [min]")
+    ax[-1, 1].set_xlabel("Time [min]")
+    plt.subplots_adjust(wspace=0, hspace=-0.03)  # figsize=(11.5,12)
+    plt.subplots_adjust(wspace=0.03, hspace=0.0)  # figsize=(11.5,12)
+    # plt.subplots_adjust(wspace=0.0, hspace=0.0)  # figsize=(11.5,12)
+
+    for a in ax.flatten():
+        a.grid()
+        a.legend(loc="lower right")
+
+    plt.savefig(
+        os.path.join(data_dir, f"plots/Vis_Ex_Multi_RFI_{mean_rfi:.2e}{suffix}.pdf"),
+        format="pdf",
+        dpi=200,
+        bbox_inches="tight",
+    )
+    print("Saved")
 
 
 def extract_ms_data(ms_path: str, name: str) -> dict:
@@ -1350,18 +1899,46 @@ def plot(
     vbounds_flux: list,
     ps_dir: str,
     tab_suffix: str = "",
+    data_col: str = "DATA",
     model_name: str = "map_pred_fixed_orbit_rfi_full_fft_standard_padded_model",
 ):
     if tab_suffix:
         tab_suffix = "_" + tab_suffix
 
-    files, data = get_file_names(data_dir, model_name, tab_suffix)
+    files, data = get_file_names(data_dir, model_name, tab_suffix, data_col)
+
+    # print(data["max_rfi"].max())
+
+    # import sys
+
+    # sys.exit(0)
 
     names = get_names(tab_suffix=tab_suffix)
 
     noise_std = np.mean(data["vis_noise"])
     SNR = data["mean_rfi"] / data["vis_noise"]
     bin_idx = get_bins(SNR, n_bins)
+
+    if plots["gains"]:
+        percentiles = [5, 50, 95]
+        binned_snr = [np.median(SNR[idx]) for idx in bin_idx]
+        binned_errors = get_binned_gain_errors(
+            files["zarr_files"], files["tab_files"], bin_idx, percentiles, data_col
+        )
+
+        plot_gain_errors(binned_snr, binned_errors, data_dir, tab_suffix)
+
+        binned_bias = get_binned_gain_bias(
+            files["zarr_files"], files["fish_files"], bin_idx, percentiles, data_col
+        )
+
+        plot_gain_bias(binned_snr, binned_bias, data_dir, tab_suffix)
+
+        binned_bias = get_binned_gain_std(
+            files["fish_files"], bin_idx, percentiles, data_col
+        )
+
+        plot_gain_std(binned_snr, binned_bias, data_dir, tab_suffix)
 
     #############################################################
     # Visibility Errors
@@ -1432,6 +2009,37 @@ def plot(
                 bl2=1e3,
                 suffix=tab_suffix,
             )
+            suffixes = [tab_suffix, "_k0_1e-3", "_k0_1e-4"]
+            tab_files = 3 * [
+                files["tab_files"][idx],
+            ]
+            tab_files = [
+                tab_file.replace(tab_suffix, suffix)
+                for tab_file, suffix in zip(tab_files, suffixes)
+            ]
+            # plot_vis_ex_multi(
+            #     files["zarr_files"][idx],
+            #     tab_files,
+            #     data_dir,
+            #     bl1=3e1,
+            #     bl2=1e3,
+            #     suffix=tab_suffix,
+            # )
+
+    # tab_files = [
+    #     "../../data/pnt_src_32A/pnt_src_obs_32A_450T-0000-0898_1025I_001F-1.227e+09-1.227e+09_100PAST_000GAST_000EAST_6SAT_0GRD_3.0e+01RFI_78RSEED/results/map_pred_fixed_orbit_rfi_full_fft_standard_padded_model_k0_1e-2.zarr",
+    #     "../../data/pnt_src_32A/pnt_src_obs_32A_450T-0000-0898_1025I_001F-1.227e+09-1.227e+09_100PAST_000GAST_000EAST_6SAT_0GRD_3.0e+01RFI_78RSEED/results/map_pred_fixed_orbit_rfi_full_fft_standard_padded_model_k0_1e-3.zarr",
+    #     "../../data/pnt_src_32A/pnt_src_obs_32A_450T-0000-0898_1025I_001F-1.227e+09-1.227e+09_100PAST_000GAST_000EAST_6SAT_0GRD_3.0e+01RFI_78RSEED/results/map_pred_fixed_orbit_rfi_full_fft_standard_padded_model_k0_1e-4.zarr",
+    # ]
+    # zarr_file = "../../data/pnt_src_32A/pnt_src_obs_32A_450T-0000-0898_1025I_001F-1.227e+09-1.227e+09_100PAST_000GAST_000EAST_6SAT_0GRD_3.0e+01RFI_78RSEED/pnt_src_obs_32A_450T-0000-0898_1025I_001F-1.227e+09-1.227e+09_100PAST_000GAST_000EAST_6SAT_0GRD_3.0e+01RFI_78RSEED.zarr"
+    # plot_vis_ex_multi(
+    #     zarr_file,
+    #     tab_files,
+    #     data_dir,
+    #     bl1=3e1,
+    #     bl2=1e3,
+    #     suffix=tab_suffix,
+    # )
 
     #############################################################
     # Point Source Recovery Statistics
@@ -1449,6 +2057,7 @@ def plot(
             "mean_ast": data["mean_ast"],
             "mean_rfi": data["mean_rfi"],
             "vis_noise": data["vis_noise"],
+            "im_noise_theory": data["im_noise_theory"],
             "P": n_true,
         }
 
@@ -1500,6 +2109,9 @@ def plot(
         plot_flux_error(
             all_med, all_q1, all_q2, names, data_dir, vbounds_flux, tab_suffix
         )
+        plot_abs_flux_error(
+            all_med, all_q1, all_q2, names, data_dir, vbounds_flux, tab_suffix
+        )
 
         # plot_flag_noise(files, noise_std, data, all_stats, names, data_dir)
         # plot_theoretical_noise(files, noise_std, data, all_stats, names, data_dir)
@@ -1534,6 +2146,12 @@ def main():
         help="Path to the data directory containing all the simulations.",
     )
     parser.add_argument(
+        "-dc",
+        "--data_col",
+        default="DATA",
+        help="Data columns name in the MS file. Default is 'DATA'.",
+    )
+    parser.add_argument(
         "-b", "--n_bins", default=5, type=int, help="Number of RFI bins. Default is 5."
     )
     parser.add_argument(
@@ -1553,7 +2171,7 @@ def main():
     parser.add_argument(
         "-p",
         "--plots",
-        default="error,vis,img,src",
+        default="gains,error,vis,img,src",
         help="Which plots to create. Default is 'error,img,src'. Options are {'error', 'vis', 'img', 'src', 'pow_spec'}",
     )
     parser.add_argument(
@@ -1596,6 +2214,7 @@ def main():
     os.makedirs(os.path.join(data_dir, "plots"), exist_ok=True)
 
     plots = {
+        "gains": False,
         "error": False,
         "vis": False,
         "img": False,
@@ -1617,6 +2236,7 @@ def main():
         vbounds_flux,
         args.ps_dir,
         tab_suffix=args.suffix,
+        data_col=args.data_col,
     )
 
 
