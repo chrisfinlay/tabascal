@@ -9,20 +9,14 @@ import os
 
 import xarray as xr
 
+
 def construct_src_df(xds: xr.Dataset) -> pd.DataFrame:
 
     def construct_src_subdf(radec, I):
         df = pd.DataFrame(
-                data=np.concatenate(
-                    [
-                        radec,
-                        I,
-                        np.zeros((len(I), 1))
-                    ],
-                    axis=1
-                ),
-                columns=[" RA", " DEC", " Total_flux", " E_Total_flux"],
-            )
+            data=np.concatenate([radec, I, np.zeros((len(I), 1))], axis=1),
+            columns=[" RA", " DEC", " Total_flux", " E_Total_flux"],
+        )
         return df
 
     no_sources = construct_src_subdf(np.zeros((0, 2)), np.zeros((0, 1)))
@@ -45,6 +39,7 @@ def construct_src_df(xds: xr.Dataset) -> pd.DataFrame:
     source_df = pd.concat([p_df, g_df, e_df])
 
     return source_df
+
 
 def airy_beam(theta: np.ndarray, freqs: np.ndarray, dish_d: float):
     """
@@ -69,6 +64,7 @@ def airy_beam(theta: np.ndarray, freqs: np.ndarray, dish_d: float):
     """
     import sys
     from scipy.special import jv
+
     c = 2.99792458e8
     theta = np.asarray(theta[:, :, :, None])
     freqs = np.asarray(freqs)
@@ -83,6 +79,7 @@ def airy_beam(theta: np.ndarray, freqs: np.ndarray, dish_d: float):
 
     return 2 * jv(1, x) / x
     # return (2 * jv(1, x) / x) * mask
+
 
 def radec_to_lmn(
     ra: np.ndarray, dec: np.ndarray, phase_centre: np.ndarray
@@ -115,15 +112,22 @@ def radec_to_lmn(
     dec_0 = phase_centre[1]
 
     l = np.cos(dec) * np.sin(delta_ra)
-    m = np.sin(dec) * np.cos(dec_0) - np.cos(dec) * np.sin(dec_0) * np.cos(
-        delta_ra
-    )
+    m = np.sin(dec) * np.cos(dec_0) - np.cos(dec) * np.sin(dec_0) * np.cos(delta_ra)
     n = np.sqrt(1 - l**2 - m**2)
 
     return np.array([l, m, n]).T
 
 
-def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float=1.0, thresh_isl: float=1.0, thresh_pix: float=1.0, save_dir: str=None, beam_corr: bool=True) -> None:
+def extract(
+    img_path: str,
+    zarr_path: str,
+    sigma_cut: float = 3.0,
+    beam_cut: float = 1.0,
+    thresh_isl: float = 1.0,
+    thresh_pix: float = 1.0,
+    save_dir: str = None,
+    beam_corr: bool = True,
+) -> None:
 
     # tclean naming convention
     # img_name = os.path.splitext(img_path)[0]
@@ -135,9 +139,9 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
         save_dir = img_dir
 
     save_name = os.path.join(save_dir, os.path.split(img_name)[1])
-    
-    bmaj = fits.getheader(img_path)["BMAJ"]*3600
-    bmin = fits.getheader(img_path)["BMIN"]*3600
+
+    bmaj = fits.getheader(img_path)["BMAJ"] * 3600
+    bmin = fits.getheader(img_path)["BMIN"] * 3600
     beam_width = np.sqrt(bmaj**2 + bmin**2)
 
     print(f"Beam Major : {bmaj:.2f} arcsec")
@@ -146,11 +150,18 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
     # image = process_image(
     #     img_path, quiet=True, thresh_isl=2.0, thresh_pix=1.0
     # )
-    image = process_image(img_path, thresh_isl=thresh_isl, thresh_pix=thresh_pix, quiet=True)
+    image = process_image(
+        img_path, thresh_isl=thresh_isl, thresh_pix=thresh_pix, quiet=True
+    )
 
-    image.export_image(outfile=save_name + ".gauss_resid.fits", img_type="gaus_resid", clobber=True)
+    image.export_image(
+        outfile=save_name + ".gauss_resid.fits", img_type="gaus_resid", clobber=True
+    )
     image.write_catalog(
-        outfile=save_name + ".pybdsf.csv", format="csv", catalog_type="srl", clobber=True
+        outfile=save_name + ".pybdsf.csv",
+        format="csv",
+        catalog_type="srl",
+        clobber=True,
     )
 
     # tclean naming convention
@@ -183,7 +194,7 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
         " E_PA",
     ]
     image_df = (
-        df[df[" Total_flux"] > sigma_cut*noise][keys1]
+        df[df[" Total_flux"] > sigma_cut * noise][keys1]
         .sort_values(" Total_flux")
         .reset_index()[keys1]
     )
@@ -197,11 +208,20 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
 
     if beam_corr:
 
-        lmn = radec_to_lmn(image_df1[" RA"].values, image_df1[" DEC"].values, [xds.target_ra, xds.target_dec])
+        lmn = radec_to_lmn(
+            image_df1[" RA"].values,
+            image_df1[" DEC"].values,
+            [xds.target_ra, xds.target_dec],
+        )
         theta = np.rad2deg(np.arcsin(np.linalg.norm(lmn[:, :-1], axis=-1)))
-        beam = airy_beam(theta[:,None,None], xds.freq.data, xds.dish_diameter)[:,0,0,0]**2
-        image_df1.loc[:," Total_flux"] = image_df1[" Total_flux"] / beam
-        image_df1.loc[:," E_Total_flux"] = image_df1[" E_Total_flux"] / beam
+        beam = (
+            airy_beam(theta[:, None, None], xds.freq.data, xds.dish_diameter)[
+                :, 0, 0, 0
+            ]
+            ** 2
+        )
+        image_df1.loc[:, " Total_flux"] = image_df1[" Total_flux"] / beam
+        image_df1.loc[:, " E_Total_flux"] = image_df1[" E_Total_flux"] / beam
 
     error_df = np.abs((image_df1 - true_df1))
     error_df = pd.DataFrame(
@@ -239,6 +259,10 @@ def extract(img_path: str, zarr_path: str, sigma_cut: float=3.0, beam_cut: float
     ]
     error_df = error_df[keys].iloc[mask]
 
+    error_df = error_df.sort_values("E_RADEC [as]").drop_duplicates(
+        subset="RA [deg]", keep="first"
+    )
+
     error_df.to_csv(save_name + ".csv", index=False)
 
 
@@ -247,7 +271,11 @@ def main():
     parser = argparse.ArgumentParser(description=program_desc)
     # Output File Arguments
     parser.add_argument("-z", "--zarr_path", help="Path to zarr simulation file.")
-    parser.add_argument("-i", "--img_path", help="Path to image or directory of images if '--type' is specified.")
+    parser.add_argument(
+        "-i",
+        "--img_path",
+        help="Path to image or directory of images if '--type' is specified.",
+    )
     parser.add_argument(
         "--type",
         default=None,
@@ -259,7 +287,9 @@ def main():
     img_path = args.img_path
     if args.type is not None:
         data_types = args.type.upper().split(",")
-        img_paths = [os.path.join(img_path, f"{d_type}_DATA-image.fits") for d_type in data_types]
+        img_paths = [
+            os.path.join(img_path, f"{d_type}_DATA-image.fits") for d_type in data_types
+        ]
     else:
         img_paths = [img_path]
 
