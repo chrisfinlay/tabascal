@@ -60,6 +60,21 @@ def split_args(args):
     return static_args, array_args
 
 
+def get_ast_fringe_rate(uv, freq=1.227e9, D=13.5):
+
+    omega = 2 * np.pi / (24 * 3600)
+    lam = 3e8 / freq
+
+    U = jnp.max(jnp.linalg.norm(uv, axis=-1), axis=0)
+
+    bw = 1.22 * lam / D
+    max_l = jnp.sin(bw / 2)
+
+    max_fr = omega * U * max_l / lam
+
+    return max_fr
+
+
 def print_rfi_signal_error(zarr_path, ms_params, true_params, gp_params):
 
     xds = xr.open_zarr(zarr_path)
@@ -104,6 +119,17 @@ def reduced_chi2(pred, true, noise):
 
 def write_results_xds(vi_pred, args, file_path, overwrite=True):
 
+    # print(vi_pred.keys())
+    # print(vi_pred["rfi_vis"].shape)
+    # print(vi_pred["rfi_vis"])
+
+    # print(da.asarray(vi_pred["ast_vis"]))
+    # print(da.asarray(vi_pred["gains"]))
+    # print(da.asarray(vi_pred["rfi_vis"]))
+    # print(da.asarray(vi_pred["vis_obs"]))
+    # print(da.asarray(vi_pred["rfi_A"]))
+    # print(da.asarray(args["rfi_phase"]))
+
     map_xds = xr.Dataset(
         data_vars={
             "ast_vis": (["sample", "bl", "time"], da.asarray(vi_pred["ast_vis"])),
@@ -125,6 +151,7 @@ def write_results_xds(vi_pred, args, file_path, overwrite=True):
             "time_mjd_fine": da.asarray(args["times_mjd_fine"]),
         },
     )
+    # print(map_xds)
 
     mode = "w" if overwrite else "w-"
 
@@ -135,48 +162,47 @@ def write_results_xds(vi_pred, args, file_path, overwrite=True):
 
 def write_params_xds(vi_params, gp_params, ms_params, file_path, overwrite=True):
 
-    n_ant = vi_params["g_phase_induce_base"].shape[0]
-    print({key: value.shape for key, value in vi_params.items()})
+    n_ant, n_g_times = vi_params["g_amp_induce_base_auto_loc"].shape
+    # print({key: value.shape for key, value in vi_params.items()})
+    rfi_amp_base = da.asarray(
+        vi_params["rfi_r_induce_base_auto_loc"]
+        + 1.0j * vi_params["rfi_i_induce_base_auto_loc"]
+    )
+    gains_base = da.asarray(
+        vi_params["g_amp_induce_base_auto_loc"]
+        * np.exp(
+            1.0j
+            * np.concatenate(
+                [
+                    vi_params["g_phase_induce_base_auto_loc"],
+                    np.zeros((1, n_g_times)),
+                ],
+                axis=0,
+            )
+        )
+    )
+    ast_k_base = da.asarray(
+        vi_params["ast_k_r_base_auto_loc"] + 1.0j * vi_params["ast_k_i_base_auto_loc"],
+    )
     map_xds = xr.Dataset(
         data_vars={
-            "rfi_amp": (
+            "rfi_amp_base": (
                 ["src", "ant", "rfi_time"],
-                da.asarray(
-                    vi_params["rfi_r_induce_base_auto_loc"]
-                    + 1.0j * vi_params["rfi_i_induce_base_auto_loc"]
-                ),
+                rfi_amp_base,
             ),
-            "gains": (
+            "gains_base": (
                 ["ant", "g_time"],
-                da.asarray(
-                    vi_params["g_amp_induce_base_auto_loc"]
-                    * np.exp(
-                        1.0j
-                        * np.concatenate(
-                            [
-                                vi_params["g_phase_induce_base_auto_loc"],
-                                np.zeros((1, n_ant)),
-                            ],
-                            axis=0,
-                        )
-                    )
-                ),
+                gains_base,
             ),
-            "ast_vis": (
-                ["bl", "time"],
-                da.asarray(
-                    np.fft.fft(
-                        vi_params["ast_k_r_base_auto_loc"]
-                        + 1.0j * vi_params["ast_k_i_base_auto_loc"],
-                        axis=2,
-                    )
-                ),
+            "ast_k_base": (
+                ["bl", "ast_time"],
+                ast_k_base,
             ),
         },
         coords={
             "rfi_time": da.asarray(gp_params["rfi_times"]),
             "g_time": da.asarray(gp_params["g_times"]),
-            "time": da.asarray(ms_params["times"]),
+            # "ast_time": da.asarray(ast_time),
         },
     )
 
@@ -258,6 +284,7 @@ def read_ms(ms_path, freq: float = None, corr: str = "xx", data_col: str = "DATA
         "int_time": int_time,
         "freqs": freqs[chan],
         "ants_itrf": ants_itrf,
+        "uvw": jnp.array(xds.UVW.data.reshape(n_time, n_bl, 3).compute()),
         "vis_obs": jnp.array(
             xds[data_col]
             .data.reshape(n_time, n_bl, n_freq, n_corr)
@@ -297,6 +324,7 @@ def get_tles(config, ms_params, norad_ids, spacetrack_path, tle_offset=-1):
             st_config["password"],
             norad_ids,
             mjd_to_jd(jnp.mean(ms_params["times_mjd"])) + tle_offset,
+            window_days=1 + np.abs(tle_offset),
             tle_dir=config["satellites"]["tle_dir"],
         )
         tles = np.atleast_2d(tles_df[["TLE_LINE1", "TLE_LINE2"]].values)
@@ -837,9 +865,18 @@ def get_init_params(config, ms_params, prior_means, estimates, true_params):
     else:
         ValueError("ast: init: must be one of (est, prior, truth, truth_mean)")
 
+    if config["gains"]["init"] == "truth":
+        g_amp_init = true_params["g_amp_induce"]
+        g_phase_init = true_params["g_phase_induce"]
+    elif config["gains"]["init"] == "prior":
+        g_amp_init = prior_means["g_amp_prior_mean"]
+        g_phase_init = prior_means["g_phase_prior_mean"]
+    else:
+        ValueError("gains: init: must be one of (prior, truth)")
+
     init_params = {
-        "g_amp_induce": prior_means["g_amp_prior_mean"],
-        "g_phase_induce": prior_means["g_phase_prior_mean"],
+        "g_amp_induce": g_amp_init,
+        "g_phase_induce": g_phase_init,
         "ast_k_r": ast_k_init.real,
         "ast_k_i": ast_k_init.imag,
         "rfi_r_induce": rfi_induce_init.real,
@@ -860,7 +897,10 @@ def get_gp_params(config, ms_params):
     g_l = 60.0 * config["gains"]["corr_time"]  # convert minutes to seconds
 
     # RFI GP Parameters
-    if config["rfi"]["var"]:
+    if config["rfi"]["var"] == "truth":
+        xds = xr.open_zarr(config["data"]["zarr_path"])
+        rfi_var = jnp.max(xds.rfi_tle_sat_A.data.compute() ** 2)
+    elif config["rfi"]["var"]:
         rfi_var = config["rfi"]["var"]
     else:
         rfi_var = estimate_max_rfi_vis(ms_params)
@@ -1015,6 +1055,16 @@ def get_rfi_phase(ms_params: dict, norad_ids: list, tles: list, n_int_samples: i
 
     if len(norad_ids) > 0:
         rfi_xyz = get_satellite_positions(tles, np.array(mjd_to_jd(times_mjd_fine)))
+        n_sat = rfi_xyz.shape[0]
+        # rfi_xyz_error = (
+        #     config["satellites"]["pos_error"]
+        #     / jnp.sqrt(3)
+        #     * random.normal(
+        #         random.PRNGKey(int(ms_params["ra"])),
+        #         (n_sat, 1, 3),
+        #     )
+        # )
+        # rfi_xyz = rfi_xyz + rfi_xyz_error
         rfi_phase = jnp.transpose(
             get_rfi_phase_from_pos(
                 rfi_xyz, ants_uvw[..., -1], ants_xyz, ms_params["freqs"]
@@ -1059,44 +1109,76 @@ def get_rfi_phase(ms_params: dict, norad_ids: list, tles: list, n_int_samples: i
     return rfi_phase, rfi_amp_ratios, times_fine, times_mjd_fine
 
 
-# def run_mcmc(ms_params, model, model_name, subkeys, static_args, array_args, init_params, plot_dir):
+def run_mcmc(
+    ms_params,
+    model,
+    model_name,
+    subkeys,
+    static_args,
+    array_args,
+    init_params,
+    plot_dir,
+    mcmc_path,
+    num_warmup=500,
+    num_samples=1000,
+    max_tree_depth=10,
+    thin_factor=1,
+):
 
-#     num_warmup = 500
-#     num_samples = 1000
-#     print(
-#         f"Running MCMC with {num_warmup:.0f} Warm Up Samples and for {num_samples:.0f} Samples"
-#     )
-#     start = datetime.now()
+    print(
+        f"Running MCMC with {num_warmup:.0f} Warm Up Samples and for {num_samples:.0f} Samples"
+    )
+    start = datetime.now()
 
-#     nuts_kernel = NUTS(model, dense_mass=False)  # [('g_phase_0', 'g_phase_1')])
-#     mcmc = MCMC(nuts_kernel, num_warmup=num_warmup, num_samples=num_samples)
-#     mcmc.run(
-#         subkeys[0],
-#         static_args=static_args,
-#         array_args=array_args,
-#         v_obs=array_args["v_obs_ri"],
-#         extra_fields=("potential_energy",),
-#         init_params=init_params,
-#     )
-#     print()
-#     print(f"MCMC Run Time : {datetime.now() - start}")
-#     print(f"{datetime.now()}")
-#     start = datetime.now()
+    nuts_kernel = NUTS(
+        model, dense_mass=False, max_tree_depth=max_tree_depth
+    )  # [('g_phase_0', 'g_phase_1')])
+    mcmc = MCMC(
+        nuts_kernel,
+        num_warmup=num_warmup,
+        num_samples=num_samples,
+        thinning=thin_factor,
+    )
+    mcmc.run(
+        subkeys[0],
+        static_args=static_args,
+        array_args=array_args,
+        v_obs=array_args["v_obs_ri"],
+        extra_fields=("potential_energy",),
+        init_params=init_params,
+    )
+    print()
+    print(f"MCMC Run Time : {datetime.now() - start}")
+    print(f"{datetime.now()}")
+    start = datetime.now()
 
-#     pred = Predictive(model, posterior_samples=mcmc.get_samples())
-#     mcmc_pred = pred(subkeys[1], args=args)
-#     plot_predictions(
-#         times=ms_params["times"],
-#         pred=mcmc_pred,
-#         args=array_args,
-#         type="mcmc",
-#         model_name=model_name,
-#         max_plots=10,
-#         save_dir=plot_dir,
-#     )
-#     print()
-#     print(f"MCMC Plot Time : {datetime.now() - start}")
-#     print(f"{datetime.now()}")
+    # return mcmc
+
+    param_samples = mcmc.get_samples()
+    # pred = Predictive(model, posterior_samples=param_samples)
+    # print(param_samples.keys())
+    # mcmc_pred = pred(subkeys[1], static_args=static_args, array_args=array_args)
+    # print(param_samples)
+
+    # print(param_samples.keys())
+
+    write_results_xds(param_samples, array_args, mcmc_path)
+    print(f"Results Written to disk at {mcmc_path}")
+    # write_results_xds(mcmc_pred, array_args, mcmc_path)
+    # write_params_xds(ms, )
+
+    plot_predictions(
+        times=ms_params["times"],
+        pred=param_samples,
+        args=array_args,
+        type="mcmc",
+        model_name=model_name,
+        max_plots=10,
+        save_dir=plot_dir,
+    )
+    print()
+    print(f"MCMC Plot Time : {datetime.now() - start}")
+    print(f"{datetime.now()}")
 
 
 def run_opt(
@@ -1190,6 +1272,7 @@ def run_opt(
     print(
         "Copying tabascal results to MS file in 'TAB_DATA' and 'TAB_RFI_DATA' columns"
     )
+    print(os.path.split(map_path)[1])
     subprocess.run(
         f"tab2MS -m {ms_path} -z {map_path}", shell=True, executable="/bin/bash"
     )

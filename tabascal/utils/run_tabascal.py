@@ -5,8 +5,13 @@ import os
 import sys
 import yaml
 
-# os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = "false"  # add this
-# os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = "platform"
+os.environ["XLA_PYTHON_CLIENT_PREALLOCATE"] = (
+    "false"  # Disable GPU Memory Preallocation
+)
+# os.environ["XLA_PYTHON_CLIENT_ALLOCATOR"] = (
+#     "platform"  # Enable GPU Memory allocation and deallocation on-the-fly
+# )
+# os.environ["XLA_PYTHON_CLIENT_MEM_FRACTION"] = ".90" # GPU Memory Preallocation Factor
 
 import jax
 from jax import random
@@ -36,6 +41,7 @@ from tab_opt.models import (
 from tabascal.utils.tab_tools import (
     split_args,
     read_ms,
+    get_ast_fringe_rate,
     get_tles,
     estimate_sampling,
     get_rfi_phase,
@@ -53,7 +59,7 @@ from tabascal.utils.tab_tools import (
     plot_init,
     plot_truth,
     plot_prior,
-    # run_mcmc,
+    run_mcmc,
     run_opt,
     run_fisher,
     write_results_xds,
@@ -141,9 +147,11 @@ def tabascal_subtraction(
     map_path = os.path.join(results_dir, f"map_pred_{results_name}.zarr")
     params_path = os.path.join(results_dir, f"map_params_{results_name}.zarr")
     fisher_path = os.path.join(results_dir, f"fisher_pred_{results_name}.zarr")
+    mcmc_path = os.path.join(results_dir, f"mcmc_pred_{results_name}.zarr")
     init_pred_path = os.path.join(results_dir, f"init_pred_{results_name}.zarr")
-    init_params_path = os.path.join(results_dir, f"init_params_{results_name}.zarr")
     true_pred_path = os.path.join(results_dir, f"true_pred_{results_name}.zarr")
+
+    init_params_path = os.path.join(results_dir, f"init_params_{results_name}.zarr")
     true_params_path = os.path.join(results_dir, f"true_params_{results_name}.zarr")
 
     #####################################################
@@ -263,6 +271,19 @@ def tabascal_subtraction(
     # print(f"Memory needed    : {needed_bytes / (1024**3):.2f} GB")
     # print(f"Number of chunks : {n_bl_chunk}")
 
+    ast_fr = get_ast_fringe_rate(
+        ms_params["uvw"][:, :, :-1], ms_params["freqs"], ms_params["dish_d"]
+    )
+    Pk_args = []
+    for i in range(ms_params["n_bl"]):
+        Pk_args.append(
+            {
+                "P0": config["ast"]["pow_spec"]["P0"],
+                "gamma": config["ast"]["pow_spec"]["gamma"],
+                "k0": ast_fr[i],
+            }
+        )
+
     # Set Constant Parameters
     args = {
         "ast_pad": gp_params["ast_pad"],
@@ -319,8 +340,8 @@ def tabascal_subtraction(
         ),
         "sigma_ast_k": jnp.array(
             [
-                jnp.sqrt(pow_spec(k_ast, **config["ast"]["pow_spec"]))
-                for _ in range(ms_params["n_bl"])
+                jnp.sqrt(pow_spec(k_ast, **(Pk_args[i])))
+                for i in range(ms_params["n_bl"])
             ]
         ),
         "resample_g_amp": resampling_kernel(
@@ -436,10 +457,22 @@ def tabascal_subtraction(
 
     ### Run MCMC Inference
     key, *subkeys = random.split(key, 3)
-    # if config["inference"]["mcmc"]:
-    #     mcmc_pred = run_mcmc(
-    #         ms_params, model, model_name, subkeys, args, init_params_base, plot_dir
-    #     )
+    if config["inference"]["mcmc"]:
+        mcmc = run_mcmc(
+            ms_params,
+            model,
+            model_name,
+            subkeys,
+            static_args,
+            array_args,
+            init_params_base,
+            plot_dir,
+            mcmc_path,
+            num_warmup=config["mcmc"]["n_warmup"],
+            num_samples=config["mcmc"]["n_samples"],
+            max_tree_depth=config["mcmc"]["max_tree_depth"],
+            thin_factor=config["mcmc"]["thin_factor"],
+        )
 
     mem_i = save_memory(mem_dir, mem_i)
 
@@ -464,11 +497,11 @@ def tabascal_subtraction(
 
     mem_i = save_memory(mem_dir, mem_i)
 
-    max_fisher_time = 5 * 60  # seconds
+    max_fisher_time = 30 * 60  # seconds
 
     ### Run Fisher Covariance Prediction
     key, *subkeys = random.split(key, 3)
-    if config["inference"]["fisher"] and rchi2 < 1.1 and n_int_samples < 19:
+    if config["inference"]["fisher"] and rchi2 < 1.1 and n_int_samples < 30:
         from tabascal.utils.tools import time_limit, TimeoutException
 
         try:
