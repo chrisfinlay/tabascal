@@ -19,7 +19,7 @@ description = "Trajectory based Radio Frequency Interference (RFI) subtraction a
 
 requires-python = ">=3.9,<3.13"
 dependencies = [
-    "jax", "dask<=2024.10.0", "xarray", "zarr", 
+    "jax", "dask<=2024.10.0", "xarray", "zarr<3.0.0", 
     "dask-ms>=0.2.21", "scipy", "tqdm", "pandas", 
     "matplotlib", "astropy", "requests", "spacetrack",
     "skyfield", "numpy<2.0.0"
