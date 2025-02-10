@@ -1,6 +1,7 @@
 # tabascal
 
 [![DOI:10.1093/mnras/stad1979](https://zenodo.org/badge/DOI/10.1093/mnras/stad1979.svg)](https://doi.org/10.1093/mnras/stad1979)
+[![DOI:10.48550/arXiv.2502.00106](https://img.shields.io/badge/arXiv-2502.00106-b31b1b.svg)](https://doi.org/10.48550/arXiv.2502.00106)
 [![Documentation Status](https://readthedocs.org/projects/tabascal/badge/?version=latest)](https://tabascal.readthedocs.io/en/latest/?badge=latest)
 
 **T**r**A**jectory **BA**sed RFI **S**ubtraction and **CAL**ibration (tabascal)
@@ -17,7 +18,7 @@ and [Dask](https://www.dask.org) and can therefore use GPUs and/or CPUs and be d
 ```bash
 git clone https://github.com/chrisfinlay/tabascal.git
 ```
-
+<!-- 
 ### Conda Environment (Recommended)
 
 Create a conda environment with all the dependencies including JAX with optional GPU support.
@@ -35,11 +36,11 @@ Then proceed to activate the conda environment and install `tabascal`
 ```bash
 conda activate tab_env
 pip install -e tabascal/
-```
+``` -->
 
 ### Pure `pip` install
 
-Alternatively, you can install `tabascal` with pip alone inside an enivironment of your choice, again, with optional GPU support.
+You can install `tabascal` with pip alone inside an environment of your choice with optional GPU support.
 
 #### GPU Enabled
 ```bash
@@ -55,30 +56,34 @@ pip install -e ./tabascal/
  
 To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using pip, as is done using the `env_gpu.yaml`, otherwise, refer to the JAX installation [documentation](https://jax.readthedocs.io/en/latest/installation.html).
 
-## Simulate a contaminated MeerKAT observation
+## Simulations and Analysis
 
-```bash
-sim-target
+`tabascal` now includes the facility to define a simulation using a YaML configuration file. There is a general command line interface to run these simulations allowing one to change certain parameters on the file as well as in the configuration file. All input data is copied into the output simulation directory to allow one to run an identical simulation with ease. Inside [tabascal/analysis/yaml_obs](tabascal/analysis/yaml_obs) are a set of config files to get you started. There are also example data files which are used for including predefined astronomical and rfi models. They are all `csv` files with file extensions to help distinguish them. 
+
+### Including TLE-based satelllites
+
+You will need to provide [Space-Track](https://www.space-track.org/auth/login) login details as a YaML file. The filename can be `spacetrack_login.yaml` for example and should look like 
+
+```yaml
+username: user@email.com
+password: password123
 ```
 
-### Help function
+### Running a simulation
+
+To run a simulation of a target field with 100 randomly distributed point sources and some GPS satellites simply run 
 
 ```bash
-sim-target --help
+sim-vis -c target_obs_32A.yaml -st spacetrack_login.yaml
 ```
 
-### Configuration file based simulations and analysis
-`tabascal` now includes the facility to define a simulation using a YaML configuration file. There is a general command line interface to run these simulations allowing one to change certain parameters on the file as well as in the configuration file. All input data is copied into the output simulation directory to allow one to run an identical simulation with ease. Inside [tabascal/examples/yaml_obs](tabascal/examples/yaml_obs) are a set of config files to get you started. There are also example data files which are used for including predefined astronomical and rfi models. They are all `csv` files with file extensions to help distinguish them. To run a simulation of a target field with 100 randomly distributed point sources (just like is shown above) simply run 
-
-```bash
-sim-vis -c target_obs.yaml
-```
-
-Again, as before, you can run the help function to see what other command line options there are.
+You can run the help function to see what other command line options there are.
 
 ```bash
 sim-vis -h
 ```
+
+### Analysis
 
 Downstream analysis such as flagging, RFI subtraction, imaging, and source extraction can be performed through such configuration files as well. This is currently still in development where the `tabascal` RFI subtraction algorithm itself is not yet publically available. However, a full end to end analysis pipeline is available. Individual portions can be accessed through the command line scripts: `flag-data`, `image`, and  `src-extract`, with example configs in [tabascal/analysis/yaml_configs/target](tabascal/analysis/yaml_configs/target). All three of these can be perfomed in a single command line script by using `extract`. See the help documentation of these scripts for further details.  
 
