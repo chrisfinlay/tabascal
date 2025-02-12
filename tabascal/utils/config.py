@@ -856,7 +856,8 @@ def run_sim_config(
     obs = load_obs(obs_spec)
     add_astro_sources(obs, obs_spec)
     add_satellite_sources(obs, obs_spec)
-    add_tle_satellite_sources(obs, obs_spec, spacetrack_path)
+    if obs_spec["rfi_sources"]["tle_satellite"]["max_n_sat"] != 0:
+        add_tle_satellite_sources(obs, obs_spec, spacetrack_path)
     add_stationary_sources(obs, obs_spec)
     add_gains(obs, obs_spec)
 
