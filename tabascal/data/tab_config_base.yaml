@@ -71,6 +71,7 @@ satellites:
 # Gain prior and initialization parameters
 ###########################################
 gains:
+  init: prior           # Optional - The initialization method for the gain parameters. Options are 'prior', 'truth'
   amp_mean: 1.0         # Optional - Mean of the prior distribution over the gain amplitudes. Options are 'truth' or a value like 1.0
   phase_mean: 0.0       # Optional - Mean of the prior distribution over the gain phases, in radiands. Options are 'truth' or a value like 0.0
   amp_std: 1.0          # Optional - Standard deviation of the prior distribution over the gain amplitudes as a percentage
