@@ -419,10 +419,10 @@ def make_window(
 
     window = {
         "start_time": times[idx][0].datetime.strftime(
-            f"%Y-%m-%d-%H:%M:%S {times.scale.upper()}"
+            f"%Y-%m-%d-%H:%M:%S.%f {times.scale.upper()}"
         ),
         "end_time": times[idx][-1].datetime.strftime(
-            f"%Y-%m-%d-%H:%M:%S {times.scale.upper()}"
+            f"%Y-%m-%d-%H:%M:%S.%f {times.scale.upper()}"
         ),
         "min_ang_sep": np.min(angular_sep[idx]),
         "max_elevation": np.max(alt[idx]),
@@ -529,6 +529,8 @@ def check_visibility(
         ]
     else:
         windows = []
+
+    print(windows)
 
     return windows
 
