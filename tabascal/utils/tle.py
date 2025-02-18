@@ -424,6 +424,7 @@ def make_window(
         "end_time": times[idx][-1].datetime.strftime(
             f"%Y-%m-%d-%H:%M:%S.%f {times.scale.upper()}"
         ),
+        "visible_period": (times[idx][-1] - times[idx][0]).sec,
         "min_ang_sep": np.min(angular_sep[idx]),
         "max_elevation": np.max(alt[idx]),
     }
