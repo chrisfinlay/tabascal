@@ -683,7 +683,7 @@ def save_data(obs: Observation, obs_spec: dict, zarr_path: str, ms_path: str) ->
     if obs_spec["output"]["zarr"] or obs_spec["output"]["ms"]:
         print()
         print("Calculating visibilities ...")
-        obs.calculate_vis()
+        obs.calculate_vis(flags=obs_spec["output"]["flag_data"])
 
     overwrite = obs_spec["output"]["overwrite"]
 

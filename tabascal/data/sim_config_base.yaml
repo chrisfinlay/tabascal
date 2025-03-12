@@ -118,6 +118,7 @@ observation:
 output:
   zarr: True                  # Optional - Whether to save the output to a zarr file. This contains almost all inputs ot the simulation
   ms: True                    # Optional - Whether to save the output to a Measurement Set file
+  flag_data: True             # Optional - Whether to apply ideal 3sigma flags
   overwrite: False            # Optional - Whether to overwrite a previous simulation with the same name
   path: ./                    # Optional - Path to where the simulation should be saved
   prefix: null                # Optional - Prefix used in the simulation file name

@@ -1,0 +1,39 @@
+telescope:
+  name: MWA
+  latitude: -26.7033
+  longitude: 116.671
+  elevation: 372.0
+  dish_d: 4.0
+  itrf_path: ../../../data/MWA.itrf.txt
+  n_ant: 128
+
+observation:
+  target_name: target
+  ra: 201.365
+  dec: -43.0191
+  start_time_lha: 
+  start_time_jd: 
+  start_time_isot: "2015-07-19T09:48:44.000"
+  int_time: 6.999999986146577
+  n_time: 8
+  n_int: 1
+  start_freq: 1.74755e8
+  chan_width: 80e3
+  n_freq: 16
+  SEFD: 18e3 # Claude AI
+  auto_corrs: False
+  no_w: False
+  random_seed: 12345
+
+output:
+  path: ./MWA
+  prefix: mwa
+  overwrite: True
+  zarr: True
+  ms: True
+  flag_data: False
+
+diagnostics:
+  uv_cov: True
+  src_alt: False
+  rfi_seps: False
