@@ -618,7 +618,9 @@ def add_gains(obs: Observation, obs_spec: dict) -> None:
             gains_["G0_mean"],
             gains_["G0_std"],
             gains_["Gt_std_amp"],
-            np.deg2rad(gains_["Gt_std_phase"]),
+            gains_["Gt_std_phase"],
+            gains_["Gt_corr_amp"],
+            gains_["Gt_corr_phase"],
             gains_["random_seed"],
         )
     else:

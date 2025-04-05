@@ -87,8 +87,10 @@ diagnostics:
 gains:
   G0_mean: 1.0                # Optional - Mean of the Gaussian distribution for the starting gain amplitude (phase is uniformaly distributed when G0_mean!=1.0)
   G0_std: 0.0                 # Optional - Standard deviation of the Gaussian distribution for the starting gain amplitude
-  Gt_std_amp: 0               # Optional - Standard deviation of the Gaussian distribution for the time variability of the gain amplitude
-  Gt_std_phase: 0             # Optional - Standard deviation of the Gaussian distribution for the time variability of the gain phase
+  Gt_std_amp: 0               # Optional - Standard deviation of the Gaussian distribution for the variability of the gain amplitude [%]
+  Gt_std_phase: 0             # Optional - Standard deviation of the Gaussian distribution for the variability of the gain phase [deg]
+  Gt_corr_amp: 3              # Optional - Correlation time of the Gaussian process for the time variability of the gain amplitude [hr]
+  Gt_corr_phase: 3            # Optional - Correlation time of the Gaussian process for the time variability of the gain phase [hr]
   random_seed: 999            # Optional - Random seed used for drawing of gain parameters
 #########################
 # Observation parameters

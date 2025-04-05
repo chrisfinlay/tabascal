@@ -464,6 +464,64 @@ def generate_gains(
     return gain_ants
 
 
+def generate_fourier_gains(
+    G0_mean: float,
+    G0_std: float,
+    Gt_std_amp: float,
+    Gt_std_phase: float,
+    Gt_corr_amp: float,
+    Gt_corr_phase: float,
+    times_jd: np.ndarray,
+    n_ant: int,
+    n_freq: int,
+    random_seed: int,
+) -> da.Array:
+
+    rng = np.random.default_rng(random_seed)
+    times = times_jd[None, :, None, None] * 24
+
+    # Generate the initial gain values
+    G0 = G0_mean * da.exp(
+        1.0j * rng.uniform(low=-np.pi / 2, high=np.pi / 2, size=(1, n_ant, n_freq))
+    ) + (
+        rng.normal(scale=G0_std / 100, size=(1, n_ant, n_freq))
+        + 1.0j * rng.normal(scale=G0_std / 100, size=(1, n_ant, n_freq))
+    )
+
+    N = 1000
+    mode_size = (N, 1, n_ant, 1)
+
+    # Generate the gain variations
+    gain_amp = np.mean(
+        rng.normal(scale=Gt_std_amp / 100, size=mode_size)
+        * np.cos(
+            2
+            * np.pi
+            * rng.normal(scale=1 / (2 * np.pi * Gt_corr_amp), size=mode_size)
+            * times
+            + rng.uniform(low=0.0, high=2 * np.pi, size=mode_size)
+        ),
+        axis=0,
+    ) * np.sqrt(2 * N)
+    gain_phase = np.mean(
+        rng.normal(scale=np.deg2rad(Gt_std_phase), size=mode_size)
+        * np.cos(
+            2
+            * np.pi
+            * rng.normal(scale=1 / (2 * np.pi * Gt_corr_phase), size=mode_size)
+            * times
+            + rng.uniform(low=0.0, high=2 * np.pi, size=mode_size)
+        ),
+        axis=0,
+    ) * np.sqrt(2 * N)
+    # Generate the gain time series
+    gain_ants = G0 + gain_amp * da.exp(1.0j * gain_phase)
+    # Set the gain on the last antenna to have zero phase (reference antenna)
+    gain_ants[:, -1, :] = da.abs(gain_ants[:, -1, :])
+
+    return gain_ants
+
+
 def apply_gains(
     vis_ast: da.Array,
     vis_rfi: da.Array,

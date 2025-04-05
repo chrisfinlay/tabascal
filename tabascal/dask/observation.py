@@ -26,6 +26,7 @@ from tabascal.dask.interferometry import (
     SEFD_to_noise_std,
     int_sample_times,
     generate_gains,
+    generate_fourier_gains,
     apply_gains,
 )
 
@@ -860,6 +861,8 @@ Number of stationary RFI :  {n_stat}"""
         G0_std: float,
         Gt_std_amp: float,
         Gt_std_phase: float,
+        Gt_corr_amp: float,
+        Gt_corr_phase: float,
         random_seed=None,
     ):
         """Add complex antenna gains to the simulation. Gain amplitudes and phases
@@ -883,12 +886,24 @@ Number of stationary RFI :  {n_stat}"""
         random_seed: int, optional
             Random number generator key.
         """
-        self.gains_ants = generate_gains(
+        # self.gains_ants = generate_gains(
+        #     G0_mean,
+        #     G0_std,
+        #     Gt_std_amp,
+        #     Gt_std_phase,
+        #     self.times,
+        #     self.n_ant,
+        #     self.n_freq,
+        #     random_seed if random_seed else self.random_seed,
+        # ).rechunk((self.time_chunk, self.ant_chunk, self.freq_chunk))
+        self.gains_ants = generate_fourier_gains(
             G0_mean,
             G0_std,
             Gt_std_amp,
             Gt_std_phase,
-            self.times,
+            Gt_corr_amp,
+            Gt_corr_phase,
+            self.times_mjd,
             self.n_ant,
             self.n_freq,
             random_seed if random_seed else self.random_seed,
