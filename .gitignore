@@ -24,3 +24,5 @@ tabascal/data/MeerKAT_real.ENU.txt
 *.sif
 *.json
 *.txt
+*.gz
+*.pb
