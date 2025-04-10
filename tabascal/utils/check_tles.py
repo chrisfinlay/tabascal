@@ -1,4 +1,5 @@
 from tabascal.utils.tle import get_tles_by_id, get_satellite_positions
+from tabascal.utils.config import yaml_load
 from tabascal.utils.plot_results import get_file_names
 from tabascal.jax.coordinates import mjd_to_jd
 import numpy as np
@@ -90,6 +91,12 @@ def main():
         default="./tles",
         help="TLE directory.",
     )
+    parser.add_argument(
+        "-st",
+        "--spacetrack_login",
+        required=True,
+        help="Path to the spacetrack login config file.",
+    )
     args = parser.parse_args()
     data_dir = args.data_dir
     tle_offset = args.tle_offset
@@ -97,10 +104,7 @@ def main():
     tab_suffix = "_offset_-1"
     tab_suffix = "_k0_1e-2"
 
-    st_config = {
-        "username": "chrisfinlay93@gmail.com",
-        "password": "SARAORFIsimulator",
-    }
+    st_config = yaml_load(args.spacetrack_login)
 
     calculate_tle_pos_errors(data_dir, tle_offset, tle_dir, tab_suffix, st_config)
 
