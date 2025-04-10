@@ -1221,16 +1221,19 @@ def run_opt(
         dual_run=config["opt"]["dual_run"],
     )
     vi_params = vi_results.params
-    vi_pred = svi_predict(
-        model=model,
-        guide=vi_guide,
-        vi_params=vi_params,
-        static_args=static_args,
-        array_args=array_args,
-        # args=args,
-        num_samples=1,
-        key=subkeys[1],
-    )
+    with jax.profiler.trace(
+        "/home/chris/tab_dev/tabascal/log", create_perfetto_link=True
+    ):
+        vi_pred = svi_predict(
+            model=model,
+            guide=vi_guide,
+            vi_params=vi_params,
+            static_args=static_args,
+            array_args=array_args,
+            # args=args,
+            num_samples=1,
+            key=subkeys[1],
+        )
     print()
     print(f"Optimization Run Time : {datetime.now() - start}")
     print(f"{datetime.now()}")

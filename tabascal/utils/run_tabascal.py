@@ -438,6 +438,23 @@ def tabascal_subtraction(
             plot_dir,
             true_pred_path,
         )
+        # with jax.profiler.trace(
+        #     "/home/chris/tab_dev/tabascal/log", create_perfetto_link=True
+        # ):
+        #     plot_truth(
+        #         zarr_path,
+        #         ms_params,
+        #         static_args,
+        #         array_args,
+        #         model,
+        #         model_name,
+        #         subkey,
+        #         true_params,
+        #         gp_params,
+        #         inv_scaling,
+        #         plot_dir,
+        #         true_pred_path,
+        #     )
 
     mem_i = save_memory(mem_dir, mem_i)
 
@@ -494,6 +511,24 @@ def tabascal_subtraction(
             map_path,
             params_path,
         )
+        # with jax.profiler.trace(
+        #     "/home/chris/tab_dev/tabascal/log", create_perfetto_link=True
+        # ):
+        #     vi_params, rchi2 = run_opt(
+        #         config,
+        #         ms_params,
+        #         gp_params,
+        #         model,
+        #         model_name,
+        #         static_args,
+        #         array_args,
+        #         subkeys,
+        #         init_params_base,
+        #         plot_dir,
+        #         ms_path,
+        #         map_path,
+        #         params_path,
+        #     )
 
     mem_i = save_memory(mem_dir, mem_i)
 
