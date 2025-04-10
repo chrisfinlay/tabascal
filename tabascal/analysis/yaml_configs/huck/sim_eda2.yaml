@@ -1,0 +1,79 @@
+telescope:
+  name: EDA2
+  latitude: -26.70328318
+  longitude: 116.67087468
+  elevation: 374.97315228
+  dish_d: 0.7
+  enu_path: 
+  itrf_path: ../../../data/EDA2_.itrf.txt
+  n_ant: 64 # 256
+
+observation:
+  target_name: STARLINK-30050
+  ra: 149.3427
+  dec: -26.7033
+  start_time_jd: 2460120.83129492
+  #start_time: 7772.08283667918
+  int_time: 1.98011398
+  n_time: 10
+  n_int: 4
+  start_freq: 160156300.0
+  chan_width: 781250.0
+  n_freq: 1
+  SEFD: 2062
+  auto_corrs: False
+  no_w: False
+  random_seed: 12345
+
+
+ast_sources:
+  point:
+    random: 
+      n_src: 100
+      min_I: 10sigma
+      max_I: 1.0
+      I_pow_law: 1.6
+      si_mean: 0.7
+      si_std: 0.2
+      n_beam: 5.0
+      max_sep: 7200 # arcseconds
+      random_seed: 123456
+
+rfi_sources:
+  tle_satellite:
+    norad_ids: [55695]
+    sat_names: []
+    tle_dir: ../aux_data/tles
+    norad_spec_model: ../aux_data/norad_satellite.rfimodel
+    spacetrack_path: ../eda2/spacetrack_login.yaml
+    power_scale: 1e-9
+    max_angular_separation: 90  # degrees
+    min_elevation: 0            # degrees
+    vis_step: 1                 # minutes
+
+    
+spacetrack:
+  username: hucklethums@icloud.com
+  password: F34eMTzArLNgSeRs
+
+gains:
+  G0_mean: 1.0
+  G0_std: 0.0
+  Gt_std_amp: 0
+  Gt_std_phase: 0
+  random_seed: 999
+
+output:
+  path: ../../data/eda2_100T
+  prefix: eda2_100timesteps_simu
+  overwrite: True
+  zarr: True
+  ms: True
+
+diagnostics:
+  uv_cov: True
+  src_alt: True
+  rfi_seps: True
+
+dask:
+  max_chunk_MB: 100

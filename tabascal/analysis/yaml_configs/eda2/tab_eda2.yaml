@@ -1,6 +1,5 @@
 data:
   sim_dir: 
-  sampling: 1
   
 plots:
   init: True
@@ -37,8 +36,9 @@ ast:
   # mean: truth
   pow_spec:
     P0: 3e3
-    k0: 1e-3
-    gamma: 1.2
+    # k0: 1e-3
+    gamma: 5
+  pad_factor: 0.5
 
 rfi:
   init: est
@@ -49,10 +49,11 @@ rfi:
   # mean: truth
   # var: 100        # Jy
   corr_time: 24   # seconds
+  n_int_factor: 1
 
 satellites:
   spacetrack_path: spacetrack_login.yaml
-  # norad_ids: [55700] 
+  # norad_ids: [55695] 
   # sat_ids: []
   # ole_path: ../aux_data/satellite.ole
   tle_dir: ../aux_data/tles
@@ -63,19 +64,6 @@ gains:
   phase_mean: 0.0
   # amp_mean: truth
   # phase_mean: truth
-  amp_std: 1.0      # %
-  phase_std: 1.0    # degrees
+  amp_std: 0.1      # %
+  phase_std: 0.1    # degrees
   corr_time: 180    # minutes
-
-# gains:
-#   amp_mean: 1.0
-#   phase_mean: 0.0   # degrees
-#   amp_std: 5.0      # %
-#   phase_std: 10.0    # degrees
-#   corr_time: 180    # minutes
-
-# pow_spec_args = {"P0": 2e3, "k0": 8e-4, "gamma": 1.1}
-# pow_spec_args = {"P0": 2e3, "k0": 2e-3, "gamma": 1.1}
-# pow_spec_args = {"P0": 2e3, "k0": 2e-3, "gamma": 1.5}
-# pow_spec_args = {"P0": 1e3, "k0": 8e-4, "gamma": 1.1}
-# pow_spec_args = {"P0": 2e3, "k0": 1e-3, "gamma": 5.0}

@@ -54,6 +54,8 @@ def plot_angular_seps(obs: Observation, save_path: str) -> None:
     n_time = len(times)
     if n_time > 100:
         idx = np.arange(0, n_time, n_time // 100)
+    else:
+        idx = np.arange(n_time)
     plt.figure(figsize=(10, 7))
     if obs.n_rfi_satellite > 0:
         ang_seps = np.concatenate(obs.rfi_satellite_ang_sep, axis=0).mean(axis=-1).T
