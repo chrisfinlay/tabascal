@@ -26,12 +26,14 @@ from tqdm import tqdm
 from pathlib import Path
 
 pkg_dir = Path(__file__).parent.absolute()
+config_dir = os.path.join(pkg_dir, "../data/config_files/")
 
-sim_base_config_path = os.path.join(pkg_dir, "../data/sim_config_base.yaml")
-tab_base_config_path = os.path.join(pkg_dir, "../data/tab_config_base.yaml")
-extract_base_config_path = os.path.join(pkg_dir, "../data/extract_config_base.yaml")
+
+sim_base_config_path = os.path.join(config_dir, "sim_config_base.yaml")
+tab_base_config_path = os.path.join(config_dir, "tab_config_base.yaml")
+extract_base_config_path = os.path.join(config_dir, "extract_config_base.yaml")
 pow_spec_base_config_path = os.path.join(
-    pkg_dir, "../data/extract_pow_spec_config_base.yaml"
+    config_dir, "extract_pow_spec_config_base.yaml"
 )
 
 JD0 = 2459997.079914223  # 2023-02-21 13:55:04.589 UTC => GMSA = 0
@@ -207,7 +209,7 @@ def load_obs(obs_spec: dict) -> Observation:
     dask_ = obs_spec["dask"]
 
     def arange(start: float, delta: float, n: int):
-        x = da.arange(start, start + n * delta, delta)
+        x = da.arange(start, start + n * delta, delta)[:n]
         return x
 
     if obs_["start_time_jd"]:

@@ -531,7 +531,7 @@ def check_visibility(
     else:
         windows = []
 
-    print(windows)
+    # print(windows)
 
     return windows
 
