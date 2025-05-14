@@ -52,13 +52,13 @@ or
 pip install -e ./tabascal/
 ```
 
-### GPU 
+<!-- ### GPU 
  
-To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using pip, as is done using the `env_gpu.yaml`, otherwise, refer to the JAX installation [documentation](https://jax.readthedocs.io/en/latest/installation.html).
+To enable GPU compute you need the GPU version of `jaxlib` installed. The easiest way is using pip, as is done using the `env_gpu.yaml`, otherwise, refer to the JAX installation [documentation](https://jax.readthedocs.io/en/latest/installation.html). -->
 
 ## Simulations and Analysis
 
-`tabascal` now includes the facility to define a simulation using a YaML configuration file. There is a general command line interface to run these simulations allowing one to change certain parameters on the file as well as in the configuration file. All input data is copied into the output simulation directory to allow one to run an identical simulation with ease. Inside [tabascal/analysis/yaml_obs](tabascal/analysis/yaml_obs) are a set of config files to get you started. There are also example data files which are used for including predefined astronomical and rfi models. They are all `csv` files with file extensions to help distinguish them. 
+`tabascal` now includes the facility to define a simulation using a YaML configuration file. There is a general command line interface to run these simulations allowing one to change certain parameters on the file as well as in the configuration file. All input data is copied into the output simulation directory to allow one to run an identical simulation with ease. Inside [tabascal/analysis/yaml_configs/target](https://github.com/chrisfinlay/tabascal/tree/main/tabascal/analysis/yaml_configs/target) are a set of config files to get you started. There are also example data files which are used for including predefined astronomical and rfi models. They are all `csv` files with file extensions to help distinguish them. These reside in [tabascal/analysis/yaml_configs/aux_data](https://github.com/chrisfinlay/tabascal/tree/main/tabascal/analysis/yaml_configs/aux_data).
 
 ### Including TLE-based satelllites
 
@@ -74,7 +74,7 @@ password: password123
 To run a simulation of a target field with 100 randomly distributed point sources and some GPS satellites simply run 
 
 ```bash
-sim-vis -c target_obs_32A.yaml -st spacetrack_login.yaml
+sim-vis -c sim_target_32A.yaml -st spacetrack_login.yaml
 ```
 
 You can run the help function to see what other command line options there are.
@@ -85,19 +85,144 @@ sim-vis -h
 
 ### Analysis
 
-Downstream analysis such as flagging, RFI subtraction, imaging, and source extraction can be performed through such configuration files as well. This is currently still in development where the `tabascal` RFI subtraction algorithm itself is not yet publically available. However, a full end to end analysis pipeline is available. Individual portions can be accessed through the command line scripts: `flag-data`, `image`, and  `src-extract`, with example configs in [tabascal/analysis/yaml_configs/target](tabascal/analysis/yaml_configs/target). All three of these can be perfomed in a single command line script by using `extract`. See the help documentation of these scripts for further details.  
+Downstream analysis such as flagging, RFI subtraction, imaging, and source extraction can be performed through such configuration files as well. This is currently still in development where the `tabascal` RFI subtraction algorithm itself is not yet publically available. However, a full end to end analysis pipeline is available. Individual portions can be accessed through the command line scripts: `flag-data`, `image`, and  `src-extract`, with example configs in [tabascal/analysis/yaml_configs/target](https://github.com/chrisfinlay/tabascal/tree/main/tabascal/analysis/yaml_configs/target). All three of these can be perfomed in a single command line script by using `extract`. See the help documentation of these scripts for further details.  
 
-## Measurement Set output
+### Config File Definitions
+
+The configuration files for simulation and analysis have many options with set defaults such that minimal configurations can be set unless more is required.
+
+The base configuration files with defualts and definitions reside in [tabascal/tabascal/data/config_files](https://github.com/chrisfinlay/tabascal/tree/main/tabascal/data/config_files)
+
+## Output Data Structure
+
+Once a simulation has been run then a directory will be created to store all input and output data used for the simulation. The location for this directory is defined in the simulation config file under 
+
+```yaml
+output:
+    path: output_directory_path
+    prefix: simulation_name_prefix
+```
+
+The directory name will have a prefix as defined in the config file and include many of the other simulation configuration parameters in the directory name. For example, when using the `target_obs_32A.yaml` config file, the name will be `pnt_src_obs_32A_450T-0000-0898_1025I_001F-1.227e+09-1.227e+09_100PAST_000GAST_000EAST_3SAT_0GRD_1.0e+00RFI`. The resulting directory structure inside this base directory is as follows:
+
+```
+- sim_name/
+    - sim_name.zarr/
+    - sim_name.ms/
+    - AngularSeps.png
+    - SourceAltitude.png
+    - UV.png
+    - log_sim_xxxxxx.txt
+    - input_data/
+        - MeerKAT.itrf.txt
+        - norad_ids.yaml
+        - norad_satellite.rfimodel
+        - sim_config.yaml 
+```
+
+The `.zarr` and `.ms` files contain the actual visibilities that are simulated with the `.zarr` file containing intermediate values used in calculating certain quantities. The `.png` files are diagnostoc plots to check the angular separations between the RFI sources and the target direction, The source altitude of the target direction, and the UV coverage of the baselines. `log_sim_xxxxxx.txt` contains the output that was displayed when originally running the simulation. Finally, `input_data` contains all the required data to rerun the simulation exactly for reproducibility especially if the data hungry visibilities need to be deleted for some reason.
+
+## Zarr Output
+
+The `.zarr` files is most easily read using [Xarray](https://xarray.dev/) in a [Jupyter](https://jupyter.org/) notebook. The following code will read the simulation data into an [`xarray.Dataset`](https://docs.xarray.dev/en/stable/generated/xarray.Dataset.html) object.
+
+```python
+import xarray as xr
+
+zarr_path = "path/to/data_dir/sim_name/sim_name.zarr/"
+xds = xr.open_zarr(zarr_path)
+
+xds
+```
+
+The structure of the `.zarr` file is as follows:
+
+### Coordinates
+
+| Name | Description  |
+|-------|-------------|
+| `ant` | Antenna index |
+| `bl`  | Baseline index |
+| `enu` | East, North Up {m} |
+| `freq` | Frequencies {Hz} |
+| `geo` | Latitude, Longitude, Elevation {deg, deg, m} |
+| `itrf` | International Terrestrial Reference Frame (ECEF) {m} |
+| `lmn` | Local astronomcal cosine coordinates |
+| `radec` | Right Ascension, Declination {deg} |
+| `time` | Elapsed observation time centroids {s} |
+| `time_fine` | Fine grain time centroids {s} |
+| `time_mjd` | Modified Julian Date time {days} |
+| `time_mjd_fine` | Fine grain Modified Julian Date time {days} |
+| `tle` | Two-line elements for satellites |
+| `uvw` | Local antenna coordinates {m} |
+| `xyz` | Geocentric Celestial Reference Frame (ECI) {m} |
+
+### Data Variables
+
+| Name | Description |
+|------|-------------|
+| `SEFD` | System Equivalent Flux Density {Jy} |
+| `antenna1` | Antenna 1 index |
+| `antenna2` | Antenna 2 index |
+| `ants_itrf` | Antenna ITRF coordinates {m} |
+| `ants_uvw` | Antenna UVW coordinates {m} |
+| `ants_xyz` | Antenna XYZ (ECI) coorindates {m} |
+| `ast_p_I` | Astronomical point source intensities {Jy} |
+| `ast_p_lmn` | Astronomical point source positions |
+| `bl_uvw` | Baseline UVW coordinates {m} |
+| `flags` | RFI flags based on 3sigma from truth |
+| `gains_ants` | Antenna gains |
+| `noise_data` | Visibility noise realisation {Jy} |
+| `noise_std` | Visibility noise standard deviation {Jy} |
+| `norad_ids` | NORAD IDs for TLE-based satellites |
+| `rfi_tle_sat_A` | Modulated satellite signal amplitudes {Jy^0.5} |
+| `rfi_tle_sat_ang_sep` | Satellite angular separation from target direction {deg} |
+| `rfi_tle_sat_orbit` | Satellite TLE orbit parameters |
+| `rfi_tle_sat_xyz` | Satellite XYZ (ECI) coordinates {m} |
+| `time_idx` | Time index to map from `time_fine` to `time` |
+| `vis_ast` | Astronomical visibility component {Jy} |
+| `vis_calibrated` | Perfectlty calibrated visibilities {Jy} |
+| `vis_obs` | Observed (uncalibrated) visibilities {Jy} |
+| `vis_rfi` | RFI visibility component {Jy} |
+
+### Attributes
+
+| Name | Description |
+|------|-------------|
+| `chan_width` | Frequency channel bandwidth {Hz} |
+| `dish_diameter` | Dish diameter {m} |
+| `int_time` | Integration time per sample {s} |
+| `n_ant` | Number of antennas |
+| `n_ast_e_src` | Number of astronomical exponential profile sources |
+| `n_ast_g_src` | Number of astronomical Gaussian profile sources |
+| `n_ast_p_src` | Number of astronomical point sources |
+| `n_ast_src` | Number of astronomical sources `n_ast_e_src` + `n_ast_g_src` + `n_ast_p_src` |
+| `n_bl` | Number of baselines |
+| `n_freq` | Number of frequency channels |
+| `n_int_samples` | Number of integration samples per time sample |
+| `n_sat_src` | Number of satellite RFI sources |
+| `n_stat_src` | Number of stationary RFI sources |
+| `n_time` | Number of time steps |
+| `n_time_fine` | Number of fine grained time steps |
+| `target_dec` | Declination of the target direction {deg} |
+| `target_name` | Name of the target |
+| `target_ra` | Right Ascension of the target direction {deg} |
+| `tel_elevation` | Telescope elevation {m} |
+| `tel_latitude` | Telescope latitude {deg} |
+| `tel_longitude` | Telescope logitude {deg} |
+| `tel_name` | Telescope name |
+
+## Measurement Set Output
 
 Measurement sets allow the addition of non-standard data columns. The simulator in tabascal takes advantage of this and adds the following columns to help with debugging and analysis.
 
-### Standard
+### Standard Columns
 
 * `DATA` : Observed data which includes gains and noise.
 * `CORRECTED_DATA` : Filled with zeros or the data of ones choice when calling the `write_ms` function.
 * `MODEL_DATA` : Filled with zeros as it will be used by `WSCLEAN` when imaging.
 
-### Non-standard
+### Non-standard Columns
 
 * `CAL_DATA` : Observed data (`DATA`) where the true gain solutions have been applied.
 * `AST_MODEL_DATA` : The astronomical visibilities only with perfect gains and no noise. 
@@ -106,9 +231,9 @@ Measurement sets allow the addition of non-standard data columns. The simulator 
 * `RFI_DATA` : The same as `RFI_MODEL_DATA` but with the noise added. 
 * `NOISE_DATA` : The complex noise that is added to the above datasets. 
 
-## Documentation
+<!-- ## Documentation
 
-[https://tabascal.readthedocs.io/en/latest/](https://tabascal.readthedocs.io/en/latest/)
+[https://tabascal.readthedocs.io/en/latest/](https://tabascal.readthedocs.io/en/latest/) -->
 
 ## Citing tabascal
 
@@ -116,7 +241,7 @@ Measurement sets allow the addition of non-standard data columns. The simulator 
 @ARTICLE{Finlay2023,
        author = {{Finlay}, Chris and {Bassett}, Bruce A. and {Kunz}, Martin and {Oozeer}, Nadeem},
         title = "{Trajectory-based RFI subtraction and calibration for radio interferometry}",
-      journal = {\mnras},
+      journal = {Monthly Notices of the Royal Astronomical Society},
          year = 2023,
         month = sep,
        volume = {524},
@@ -125,5 +250,18 @@ Measurement sets allow the addition of non-standard data columns. The simulator 
           doi = {10.1093/mnras/stad1979},
 archivePrefix = {arXiv},
        eprint = {2301.04188},
+}
+```
+
+```
+@ARTICLE{Finlay2025,
+       author = {{Finlay}, Chris and {Bassett}, Bruce A. and {Kunz}, Martin and {Oozeer}, Nadeem},
+        title = "{TABASCAL II: Removing Multi-Satellite Interference from Point-Source Radio Astronomy Observations}",
+      journal = {arXiv e-prints},
+         year = 2025,
+        month = jan,
+          doi = {10.48550/arXiv.2502.00106},
+archivePrefix = {arXiv},
+       eprint = {2502.00106},
 }
 ```
