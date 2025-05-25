@@ -15,7 +15,7 @@ and [Dask](https://www.dask.org) and can therefore use GPUs and/or CPUs and be d
 
 ## Installation
 
-The following instructions are expected to work on Linux machine. If you are running Windows it is recommended to use WSL. If you are running Mac then your mileage may vary. If all else fails there is the [Docker container](###Docker).
+The following instructions are expected to work on Linux machine. If you are running Windows it is recommended to use WSL. If you are running Mac then your mileage may vary. If all else fails there is the [Docker install](#docker).
 
 ```bash
 git clone https://github.com/chrisfinlay/tabascal.git
