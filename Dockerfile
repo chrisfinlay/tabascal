@@ -9,5 +9,6 @@ RUN git clone https://github.com/chrisfinlay/tabascal.git
 RUN mkdir tab_env && virtualenv tab_env && . tab_env/bin/activate && pip install -e ./tabascal/
 
 RUN echo "source /usr/local/tab_env/bin/activate" >> /etc/bash.bashrc
+RUN echo "source /usr/local/tab_env/bin/activate" >> /root/.bashrc
 
 WORKDIR /data

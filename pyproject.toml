@@ -10,10 +10,10 @@ license = {file = "LICENSE"}
 readme = "README.md"
 # dynamic = ["version", "readme"]
 authors = [
-  {name = "Chris Finlay", email = "christopher.finlay@unige.ch"},
+  {name = "Chris Finlay", email = "christopher.finlay@epfl.ch"},
 ]
 maintainers = [
-  {name = "Chris Finlay", email = "christopher.finlay@unige.ch"}
+  {name = "Chris Finlay", email = "christopher.finlay@epfl.ch"}
 ]
 description = "Trajectory based Radio Frequency Interference (RFI) subtraction and calibration using Bayesian methods for radio interferometeric data."
 
@@ -33,6 +33,7 @@ opt = ["frozendict", "tab_opt @ git+https://github.com/chrisfinlay/tab_opt.git"]
 ps = ["TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
 all = ["jax[cuda12]", "regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
 all_cpu = ["regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.git"]
+ipy = ["ipython", "ipykernel"]
 
 [project.urls]
 # Homepage = "https://example.com"
