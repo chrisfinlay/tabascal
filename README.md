@@ -15,6 +15,8 @@ and [Dask](https://www.dask.org) and can therefore use GPUs and/or CPUs and be d
 
 ## Installation
 
+The following instructions are expected to work on Linux machine. If you are running Windows it is recommended to use WSL. If you are running Mac then your mileage may vary. If all else fails there is the [Docker container](###Docker).
+
 ```bash
 git clone https://github.com/chrisfinlay/tabascal.git
 ```
@@ -51,6 +53,51 @@ or
 ```bash
 pip install -e ./tabascal/
 ```
+
+
+### Docker
+
+If you are having trouble with the `pip` install method you can try with [Docker](https://www.docker.com/) instead. The provided [Dockerfile](Dockerfile) can be used to build an image which should, "in principle", run on any machine.
+
+Assuming you have cloned this git repository into you current working directory then you can either:
+
+1. build an image with the latest tabascal.
+2. download a working but older version of a tabascal image. 
+
+First we can simplify by setting the `TAB_DIR` environment variable using
+
+```bash
+TAB_DIR=$(pwd)
+```
+
+#### 1. Build an image
+
+```bash
+TAB_IMG=tabascal:latest
+docker build -t ${TAB_IMG} ./tabascal/ 
+```
+
+#### 2. Download an image
+
+```bash
+TAB_IMG=chrisjfinlay/tabascal:0.0.1
+docker pull ${TAB_IMG}
+```
+
+After running one of the above you can run the docker image using the appropriate command below:
+
+#### Linux
+```bash
+docker run -it -v ${TAB_DIR}:/data -u $(id -u):$(id -g) ${TAB_IMG} bash
+```
+
+#### Mac
+```bash
+docker run -it -v ${TAB_DIR}:/data ${TAB_IMG} bash
+```
+
+For more complex tabascal installs using docker you can adapt the [Dockerfile](Dockerfile) to your needs. 
+
 
 <!-- ### GPU 
  
