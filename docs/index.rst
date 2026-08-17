@@ -6,6 +6,15 @@
 tabascal's documentation!
 ====================================
 
+.. warning::
+
+   **This documentation is archived and obsolete.**
+
+   TABASCAL is now actively developed and maintained at
+   https://github.com/epfl-radio-astro/tabascal, and its current documentation
+   is published at https://tabascal.readthedocs.io/. The pages below describe a
+   pre-2025 version of the code and must not be followed.
+
 .. toctree::
    :maxdepth: 2
 

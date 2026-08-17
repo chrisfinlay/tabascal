@@ -36,9 +36,11 @@ all_cpu = ["regions", "bdsf", "TGEpy @ git+https://github.com/chrisfinlay/TGEpy.
 ipy = ["ipython", "ipykernel"]
 
 [project.urls]
-# Homepage = "https://example.com"
+# ARCHIVED: this package is no longer maintained here. TABASCAL is now developed
+# at https://github.com/epfl-radio-astro/tabascal
+Homepage = "https://github.com/epfl-radio-astro/tabascal"
 Documentation = "https://tabascal.readthedocs.io/en/latest/"
-Repository = "https://github.com/chrisfinlay/tabascal.git"
+Repository = "https://github.com/epfl-radio-astro/tabascal.git"
 
 [tool.setuptools.package-data]
 tabascal = ["tabascal/data/*"]

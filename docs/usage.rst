@@ -1,6 +1,13 @@
 Usage
 =====
 
+.. warning::
+
+   **Archived and obsolete.** These instructions install the unmaintained
+   pre-2025 TABASCAL. For current installation and usage instructions see
+   https://github.com/epfl-radio-astro/tabascal and
+   https://tabascal.readthedocs.io/.
+
 .. _installation:
 
 Installation

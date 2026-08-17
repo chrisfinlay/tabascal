@@ -1,3 +1,10 @@
+# ARCHIVED — DO NOT USE FOR NEW WORK.
+# This Dockerfile builds the obsolete, unmaintained TABASCAL codebase held in
+# this archived repository. TABASCAL is now developed and maintained at
+# https://github.com/epfl-radio-astro/tabascal — see that repository for current
+# installation instructions. The clone URL below is left pointing at this
+# archived repository on purpose, so the historical image remains reproducible.
+
 FROM ubuntu:24.04
 
 RUN apt-get update
